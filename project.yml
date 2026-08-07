@@ -1,0 +1,267 @@
+name: NAMBench
+
+options:
+  bundleIdPrefix: cc.hemsley.nambench
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "13.0"
+    iOS: "16.0"
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    # The fused engine is AArch64-only and its shape detector returns false
+    # everywhere else, so there is nothing to compare on Intel.
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CLANG_CXX_LANGUAGE_STANDARD: "c++20"
+    CLANG_CXX_LIBRARY: "libc++"
+
+# ---------------------------------------------------------------------------
+# All three engine frameworks are built from this one template, so the only
+# things that can differ between them are the source directory, ENGINE_DEFINES
+# and the symbol prefix. Everything that could affect codegen — optimisation
+# level, language standard, visibility, and the shared Eigen include path — is
+# fixed here, identically, for all of them.
+#
+# Optimisation is forced to -O3 in *both* Debug and Release: a Debug build of
+# this app must still benchmark optimised engine code, or the numbers are
+# meaningless in a way that is easy to miss.
+# ---------------------------------------------------------------------------
+targetTemplates:
+  Engine:
+    type: framework
+    supportedDestinations: [macOS, iOS]
+    settings:
+      base:
+        DEFINES_MODULE: YES
+        # macOS framework bundles need Versions/A/Resources/Info.plist or
+        # codesign rejects them as "bundle format unrecognized".
+        GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GCC_OPTIMIZATION_LEVEL: 3
+        SWIFT_OPTIMIZATION_LEVEL: "-O"
+        GCC_SYMBOLS_PRIVATE_EXTERN: YES
+        GCC_INLINES_ARE_PRIVATE_EXTERN: YES
+        DYLIB_INSTALL_NAME_BASE: "@rpath"
+        SKIP_INSTALL: YES
+        CLANG_WARN_DOCUMENTATION_COMMENTS: NO
+        GCC_WARN_64_TO_32_BIT_CONVERSION: NO
+        CLANG_WARN_STRICT_PROTOTYPES: NO
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/vendor/$(VENDOR_DIR)"
+          - "$(SRCROOT)/vendor/$(VENDOR_DIR)/Dependencies/nlohmann"
+          - "$(SRCROOT)/vendor/eigen"
+          - "$(SRCROOT)/Sources/Shim"
+          - "$(SRCROOT)/Sources/SlimEngines"
+        # ENGINE_DEFINES carries the one intended difference between the
+        # builds. NB_VARIANT_NAME is unquoted and stringized in the shim.
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - "NDEBUG=1"
+          - "NAM_ENABLE_A2_FAST=1"
+          - "NB_PREFIX=$(NB_PREFIX)"
+          - "NB_VARIANT_NAME=$(NB_VARIANT_NAME)"
+          - "$(ENGINE_DEFINES)"
+
+targets:
+  # -------------------------------------------------------------------------
+  # Variant 1: sdatkinson/NeuralAmpModelerCore. No fused engine is compiled in,
+  # so wavenet::create_config routes the A2 shape to a2_fast by itself.
+  # -------------------------------------------------------------------------
+  NAMEngineUpstream:
+    templates: [Engine]
+    settings:
+      base:
+        VENDOR_DIR: upstream
+        NB_PREFIX: nb_upstream
+        NB_VARIANT_NAME: upstream
+        ENGINE_DEFINES: ""
+        PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench.engine.upstream
+    sources:
+      - path: Sources/Shim/NAMEngineUpstream.h
+        headerVisibility: public
+      - path: Sources/Shim/nam_bench_shim.h
+        headerVisibility: public
+      - path: Sources/Shim/nam_bench_shim.cpp
+      - path: vendor/upstream/NAM
+        name: NAM
+        headerVisibility: project
+
+  # -------------------------------------------------------------------------
+  # Variant 2: rikkus/OptimisationWorkOnNeuralAmpModelerCore with the fused
+  # NEON engine, constructed under ScopedEnginePrefer(FusedNeon).
+  # -------------------------------------------------------------------------
+  NAMEngineFused:
+    templates: [Engine]
+    settings:
+      base:
+        VENDOR_DIR: fused
+        NB_PREFIX: nb_fused
+        NB_VARIANT_NAME: fused
+        ENGINE_DEFINES: "NAM_ENABLE_FUSED=1"
+        PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench.engine.fused
+    sources:
+      - path: Sources/Shim/NAMEngineFused.h
+        headerVisibility: public
+      - path: Sources/Shim/nam_bench_shim.h
+        headerVisibility: public
+      - path: Sources/Shim/nam_bench_shim.cpp
+      - path: vendor/fused/NAM
+        name: NAM
+        headerVisibility: project
+
+  # -------------------------------------------------------------------------
+  # Variant 3: the slimmed-path kernel lab.
+  #
+  # Built from the *same* vendor/upstream tree as NAMEngineUpstream, through the
+  # same template, with the same flags. The only differences are
+  # NB_ENABLE_SLIM_LAB and the extra sources under Sources/SlimEngines, which
+  # hold candidate replacements for a2_fast's 3-channel branch. That is what
+  # makes the lab's "baseline" kernel a valid control: it is a verbatim port
+  # compiled the same way, so any gap between it and `upstream` is the lab's own
+  # overhead rather than an effect worth reporting.
+  #
+  # a2_fast is still compiled in and still reachable: until a kernel is selected
+  # this framework routes exactly as `upstream` does.
+  # -------------------------------------------------------------------------
+  NAMEngineSlim:
+    templates: [Engine]
+    settings:
+      base:
+        VENDOR_DIR: upstream
+        NB_PREFIX: nb_slim
+        NB_VARIANT_NAME: slim
+        ENGINE_DEFINES: "NB_ENABLE_SLIM_LAB=1"
+        PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench.engine.slim
+    sources:
+      - path: Sources/Shim/NAMEngineSlim.h
+        headerVisibility: public
+      - path: Sources/Shim/nam_bench_shim.h
+        headerVisibility: public
+      - path: Sources/Shim/nam_bench_shim.cpp
+      - path: Sources/SlimEngines
+        name: SlimEngines
+        headerVisibility: project
+      - path: vendor/upstream/NAM
+        name: NAM
+        headerVisibility: project
+
+  # -------------------------------------------------------------------------
+  # The protocol, shared by the app and the CLI so there is one implementation.
+  # -------------------------------------------------------------------------
+  BenchCore:
+    type: framework
+    supportedDestinations: [macOS, iOS]
+    sources:
+      - Sources/BenchCore
+    dependencies:
+      - target: NAMEngineUpstream
+      - target: NAMEngineFused
+      - target: NAMEngineSlim
+    settings:
+      base:
+        DEFINES_MODULE: YES
+        GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SKIP_INSTALL: YES
+        DYLIB_INSTALL_NAME_BASE: "@rpath"
+        PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench.benchcore
+
+  # -------------------------------------------------------------------------
+  # The app, macOS and iOS from one target.
+  # -------------------------------------------------------------------------
+  NAMBench:
+    type: application
+    supportedDestinations: [macOS, iOS]
+    sources:
+      - Sources/App
+      - path: nam-files
+        buildPhase: resources
+        type: folder
+      - path: audio-input/input.wav
+        buildPhase: resources
+      - path: vendor/pins.json
+        buildPhase: resources
+        optional: true
+    dependencies:
+      - target: BenchCore
+        embed: true
+      - target: NAMEngineUpstream
+        embed: true
+      - target: NAMEngineFused
+        embed: true
+      - target: NAMEngineSlim
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench
+        PRODUCT_NAME: NAMBench
+        # Where the embedded frameworks live: Contents/Frameworks on macOS,
+        # Frameworks/ on iOS. Both listed so one target covers both platforms.
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+          - "@executable_path/Frameworks"
+        INFOPLIST_KEY_CFBundleDisplayName: NAM Bench
+        GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        # Reports land in Documents; expose them through the Files app on iOS.
+        INFOPLIST_KEY_UIFileSharingEnabled: YES
+        INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        # Ad-hoc on macOS and unsigned on the Simulator, so the whole thing
+        # builds and runs with no development team configured. An iOS *device*
+        # build does need one:
+        #   xcodebuild ... CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=XXXXXXXXXX
+        CODE_SIGN_STYLE: Manual
+        "CODE_SIGN_IDENTITY[sdk=macosx*]": "-"
+        "CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]": "NO"
+        "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": "NO"
+
+  # -------------------------------------------------------------------------
+  # Headless macOS runner for scripting and CI.
+  #
+  # A command-line tool has no bundle to embed frameworks into, so it resolves
+  # them next to the executable in the build products directory. Run it from
+  # there, or via `xcodebuild -showBuildSettings` to find the path.
+  # -------------------------------------------------------------------------
+  nambench-cli:
+    type: tool
+    platform: macOS
+    sources:
+      - Sources/CLI
+    dependencies:
+      - target: BenchCore
+      - target: NAMEngineUpstream
+      - target: NAMEngineFused
+      - target: NAMEngineSlim
+    settings:
+      base:
+        PRODUCT_NAME: nambench
+        PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench.cli
+        LD_RUNPATH_SEARCH_PATHS:
+          - "@executable_path"
+          - "@loader_path"
+        SWIFT_OPTIMIZATION_LEVEL: "-O"
+
+schemes:
+  NAMBench:
+    build:
+      targets:
+        NAMBench: all
+    run:
+      config: Release
+    profile:
+      config: Release
+  nambench-cli:
+    build:
+      targets:
+        nambench-cli: all
+    run:
+      config: Release

@@ -10,29 +10,9 @@ have to supply is the model.
 
 ## What the published results were measured on
 
-Every number in [`SLIMMED-PATH.md`](../SLIMMED-PATH.md), in `benchmark-results/`
-and in the charts came from the first capture below. It is the default the CLI
-picks (`defaultModelURL` prefers a file starting `Ampeg SVT - Gain 10`), and the
-one the slimmed-path work is specified around: an A2 `SlimmableContainer` whose
-submodel 0 is `channels=3, bottleneck=3, max_value=0.5`, 1871 weights, and whose
-submodel 1 is the 8-channel full model.
+Every number in [`SLIMMED-PATH.md`](../SLIMMED-PATH.md), in `benchmark-results/` and in the charts came from the capture *Ampeg SVT - Gain 10 Ultra Lo and Hi MD 421.nam* - which can be found [here](https://www.tone3000.com/tones/ampeg-svt-classic-with-6x10-28202) at Tone3000. (SHA-1: `56f251f9a603e342bfe4ea45a568341207407d8f`)
 
-| Capture | Modeled by | SHA-1 | Source |
-|---|---|---|---|
-| `Ampeg SVT - Gain 10 Ultra Lo and Hi MD 421.nam` | tone3000 | `56f251f9a603e342bfe4ea45a568341207407d8f` | <!-- FILL: tone3000.com URL --> |
-| `Ampeg SVT - Ultra Hi SM57.nam` | tone3000 | `5c88f2fcdab2dd882e3ee2466dd2eb92ea7c57d6` | <!-- FILL: tone3000.com URL --> |
-| `ORNG-V30-e609-Center.nam` | sunburst1313 | `eb1546a297fcd5ab065cf525a79e99f448bd8d58` | <!-- FILL: tone3000.com URL --> |
-| `RIFF TAPE 001_Green Russian + OR120 + PPC412.nam` | hafishmaulana | `9840014fdba4cef6088389db163097b34a262fca` | <!-- FILL: tone3000.com URL --> |
-
-Only the first is needed to reproduce anything published here; the other three
-are what happened to be in the directory and are listed so a checksum mismatch
-is diagnosable rather than mysterious.
-
-Verify a download with:
-
-```bash
-shasum -a 1 nam-files/*.nam
-```
+The slimmed-path work is specified around: A2 `SlimmableContainer` whose submodel 0 is `channels=3, bottleneck=3, max_value=0.5`, 1871 weights, and whose submodel 1 is the 8-channel full model.
 
 ## Using a different capture
 

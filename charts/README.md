@@ -13,10 +13,16 @@ All three also exist as `*-dark.png`.
 
 `nam-planar-headline` is the headline chart one round later. The earlier one had
 to qualify A2 full with "132.6 dB below signal", because the engine that won
-there reassociated; this one says **bit-identical** on both rows. Its numbers
-come from the Core PR's own `tools/bench_a2_planar` rather than from this
-repository's harness — same machine, same protocol, but measuring the code that
-was actually proposed rather than the lab kernels it came from.
+there reassociated; this one says **bit-identical** on both rows.
+
+**Its numbers do not come from this repository.** They come from the Core PR's
+own `tools/bench_a2_planar`, run on that branch: same M2, same 70%-of-passes
+treatment, but a 10.9 s render of the three-tone signal that tool generates
+rather than the guitar DI the other two charts use, and — the point of the
+exercise — measuring the code that was actually proposed rather than the lab
+kernels it came from. The two provenances are kept apart on purpose, in the
+chart's own footnote as well as here, so no figure has to be traced back through
+two harnesses to know what produced it.
 
 ## Regenerating
 

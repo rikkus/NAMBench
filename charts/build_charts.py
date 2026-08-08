@@ -71,8 +71,14 @@ HEADLINE = [
 ]
 
 # The bit-identical pair, as shipped in the Core PR rather than as lab kernels.
-# Measured by that PR's own tools/bench_a2_planar on the same M2: 10.9 s render
-# per pass, mean of the fastest 70% of 20 passes, parity checked before timing.
+#
+# These numbers do NOT come from this repository's harness. They come from the
+# PR's own tools/bench_a2_planar, run on that branch on the same M2: a 10.9 s
+# render per pass of the three-tone signal that tool generates itself (not the
+# guitar DI the other charts use), mean of the fastest 70% of 20 passes, parity
+# checked bit-for-bit before anything is timed. Keeping the provenance separate
+# matters: what is plotted here is the code actually proposed, measured by the
+# tool a reviewer gets in the same PR.
 PLANAR_HEADLINE = [
     dict(
         title="A2 full", channels="8 channels",
@@ -282,14 +288,16 @@ def planar_headline_html(t):
 </style></head><body>
   <div class="card">
     <h1>Planar NEON on Apple Silicon, against <span class="mono">a2_fast</span></h1>
-    <p class="sub">Time to process 10.9&nbsp;s of guitar DI &middot; Apple M2, macOS 27, Release &middot; 48&nbsp;kHz, 64-frame blocks &middot; <b>lower is better</b><br>
+    <p class="sub">Time to process a 10.9&nbsp;s render &middot; Apple M2, macOS 27, Release &middot; 48&nbsp;kHz, 64-frame blocks &middot; <b>lower is better</b><br>
       Each pair is scaled to its own <span class="mono">a2_fast</span> bar, so the two models can be compared despite a 7&times; difference in absolute cost.</p>
     <div class="legend">
       <span><i class="swatch" style="background:{t['before']}"></i>a2_fast &mdash; what ships today</span>
       <span><i class="swatch" style="background:{t['after']}"></i>planar NEON</span>
     </div>
     {''.join(rows)}
-    <p class="foot"><b>Byte for byte, the same audio.</b> Both kernels are <b>bit-identical</b> to <span class="mono">a2_fast</span> &mdash; the same float32 bits, sample for sample, over every frame of the render, and on four different captures. Not a tolerance, and nothing to listen to: fp32 throughout, no quantisation. The parity check runs before the timing, and a run that fails it reports no speed at all.</p>
+    <p class="foot"><b>Byte for byte, the same audio.</b> Both kernels are <b>bit-identical</b> to <span class="mono">a2_fast</span> &mdash; the same float32 bits, sample for sample, over every frame of the render, and on four different captures. Not a tolerance, and nothing to listen to: fp32 throughout, no quantisation. The parity check runs before the timing, and a run that fails it reports no speed at all.<br>
+      <b>Apple Silicon only.</b> The kernels compile in only on <span class="mono">__APPLE__ &amp;&amp; __aarch64__</span>. On every other target the file compiles to an object with no symbols and the A2 path is unchanged.<br>
+      <b>Measured by the proposed branch's own tool</b> (<span class="mono">tools/bench_a2_planar</span>), not by this repository's harness, so what is plotted is the code as proposed. Mean of the fastest 70&percnt; of 20 passes; run-to-run spread here is about &plusmn;2&percnt;.</p>
   </div>
 </body></html>"""
 
@@ -384,7 +392,7 @@ def detail_html(t):
 CHARTS = [
     ("nam-speedup-headline", headline_html, 880, 500),
     ("nam-nano-detail", detail_html, 880, 872),
-    ("nam-planar-headline", planar_headline_html, 880, 560),
+    ("nam-planar-headline", planar_headline_html, 880, 620),
 ]
 
 

@@ -34,6 +34,10 @@
   #include "slim_common.h"
 #endif
 
+#if defined(NB_ENABLE_FULL_LAB)
+  #include "full_common.h"
+#endif
+
 #include "nam_bench_shim.h"
 
 #if !defined(NB_PREFIX)
@@ -225,6 +229,13 @@ bool select_submodel(const nlohmann::json& root, NbSubmodel mode, int32_t index,
 int g_slim_kernel = -1;
 #endif
 
+#if defined(NB_ENABLE_FULL_LAB)
+/// The same, for the full-path lab. Negative means "none chosen yet", in which
+/// case this build behaves exactly like `fused` — the engine it is built
+/// alongside and the one its second control is validated against.
+int g_full_kernel = -1;
+#endif
+
 /// Report which engine this build will actually route `modelConfig` to.
 ///
 /// This mirrors wavenet::create_config rather than trusting the build flags.
@@ -241,6 +252,16 @@ NbEngine detect_engine(const nlohmann::json& modelConfig, int32_t* channels)
   const bool isA2 = nam::wavenet::a2_fast::is_a2_shape(modelConfig, &a2Channels);
   if (channels != nullptr)
     *channels = isA2 ? static_cast<int32_t>(a2Channels) : 0;
+
+#if defined(NB_ENABLE_FULL_LAB)
+  // Checked before the fused branch below, because the full lab is built *with*
+  // NAM_ENABLE_FUSED — the fused engine is one of the two references its
+  // candidates are measured against, so it has to remain compiled in and
+  // reachable. Until a kernel is selected this falls through and reports fused,
+  // exactly as the plain fused build does.
+  if (g_full_kernel >= 0 && isA2 && a2Channels == fulllab::kChannels)
+    return NbEngineFull;
+#endif
 
 #if defined(NAM_ENABLE_FUSED)
   if (nam::wavenet::fused::available() && nam::wavenet::fused::is_fused_shape(modelConfig))
@@ -371,24 +392,50 @@ NB_EXPORT NbModel* NB_FN(_create)(const uint8_t* namBytes, size_t len, NbSubmode
     int32_t channels = 0;
     const NbEngine engine = detect_engine(*configIt, &channels);
 
-    std::unique_ptr<nam::DSP> dsp;
-#if defined(NB_ENABLE_SLIM_LAB)
-    if (engine == NbEngineSlim)
-    {
-      // The lab kernels are not reachable through create_config — that is the
-      // point of the lab — so build one directly from the same weight stream
-      // get_dsp would have handed to A2FastModel.
+#if defined(NB_ENABLE_SLIM_LAB) || defined(NB_ENABLE_FULL_LAB)
+    // Lab kernels are not reachable through create_config — that is the point of
+    // a lab — so one is built directly from the same weight stream get_dsp would
+    // have handed to the engine it stands in for.
+    const auto lab_weights = [&](std::vector<float>& out) -> bool {
       const auto weightsIt = model.find("weights");
       if (weightsIt == model.end() || !weightsIt->is_array())
       {
         set_error(err, errLen, "selected model has no \"weights\" array");
-        return nullptr;
+        return false;
       }
-      dsp = slimlab::create(g_slim_kernel, *configIt, weightsIt->get<std::vector<float>>(),
-                            nam::get_sample_rate_from_nam_file(model));
-    }
-    else
+      out = weightsIt->get<std::vector<float>>();
+      return true;
+    };
 #endif
+
+    std::unique_ptr<nam::DSP> dsp;
+    bool built = false;
+
+#if defined(NB_ENABLE_FULL_LAB)
+    if (engine == NbEngineFull)
+    {
+      std::vector<float> lab_w;
+      if (!lab_weights(lab_w))
+        return nullptr;
+      dsp = fulllab::create(g_full_kernel, *configIt, std::move(lab_w),
+                            nam::get_sample_rate_from_nam_file(model));
+      built = true;
+    }
+#endif
+
+#if defined(NB_ENABLE_SLIM_LAB)
+    if (!built && engine == NbEngineSlim)
+    {
+      std::vector<float> lab_w;
+      if (!lab_weights(lab_w))
+        return nullptr;
+      dsp = slimlab::create(g_slim_kernel, *configIt, std::move(lab_w),
+                            nam::get_sample_rate_from_nam_file(model));
+      built = true;
+    }
+#endif
+
+    if (!built)
     {
 #if defined(NAM_ENABLE_FUSED)
       // Explicit rather than relying on Auto: Auto also happens to select fused
@@ -533,5 +580,27 @@ NB_EXPORT int NB_FN(_select_kernel)(int index)
 }
 
 #endif // NB_ENABLE_SLIM_LAB
+
+#if defined(NB_ENABLE_FULL_LAB)
+
+NB_EXPORT int NB_FN(_kernel_count)(void)
+{
+  return fulllab::kernel_count();
+}
+
+NB_EXPORT const char* NB_FN(_kernel_name)(int index)
+{
+  return fulllab::kernel_name(index);
+}
+
+NB_EXPORT int NB_FN(_select_kernel)(int index)
+{
+  if (index < 0 || index >= fulllab::kernel_count())
+    return 1;
+  g_full_kernel = index;
+  return 0;
+}
+
+#endif // NB_ENABLE_FULL_LAB
 
 } // extern "C"

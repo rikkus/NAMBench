@@ -7,13 +7,27 @@ and dark so a `<picture>` element can serve the right one to GitHub's theme.
 |---|---|
 | `nam-speedup-headline.png` | A2 full and A2 nano, `a2_fast` vs NEON, one image |
 | `nam-nano-detail.png` | Where the nano speedup comes from, and all 19 kernels measured |
+| `nam-planar-headline.png` | The bit-identical pair as proposed to Core: A2 full 2.43×, A2 nano 2.01× |
 
-Both also exist as `*-dark.png`.
+All three also exist as `*-dark.png`.
+
+`nam-planar-headline` is the headline chart one round later. The earlier one had
+to qualify A2 full with "132.6 dB below signal", because the engine that won
+there reassociated; this one says **bit-identical** on both rows. Its numbers
+come from the Core PR's own `tools/bench_a2_planar` rather than from this
+repository's harness — same machine, same protocol, but measuring the code that
+was actually proposed rather than the lab kernels it came from.
 
 ## Regenerating
 
 ```bash
 python3 charts/build_charts.py
+```
+
+One chart at a time, so a rebuild of one cannot silently rewrite the others:
+
+```bash
+python3 charts/build_charts.py nam-planar-headline
 ```
 
 Every number lives in the `HEADLINE`, `BUILDUP` and `CANDIDATES` tables at the

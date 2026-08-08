@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the two presentation charts to PNG, light and dark.
+"""Render the presentation charts to PNG, light and dark.
 
 One generator rather than four hand-written files, so a number can only be
 wrong in one place. Every value here is copied from the benchmark reports in
@@ -67,6 +67,28 @@ HEADLINE = [
         base_label="a2_fast", opt_label="planar NEON",
         note="new — not yet proposed", parity="bit-identical",
         base_rtf="181.6×", opt_rtf="380.9×",
+    ),
+]
+
+# The bit-identical pair, as shipped in the Core PR rather than as lab kernels.
+# Measured by that PR's own tools/bench_a2_planar on the same M2: 10.9 s render
+# per pass, mean of the fastest 70% of 20 passes, parity checked before timing.
+PLANAR_HEADLINE = [
+    dict(
+        title="A2 full", channels="8 channels",
+        base_ms=418.25, opt_ms=172.34, speedup=2.427,
+        base_label="a2_fast", opt_label="planar NEON",
+        note="Eigen GEMM → planar NEON", parity="bit-identical",
+        base_rtf="26.1×", opt_rtf="63.3×",
+        small_block="2.65× at 32-frame blocks",
+    ),
+    dict(
+        title="A2 nano", channels="3 channels",
+        base_ms=57.20, opt_ms=28.43, speedup=2.012,
+        base_label="a2_fast", opt_label="planar NEON",
+        note="scalar 3×3 GEMV → planar NEON", parity="bit-identical",
+        base_rtf="190.6×", opt_rtf="383.4×",
+        small_block="2.03× at 32-frame blocks",
     ),
 ]
 
@@ -195,6 +217,83 @@ def headline_html(t):
 </body></html>"""
 
 
+# --- Chart 3: the bit-identical pair, as proposed to Core --------------------
+#
+# Same shape as the headline above, and deliberately so — it is the same claim
+# one round later, with the qualifier removed. The earlier chart had to say
+# "132.6 dB below signal" for A2 full because the engine that won there
+# reassociated. This one says bit-identical on both rows, so the footnote is a
+# statement rather than a caveat.
+
+def planar_headline_html(t):
+    PLOT = 470          # px for 100%
+    LABEL = 96          # left gutter for the series name
+    rows = []
+    for g in PLANAR_HEADLINE:
+        bars = []
+        for ms, colour, name, rtf in (
+            (g["base_ms"], t["before"], g["base_label"], g["base_rtf"]),
+            (g["opt_ms"], t["after"], g["opt_label"], g["opt_rtf"]),
+        ):
+            w = PLOT * ms / g["base_ms"]
+            bars.append(f"""
+        <div class="barrow">
+          <div class="bname">{name}</div>
+          <div class="btrack"><div class="bar" style="width:{w:.1f}px;background:{colour}"></div>
+            <div class="bval mono">{ms:.1f} ms</div>
+            <div class="brtf mono">{rtf} real time</div>
+          </div>
+        </div>""")
+        rows.append(f"""
+      <div class="group">
+        <div class="ghead">
+          <div>
+            <div class="gtitle">{g['title']}</div>
+            <div class="gsub">{g['channels']} &middot; {g['note']}</div>
+          </div>
+          <div class="gspeed">
+            <div class="gnum">{g['speedup']:.2f}&times;</div>
+            <div class="glab">faster &middot; {g['parity']}</div>
+          </div>
+        </div>
+        {''.join(bars)}
+        <div class="gsmall mono">{g['small_block']}</div>
+      </div>""")
+
+    return f"""<!doctype html><html><head><meta charset="utf-8"><style>{css(t)}
+  .group {{ margin-bottom: 24px; }}
+  .group:last-of-type {{ margin-bottom: 0; }}
+  .ghead {{ display: flex; justify-content: space-between; align-items: flex-end;
+            border-bottom: 1px solid {t['grid']}; padding-bottom: 7px; margin-bottom: 13px; }}
+  .gtitle {{ font-size: 15px; font-weight: 600; }}
+  .gsub {{ font-size: 11.5px; color: {t['muted']}; margin-top: 2px; }}
+  .gspeed {{ text-align: right; }}
+  .gnum {{ font-size: 30px; font-weight: 600; line-height: 1; letter-spacing: -0.02em; }}
+  .glab {{ font-size: 11px; color: {t['muted']}; margin-top: 4px; }}
+  .barrow {{ display: flex; align-items: center; margin-bottom: 9px; }}
+  .bname {{ width: {LABEL}px; font-size: 12.5px; color: {t['ink2']}; text-align: right;
+            padding-right: 14px; flex: none; }}
+  .btrack {{ position: relative; flex: 1; display: flex; align-items: center; height: 20px; }}
+  .bar {{ height: 18px; border-radius: 0 4px 4px 0; flex: none; }}
+  .bval {{ font-size: 12.5px; font-weight: 600; color: {t['ink']}; margin-left: 11px; }}
+  .brtf {{ font-size: 11px; color: {t['muted']}; margin-left: 9px; }}
+  .gsmall {{ font-size: 11px; color: {t['muted']}; margin-left: {LABEL}px; padding-left: 14px;
+             margin-top: 8px; }}
+</style></head><body>
+  <div class="card">
+    <h1>Planar NEON on Apple Silicon, against <span class="mono">a2_fast</span></h1>
+    <p class="sub">Time to process 10.9&nbsp;s of guitar DI &middot; Apple M2, macOS 27, Release &middot; 48&nbsp;kHz, 64-frame blocks &middot; <b>lower is better</b><br>
+      Each pair is scaled to its own <span class="mono">a2_fast</span> bar, so the two models can be compared despite a 7&times; difference in absolute cost.</p>
+    <div class="legend">
+      <span><i class="swatch" style="background:{t['before']}"></i>a2_fast &mdash; what ships today</span>
+      <span><i class="swatch" style="background:{t['after']}"></i>planar NEON</span>
+    </div>
+    {''.join(rows)}
+    <p class="foot"><b>Byte for byte, the same audio.</b> Both kernels are <b>bit-identical</b> to <span class="mono">a2_fast</span> &mdash; the same float32 bits, sample for sample, over every frame of the render, and on four different captures. Not a tolerance, and nothing to listen to: fp32 throughout, no quantisation. The parity check runs before the timing, and a run that fails it reports no speed at all.</p>
+  </div>
+</body></html>"""
+
+
 # --- Chart 2: where the nano speedup comes from, and what else was tried -----
 
 def detail_html(t):
@@ -285,6 +384,7 @@ def detail_html(t):
 CHARTS = [
     ("nam-speedup-headline", headline_html, 880, 500),
     ("nam-nano-detail", detail_html, 880, 872),
+    ("nam-planar-headline", planar_headline_html, 880, 560),
 ]
 
 
@@ -292,7 +392,16 @@ def main():
     if not os.path.exists(CHROME):
         sys.exit(f"Google Chrome not found at {CHROME}")
 
-    for name, builder, width, height in CHARTS:
+    # Named on the command line: render only those. Otherwise render all of
+    # them. Re-rendering an unchanged chart is harmless, but being able to
+    # touch one without rewriting the others keeps a diff honest.
+    wanted = set(sys.argv[1:])
+    charts = [c for c in CHARTS if not wanted or c[0] in wanted]
+    unknown = wanted - {c[0] for c in CHARTS}
+    if unknown:
+        sys.exit("No such chart: " + ", ".join(sorted(unknown)))
+
+    for name, builder, width, height in charts:
         for mode, tokens in THEMES.items():
             suffix = "" if mode == "light" else "-dark"
             html_path = os.path.join(HERE, f"{name}{suffix}.html")

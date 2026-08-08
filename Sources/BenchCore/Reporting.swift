@@ -104,15 +104,22 @@ public enum Reporting {
     // --- Parity --------------------------------------------------------------
 
     if !report.parities.isEmpty {
+      let references = report.parities.map(\.referenceVariant).reduce(into: [String]()) {
+        if !$0.contains($1) { $0.append($1) }
+      }
       out += "## Output parity\n\n"
-      out += "Every variant against `\(report.parities[0].referenceVariant)`, over the full file "
-      out += "(\(report.audio.frameCount) frames):\n\n"
-      out += "| Variant | max \\|difference\\| | RMS difference | Below signal | |\n"
-      out += "|---|---:|---:|---:|---|\n"
+      out += "Over the full file (\(report.audio.frameCount) frames). "
+      out += references.count > 1
+        ? "Two references, because a candidate can be derived from either shipping engine — "
+          + "\"bit-identical\" only means something once it says to what:\n\n"
+        : "Every variant against `\(references[0])`:\n\n"
+      out += "| Variant | Reference | max \\|difference\\| | RMS difference | Below signal | |\n"
+      out += "|---|---|---:|---:|---:|---|\n"
       for parity in report.parities {
-        out += "| \(parity.comparisonVariant) | \(scientific(parity.maxAbsoluteDifference)) "
+        out += "| \(parity.comparisonVariant) | `\(parity.referenceVariant)` "
+        out += "| \(scientific(parity.maxAbsoluteDifference)) "
         out += "| \(scientific(parity.rmsDifference)) "
-        out += "| \(parity.decibelsBelowSignal.isInfinite ? "exact" : format(parity.decibelsBelowSignal, 1) + " dB") "
+        out += "| \(parity.decibelsBelowSignal.isInfinite ? "**exact**" : format(parity.decibelsBelowSignal, 1) + " dB") "
         out += "| \(parity.withinTolerance ? "ok" : "**out of tolerance**") |\n"
       }
       out += "\nReference RMS \(scientific(report.parities[0].referenceRMS)). "

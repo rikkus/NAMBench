@@ -1,4 +1,5 @@
 import Foundation
+import NAMEngineFull
 import NAMEngineFused
 import NAMEngineSlim
 import NAMEngineUpstream
@@ -10,6 +11,7 @@ public enum Engine: String, Sendable, Codable {
   case a2Fast = "a2_fast"
   case fused
   case slim
+  case full
 
   init(_ raw: NbEngine) {
     switch raw.rawValue {
@@ -17,6 +19,7 @@ public enum Engine: String, Sendable, Codable {
     case NbEngineA2Fast.rawValue: self = .a2Fast
     case NbEngineFused.rawValue: self = .fused
     case NbEngineSlim.rawValue: self = .slim
+    case NbEngineFull.rawValue: self = .full
     default: self = .unknown
     }
   }
@@ -28,6 +31,7 @@ public enum Engine: String, Sendable, Codable {
     case .a2Fast: return "a2_fast (Eigen GEMM)"
     case .fused: return "fused (NEON)"
     case .slim: return "slim lab kernel"
+    case .full: return "full lab kernel"
     }
   }
 }
@@ -47,12 +51,12 @@ public enum VariantError: LocalizedError {
   case createFailed(variant: String, message: String)
   case wrongEngine(variant: String, expected: Engine, actual: Engine)
   case wrongChannels(variant: String, expected: Int, actual: Int)
-  case kernelSelectionFailed(variant: String, kernel: Int)
+  case kernelSelectionFailed(variant: String, lab: KernelLab, kernel: Int)
 
   public var errorDescription: String? {
     switch self {
-    case let .kernelSelectionFailed(variant, kernel):
-      return "\(variant): the slim lab has no kernel at index \(kernel)"
+    case let .kernelSelectionFailed(variant, lab, kernel):
+      return "\(variant): the \(lab.displayName) has no kernel at index \(kernel)"
     case let .probeFailed(variant, message):
       return "\(variant): probe failed — \(message)"
     case let .createFailed(variant, message):
@@ -123,26 +127,93 @@ struct VariantAPI {
     reset: nb_slim_reset,
     process: nb_slim_process
   )
+
+  static let full = VariantAPI(
+    hasFused: nb_full_has_fused,
+    probe: nb_full_probe,
+    create: nb_full_create,
+    destroy: nb_full_destroy,
+    engine: nb_full_engine,
+    channels: nb_full_channels,
+    sampleRate: nb_full_sample_rate,
+    reset: nb_full_reset,
+    process: nb_full_process
+  )
 }
 
-/// The slim lab's kernel table, read out of the framework rather than
-/// duplicated here — the C side is the only place the list exists.
-public enum SlimKernels {
-  public static var count: Int { Int(nb_slim_kernel_count()) }
+/// Which in-project kernel lab a variant draws from.
+///
+/// The two labs target different submodels — `slim` the 3-channel one, `full`
+/// the 8-channel one — and live in separate frameworks with separate kernel
+/// tables, so a selection is only meaningful together with its lab.
+public enum KernelLab: String, Sendable, Codable {
+  case slim
+  case full
 
-  public static var names: [String] {
-    (0..<count).compactMap { index in
-      nb_slim_kernel_name(Int32(index)).map(String.init(cString:))
+  public var displayName: String {
+    switch self {
+    case .slim: return "slim lab"
+    case .full: return "full lab"
+    }
+  }
+}
+
+/// One lab's kernel table, read out of the framework rather than duplicated
+/// here — the C side is the only place either list exists.
+public enum LabKernels {
+  public static func count(_ lab: KernelLab) -> Int {
+    switch lab {
+    case .slim: return Int(nb_slim_kernel_count())
+    case .full: return Int(nb_full_kernel_count())
     }
   }
 
-  public static func name(_ index: Int) -> String {
-    nb_slim_kernel_name(Int32(index)).map(String.init(cString:)) ?? "kernel \(index)"
+  public static func names(_ lab: KernelLab) -> [String] {
+    (0..<count(lab)).map { name(lab, $0) }
   }
 
-  public static func index(named name: String) -> Int? {
-    names.firstIndex(of: name)
+  public static func name(_ lab: KernelLab, _ index: Int) -> String {
+    let raw: UnsafePointer<CChar>?
+    switch lab {
+    case .slim: raw = nb_slim_kernel_name(Int32(index))
+    case .full: raw = nb_full_kernel_name(Int32(index))
+    }
+    return raw.map(String.init(cString:)) ?? "kernel \(index)"
   }
+
+  public static func index(_ lab: KernelLab, named name: String) -> Int? {
+    names(lab).firstIndex(of: name)
+  }
+}
+
+/// The slim lab's table, kept as its own name because the CLI, the app and the
+/// existing reports all speak of "slim kernels".
+public enum SlimKernels {
+  public static var count: Int { LabKernels.count(.slim) }
+  public static var names: [String] { LabKernels.names(.slim) }
+  public static func name(_ index: Int) -> String { LabKernels.name(.slim, index) }
+  public static func index(named name: String) -> Int? { LabKernels.index(.slim, named: name) }
+}
+
+/// The full lab's table.
+public enum FullKernels {
+  public static var count: Int { LabKernels.count(.full) }
+  public static var names: [String] { LabKernels.names(.full) }
+  public static func name(_ index: Int) -> String { LabKernels.name(.full, index) }
+  public static func index(named name: String) -> Int? { LabKernels.index(.full, named: name) }
+}
+
+/// Which lab kernel a variant selects before building, if any.
+public struct LabSelection: Sendable, Codable, Equatable {
+  public let lab: KernelLab
+  public let index: Int
+
+  public init(lab: KernelLab, index: Int) {
+    self.lab = lab
+    self.index = index
+  }
+
+  public var kernelName: String { LabKernels.name(lab, index) }
 }
 
 /// One code variation under test.
@@ -151,8 +222,8 @@ public final class Variant {
   public let repository: String
   public let codePath: String
   public let expectedEngine: Engine
-  /// Which slim-lab kernel this variant selects before building, if any.
-  public let slimKernel: Int?
+  /// Which lab kernel this variant selects before building, if any.
+  public let labKernel: LabSelection?
 
   private let api: VariantAPI
 
@@ -162,14 +233,14 @@ public final class Variant {
     codePath: String,
     expectedEngine: Engine,
     api: VariantAPI,
-    slimKernel: Int? = nil
+    labKernel: LabSelection? = nil
   ) {
     self.name = name
     self.repository = repository
     self.codePath = codePath
     self.expectedEngine = expectedEngine
     self.api = api
-    self.slimKernel = slimKernel
+    self.labKernel = labKernel
   }
 
   /// Upstream NeuralAmpModelerCore. It has no fused engine, so
@@ -203,7 +274,22 @@ public final class Variant {
       codePath: SlimKernels.name(kernel),
       expectedEngine: .slim,
       api: .slim,
-      slimKernel: kernel
+      labKernel: LabSelection(lab: .slim, index: kernel)
+    )
+  }
+
+  /// One experimental kernel from the full lab. Kernel 0 is `a2_baseline`, the
+  /// verbatim port of a2_fast's Channels==8 branch, and kernel 1 is
+  /// `fu_baseline`, the verbatim port of fused's C=8 path — the two controls the
+  /// lab is validated against.
+  public static func full(kernel: Int) -> Variant {
+    Variant(
+      name: "full:\(FullKernels.name(kernel))",
+      repository: "NAMBench/Sources/FullEngines",
+      codePath: FullKernels.name(kernel),
+      expectedEngine: .full,
+      api: .full,
+      labKernel: LabSelection(lab: .full, index: kernel)
     )
   }
 
@@ -216,9 +302,14 @@ public final class Variant {
   /// before probe or create, because until it does the slim framework reports
   /// (and builds) a2_fast exactly as `upstream` would.
   private func selectKernel() throws {
-    guard let slimKernel else { return }
-    guard nb_slim_select_kernel(Int32(slimKernel)) == 0 else {
-      throw VariantError.kernelSelectionFailed(variant: name, kernel: slimKernel)
+    guard let labKernel else { return }
+    let status: Int32
+    switch labKernel.lab {
+    case .slim: status = nb_slim_select_kernel(Int32(labKernel.index))
+    case .full: status = nb_full_select_kernel(Int32(labKernel.index))
+    }
+    guard status == 0 else {
+      throw VariantError.kernelSelectionFailed(variant: name, lab: labKernel.lab, kernel: labKernel.index)
     }
   }
 

@@ -17,7 +17,7 @@ extern "C" {
 #endif
 
 NB_DECLARE_VARIANT(nb_slim)
-NB_DECLARE_SLIM_LAB(nb_slim)
+NB_DECLARE_KERNEL_LAB(nb_slim)
 
 #ifdef __cplusplus
 }

@@ -42,6 +42,11 @@ public struct BenchmarkConfig: Sendable, Codable {
   /// is then `upstream` (and `fused`, where the shape allows it) alone.
   public var slimKernels: [Int] = []
 
+  /// Which full-lab kernels to include, by index. Only meaningful on an
+  /// 8-channel submodel; the runner drops them otherwise, by shape rather than
+  /// by flag, exactly as it drops `fused`.
+  public var fullKernels: [Int] = []
+
   /// Reset model state before every pass so each one starts identically.
   /// Always done outside the timed region.
   public var resetBetweenPasses: Bool = true

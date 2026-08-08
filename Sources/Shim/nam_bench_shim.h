@@ -7,8 +7,8 @@
 // their symbols colliding.
 //
 // This header only defines the shape of that API. Each framework's umbrella
-// header instantiates it for its own prefix (see NAMEngineUpstream.h /
-// NAMEngineFused.h).
+// header instantiates it for its own prefix (see NAMEngineUpstream.h,
+// NAMEngineFused.h, NAMEngineSlim.h, NAMEngineFull.h).
 
 #ifndef NAM_BENCH_SHIM_H
 #define NAM_BENCH_SHIM_H
@@ -43,6 +43,11 @@ typedef enum NbEngine {
   /// has been selected — so "I asked for a lab kernel and got a lab kernel" is
   /// still asserted rather than assumed.
   NbEngineSlim = 4,
+  /// One of the in-project experimental kernels for the full (8-channel)
+  /// submodel. Same rule as NbEngineSlim: only the full-lab build reports it,
+  /// and only once a kernel has been selected. Before that the full-lab build
+  /// routes and reports as `fused`, which is the engine it is built alongside.
+  NbEngineFull = 5,
 } NbEngine;
 
 /// Which submodel of a SlimmableContainer to run.
@@ -111,10 +116,11 @@ typedef struct NbModel NbModel;
   NB_EXPORT uint64_t P##_process(NbModel* model, const double* in, size_t frames, double* out,    \
                                  double* outChecksum);
 
-/// The extra API of the slim-lab framework, declared separately so the
+/// The extra API of a kernel-lab framework, declared separately so the
 /// `upstream` and `fused` frameworks do not grow symbols they have no
-/// implementation for.
-#define NB_DECLARE_SLIM_LAB(P)                                                                    \
+/// implementation for. Both labs — slim (3-channel) and full (8-channel) —
+/// expose it under their own prefix.
+#define NB_DECLARE_KERNEL_LAB(P)                                                                  \
   /** How many experimental kernels this build carries. */                                        \
   NB_EXPORT int P##_kernel_count(void);                                                           \
                                                                                                   \
@@ -124,10 +130,10 @@ typedef struct NbModel NbModel;
   /**                                                                                             \
    * Choose the kernel that subsequent _create calls will build.                                  \
    *                                                                                              \
-   * Returns 0 on success. Until a kernel has been selected the build behaves    \
-   * exactly like `upstream` — probe reports a2_fast — so a run that forgot to  \
-   * select one is caught by the engine assertion rather than measuring the      \
-   * wrong thing.                                                                                 \
+   * Returns 0 on success. Until a kernel has been selected the build routes and                  \
+   * reports as the shipping engine it was built alongside — a2_fast for the slim                 \
+   * lab, fused for the full lab — so a run that forgot to select one is caught                   \
+   * by the engine assertion rather than quietly measuring the wrong thing.                       \
    */                                                                                             \
   NB_EXPORT int P##_select_kernel(int index);
 

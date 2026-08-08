@@ -7,6 +7,7 @@ Compares NAM A2 WaveNet processing code, macOS and iOS.
 | `upstream` | [sdatkinson/NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) | `a2_fast` (Eigen GEMM) |
 | `fused` | [rikkus/OptimisationWorkOnNeuralAmpModelerCore](https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore) | `fused` (hand-written NEON) |
 | `slim:*` | this repo, `Sources/SlimEngines` | experimental kernels for the 3-channel submodel |
+| `full:*` | this repo, `Sources/FullEngines` | experimental kernels for the 8-channel submodel |
 
 All are measured in one process, against one in-RAM model and one in-RAM audio
 file.
@@ -45,6 +46,14 @@ nambench --submodel narrowest --slim all
 `nambench --list-slim` prints the kernel table; `--slim planar,widetile32`
 selects a subset by name or index.
 
+The full-path lab works the same way on the default (8-channel) submodel:
+
+```bash
+nambench --full all
+```
+
+`--list-full` prints its table, and `--full a2s8_h8,fu_s8_head` selects a subset.
+
 An iOS **device** build needs a team: add
 `CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=XXXXXXXXXX` to the `xcodebuild` call.
 The Simulator builds unsigned, but its timings are meaningless — the report says
@@ -63,9 +72,11 @@ automatically. Its detector rejects any channel count that is not a multiple of
 four, and under `ScopedEnginePrefer(FusedNeon)` a rejected shape falls through
 to the *generic* engine rather than to `a2_fast` — so including it would either
 abort on the engine assertion or measure the wrong thing. The channel count is
-read from the file, not inferred from the flag.
+read from the file, not inferred from the flag. The full-path lab is dropped
+there by the same rule, and the slim lab is dropped on the full submodel: each
+lab's kernels are specialised for one channel count and refuse the other.
 
-**Three frameworks, not one binary.** The fork is a superset of upstream and
+**Four frameworks, not one binary.** The fork is a superset of upstream and
 even has an `EnginePrefer` switch, but it has no value that selects `a2_fast`:
 fused is tested first, so for an 8-channel model `Auto` and `FusedNeon` both
 give fused and `Generic` gives neither. So each variant is built from its own
@@ -147,9 +158,11 @@ denormals are flushed identically in both variants.
 
 ```
 Scripts/fetch-vendor.sh   pinned clones, shared Eigen, integrity checks
+Scripts/eigen-order-probe/ what reduction order a2_fast's C=8 Eigen path uses
 project.yml               XcodeGen spec — all build flags live here
 Sources/Shim/             one C shim, compiled once per variant
 Sources/SlimEngines/      experimental kernels for the 3-channel submodel
+Sources/FullEngines/      experimental kernels for the 8-channel submodel
 Sources/BenchCore/        the protocol, shared by app and CLI
 Sources/App/              SwiftUI, macOS + iOS
 Sources/CLI/              headless macOS runner
@@ -174,3 +187,24 @@ weight loader (`slim_common.h`) so the only thing that varies between two
 measurements is the kernel. The planar family shares one templated
 implementation (`slim_planar_kernel.h`) parameterised by an options struct, so
 each candidate file reads as a diff against `planar`.
+
+## The full-path kernel lab
+
+`Sources/FullEngines/` does the same job for the 8-channel submodel, where the
+thing to beat is `fused` rather than `a2_fast`. [FULL-PATH.md](FULL-PATH.md) has
+the analysis; the short version is that there are **two** references here, so
+there are two families and two controls:
+
+- **`a2*`** reproduce `a2_fast`'s arithmetic and are **bit-identical to it**.
+  That is possible because `a2_fast`'s C=8 path, though it is Eigen, has a
+  reduction order that is knowable and reproducible —
+  `Scripts/eigen-order-probe/` establishes exactly which order, bit-for-bit,
+  before any kernel was written.
+- **`fu*`** reproduce `fused`'s arithmetic and are **bit-identical to it**.
+
+Kernel 0 (`a2_baseline`) is a verbatim port of `a2_fast`'s `Channels == 8`
+branch and has to land on `upstream`'s number; kernel 1 (`fu_baseline`) is a
+verbatim port of `fused`'s C=8 path and has to land on `fused`'s. Because a
+candidate can be derived from either engine, the runner compares every full-lab
+kernel against **both**, and the reports carry two parity columns — "bit-identical"
+only means something once it says to what.

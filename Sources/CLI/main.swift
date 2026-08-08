@@ -30,8 +30,10 @@ struct Options {
       case "--pins": options.pinsPath = try next(argument)
       case "--block-size": options.config.blockSize = Int(try next(argument)) ?? 64
       case "--submodel": options.config.submodel = try parseSubmodel(try next(argument))
-      case "--slim": options.config.slimKernels = try parseSlimKernels(try next(argument))
-      case "--list-slim": listSlimKernels(); exit(0)
+      case "--slim": options.config.slimKernels = try parseKernels(.slim, try next(argument))
+      case "--list-slim": listKernels(.slim); exit(0)
+      case "--full": options.config.fullKernels = try parseKernels(.full, try next(argument))
+      case "--list-full": listKernels(.full); exit(0)
       case "--timing-seconds": options.config.timingWindowSeconds = Double(try next(argument)) ?? 10
       case "--warmup-seconds": options.config.warmupSeconds = Double(try next(argument)) ?? 5
       case "--accept-tolerance": options.config.acceptTolerance = Double(try next(argument)) ?? 0.01
@@ -53,7 +55,7 @@ enum CLIError: LocalizedError {
   case unknownFlag(String)
   case resourceNotFound(String)
   case badSubmodel(String)
-  case unknownKernel(String)
+  case unknownKernel(lab: KernelLab, name: String)
 
   var errorDescription: String? {
     switch self {
@@ -62,8 +64,9 @@ enum CLIError: LocalizedError {
     case let .resourceNotFound(what): return "could not find \(what)"
     case let .badSubmodel(value):
       return "--submodel takes widest, narrowest or an index; got \(value)"
-    case let .unknownKernel(name):
-      return "no slim kernel called \(name). Known: \(SlimKernels.names.joined(separator: ", "))"
+    case let .unknownKernel(lab, name):
+      return "the \(lab.displayName) has no kernel called \(name). "
+        + "Known: \(LabKernels.names(lab).joined(separator: ", "))"
     }
   }
 }
@@ -78,20 +81,24 @@ func parseSubmodel(_ value: String) throws -> SubmodelSelection {
   }
 }
 
-func parseSlimKernels(_ value: String) throws -> [Int] {
-  if value.lowercased() == "all" { return Array(0..<SlimKernels.count) }
+func parseKernels(_ lab: KernelLab, _ value: String) throws -> [Int] {
+  let count = LabKernels.count(lab)
+  if value.lowercased() == "all" { return Array(0..<count) }
   if value.lowercased() == "none" || value.isEmpty { return [] }
   return try value.split(separator: ",").map { piece in
     let name = piece.trimmingCharacters(in: .whitespaces)
-    if let index = Int(name), index >= 0, index < SlimKernels.count { return index }
-    guard let index = SlimKernels.index(named: name) else { throw CLIError.unknownKernel(name) }
+    if let index = Int(name), index >= 0, index < count { return index }
+    guard let index = LabKernels.index(lab, named: name) else {
+      throw CLIError.unknownKernel(lab: lab, name: name)
+    }
     return index
   }
 }
 
-func listSlimKernels() {
-  print("slim lab kernels (\(SlimKernels.count)):")
-  for (index, name) in SlimKernels.names.enumerated() {
+func listKernels(_ lab: KernelLab) {
+  let names = LabKernels.names(lab)
+  print("\(lab.displayName) kernels (\(names.count)):")
+  for (index, name) in names.enumerated() {
     print(String(format: "  %2d  %@", index, name))
   }
 }
@@ -106,9 +113,12 @@ func printUsage() {
       --pins <path>             vendor/pins.json for provenance
 
       --submodel <which>        widest (default, A2 full) | narrowest (A2 nano) | <index>
-      --slim <list>             slim-lab kernels to include: all, none, or a
-                                comma-separated list of names or indices
-      --list-slim               print the kernel table and exit
+      --slim <list>             slim-lab kernels (3-channel submodel) to include:
+                                all, none, or a comma-separated list of names or
+                                indices
+      --list-slim               print the slim kernel table and exit
+      --full <list>             full-lab kernels (8-channel submodel), same format
+      --list-full               print the full kernel table and exit
 
       --block-size <n>          frames per process() call (default 64)
       --warmup-seconds <s>      discarded warm-up passes (default 5)
@@ -122,7 +132,9 @@ func printUsage() {
     On the slimmed submodel the fused engine is not part of the comparison: its
     detector rejects a channel count that is not a multiple of four, and under
     ScopedEnginePrefer(FusedNeon) that falls through to the *generic* engine
-    rather than to a2_fast. The baseline there is `upstream`.
+    rather than to a2_fast. The baseline there is `upstream`. The full lab is
+    dropped on that submodel for the same reason — by channel count read from
+    the file, not by which flag was passed.
     """)
 }
 
@@ -226,7 +238,23 @@ do {
     print("fused excluded: \(shape.channels) channels is not a multiple of 4, so the fused "
       + "detector rejects this shape and the fork falls through to the generic engine")
   }
-  variants += options.config.slimKernels.map { Variant.slim(kernel: $0) }
+  // Each lab's kernels are specialised for one channel count and throw on the
+  // other, so both are gated by the same read-it-from-the-file rule that governs
+  // `fused` rather than by trusting the flag.
+  func labVariants(_ name: String, _ kernels: [Int], channels: Int, make: (Int) -> Variant) -> [Variant] {
+    guard !kernels.isEmpty else { return [] }
+    guard shape.channels == channels else {
+      if !quiet {
+        print("\(name) excluded: its kernels are specialised for \(channels) channels and this "
+          + "submodel has \(shape.channels)")
+      }
+      return []
+    }
+    return kernels.map(make)
+  }
+
+  variants += labVariants("slim lab", options.config.slimKernels, channels: 3, make: Variant.slim(kernel:))
+  variants += labVariants("full lab", options.config.fullKernels, channels: 8, make: Variant.full(kernel:))
 
   let runner = BenchmarkRunner(
     config: options.config,
@@ -312,9 +340,10 @@ do {
   let speedupByVariant = Dictionary(
     report.speedups.map { ($0.variant, $0.factor) }, uniquingKeysWith: { first, _ in first }
   )
-  let parityByVariant = Dictionary(
-    report.parities.map { ($0.comparisonVariant, $0) }, uniquingKeysWith: { first, _ in first }
-  )
+  // A variant can have more than one parity row: full-lab candidates are
+  // compared against both shipping engines, because which one a candidate is
+  // supposed to be bit-identical to depends on which one it was derived from.
+  let parityByVariant = Dictionary(grouping: report.parities, by: \.comparisonVariant)
   let baselineName = report.results.first?.variant ?? ""
 
   for result in report.results {
@@ -331,11 +360,12 @@ do {
     if let factor = speedupByVariant[result.variant] {
       line += String(format: "  %6.3fx vs %@", factor, baselineName)
     }
-    if let parity = parityByVariant[result.variant] {
-      line += parity.decibelsBelowSignal.isInfinite
-        ? "  parity exact"
-        : String(format: "  parity %.1f dB%@", parity.decibelsBelowSignal,
-                 parity.withinTolerance ? "" : " **OUT OF TOLERANCE**")
+    for parity in parityByVariant[result.variant] ?? [] {
+      let value = parity.decibelsBelowSignal.isInfinite
+        ? "exact"
+        : String(format: "%.1f dB", parity.decibelsBelowSignal)
+      line += "  vs \(parity.referenceVariant) \(value)"
+      if !parity.withinTolerance { line += " **OUT OF TOLERANCE**" }
     }
     print(line)
   }

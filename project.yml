@@ -20,7 +20,7 @@ settings:
     CLANG_CXX_LIBRARY: "libc++"
 
 # ---------------------------------------------------------------------------
-# All three engine frameworks are built from this one template, so the only
+# All four engine frameworks are built from this one template, so the only
 # things that can differ between them are the source directory, ENGINE_DEFINES
 # and the symbol prefix. Everything that could affect codegen — optimisation
 # level, language standard, visibility, and the shared Eigen include path — is
@@ -57,14 +57,24 @@ targetTemplates:
           - "$(SRCROOT)/vendor/eigen"
           - "$(SRCROOT)/Sources/Shim"
           - "$(SRCROOT)/Sources/SlimEngines"
-        # ENGINE_DEFINES carries the one intended difference between the
-        # builds. NB_VARIANT_NAME is unquoted and stringized in the shim.
+          - "$(SRCROOT)/Sources/FullEngines"
+        # ENGINE_DEFINES carries the intended difference between the builds.
+        # NB_VARIANT_NAME is unquoted and stringized in the shim.
+        #
+        # Two slots, not one: a build setting substituted into a list entry is
+        # one entry, so "A=1 B=1" in ENGINE_DEFINES would depend on Xcode
+        # splitting it on whitespace. The full lab needs two defines
+        # (NAM_ENABLE_FUSED and NB_ENABLE_FULL_LAB), so it gets a second slot
+        # rather than relying on that. Both default to empty.
+        ENGINE_DEFINES: ""
+        ENGINE_DEFINES_2: ""
         GCC_PREPROCESSOR_DEFINITIONS:
           - "NDEBUG=1"
           - "NAM_ENABLE_A2_FAST=1"
           - "NB_PREFIX=$(NB_PREFIX)"
           - "NB_VARIANT_NAME=$(NB_VARIANT_NAME)"
           - "$(ENGINE_DEFINES)"
+          - "$(ENGINE_DEFINES_2)"
 
 targets:
   # -------------------------------------------------------------------------
@@ -150,6 +160,48 @@ targets:
         headerVisibility: project
 
   # -------------------------------------------------------------------------
+  # Variant 4: the full-path kernel lab.
+  #
+  # Built from the *same* vendor/fused tree as NAMEngineFused, through the same
+  # template, with the same flags. The only differences are NB_ENABLE_FULL_LAB
+  # and the extra sources under Sources/FullEngines, which hold candidate
+  # replacements for the 8-channel path.
+  #
+  # That tree is a superset of upstream: it carries a byte-identical a2_fast as
+  # well as fused (Scripts/fetch-vendor.sh asserts the a2_fast sources match).
+  # So this one framework can hold two families of candidate — those that
+  # reproduce a2_fast's arithmetic and those that reproduce fused's — with a
+  # verbatim-port control for each. Kernel 0 (a2_baseline) must land on the
+  # `upstream` number and kernel 1 (fu_baseline) on the `fused` number;
+  # anything a later kernel gains is then the kernel and not the lab.
+  #
+  # fused is still compiled in and still reachable: until a kernel is selected
+  # this framework routes exactly as `fused` does.
+  # -------------------------------------------------------------------------
+  NAMEngineFull:
+    templates: [Engine]
+    settings:
+      base:
+        VENDOR_DIR: fused
+        NB_PREFIX: nb_full
+        NB_VARIANT_NAME: full
+        ENGINE_DEFINES: "NAM_ENABLE_FUSED=1"
+        ENGINE_DEFINES_2: "NB_ENABLE_FULL_LAB=1"
+        PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench.engine.full
+    sources:
+      - path: Sources/Shim/NAMEngineFull.h
+        headerVisibility: public
+      - path: Sources/Shim/nam_bench_shim.h
+        headerVisibility: public
+      - path: Sources/Shim/nam_bench_shim.cpp
+      - path: Sources/FullEngines
+        name: FullEngines
+        headerVisibility: project
+      - path: vendor/fused/NAM
+        name: NAM
+        headerVisibility: project
+
+  # -------------------------------------------------------------------------
   # The protocol, shared by the app and the CLI so there is one implementation.
   # -------------------------------------------------------------------------
   BenchCore:
@@ -161,6 +213,7 @@ targets:
       - target: NAMEngineUpstream
       - target: NAMEngineFused
       - target: NAMEngineSlim
+      - target: NAMEngineFull
     settings:
       base:
         DEFINES_MODULE: YES
@@ -195,6 +248,8 @@ targets:
       - target: NAMEngineFused
         embed: true
       - target: NAMEngineSlim
+        embed: true
+      - target: NAMEngineFull
         embed: true
     settings:
       base:
@@ -241,6 +296,7 @@ targets:
       - target: NAMEngineUpstream
       - target: NAMEngineFused
       - target: NAMEngineSlim
+      - target: NAMEngineFull
     settings:
       base:
         PRODUCT_NAME: nambench

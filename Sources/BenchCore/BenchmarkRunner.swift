@@ -133,6 +133,12 @@ public final class BenchmarkRunner {
     // dozen candidates in one run this is the only thing standing between "this
     // kernel is 30% faster" and "this kernel reassociated something and is 30%
     // faster at computing different audio".
+    //
+    // A second reference is kept as well, because the full lab has two of them.
+    // Its a2* candidates reproduce a2_fast's arithmetic and its fu* candidates
+    // reproduce fused's, so "bit-identical" is only a meaningful claim once it
+    // says *to what*. Any variant that is neither the primary nor the secondary
+    // reference is therefore compared against both.
 
     var parities: [ParityResult] = []
     var checksums: [String: Double] = [:]
@@ -140,6 +146,9 @@ public final class BenchmarkRunner {
     if config.checkParity, variants.count >= 2 {
       onEvent(.status("Checking output parity"))
       var reference: [Double]?
+      var secondary: [Double]?
+      let secondaryName = Self.secondaryReferenceName(in: variants)
+
       for variant in variants {
         try checkCancelled()
         let model = models[variant.name]!
@@ -152,6 +161,7 @@ public final class BenchmarkRunner {
           reference = output
           continue
         }
+
         let result = Self.compareOutputs(
           reference: reference!,
           comparison: output,
@@ -161,6 +171,20 @@ public final class BenchmarkRunner {
         )
         parities.append(result)
         onEvent(.parityMeasured(result))
+
+        if variant.name == secondaryName {
+          secondary = output
+        } else if let secondary, secondaryName != nil {
+          let against = Self.compareOutputs(
+            reference: secondary,
+            comparison: output,
+            referenceName: secondaryName!,
+            comparisonName: variant.name,
+            tolerance: config.parityWarnRelativeRMS
+          )
+          parities.append(against)
+          onEvent(.parityMeasured(against))
+        }
       }
     }
 
@@ -399,6 +423,18 @@ public final class BenchmarkRunner {
   }
 
   // MARK: - Helpers
+
+  /// The second engine every non-reference variant is also compared against.
+  ///
+  /// It is whichever shipping engine appears in the line-up after the baseline —
+  /// in practice `fused`, since that is what an 8-channel line-up carries. It is
+  /// deliberately chosen by expected engine rather than by name, so a renamed
+  /// variant cannot silently turn the second parity column into a comparison
+  /// against a lab kernel. Returns nil when there is no such variant, in which
+  /// case only the primary comparison is reported.
+  static func secondaryReferenceName(in variants: [Variant]) -> String? {
+    variants.dropFirst().first { $0.expectedEngine == .fused }?.name
+  }
 
   static func compareOutputs(
     reference: [Double],

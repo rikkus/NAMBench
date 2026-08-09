@@ -59,6 +59,39 @@ An iOS **device** build needs a team: add
 The Simulator builds unsigned, but its timings are meaningless — the report says
 so when it detects one.
 
+## Conformance
+
+There is a second, portable build that does not measure anything. It takes the
+same engine sources to Linux, Windows, Android and iOS, and to x86_64 as well as
+AArch64, under GCC, Clang, Apple Clang and MSVC, and checks that they still
+compile and still compute the same audio — engine routing, cross-variant parity,
+and bit-identity for the kernels that claim to be verbatim ports.
+
+```bash
+cmake -S . -B build-conformance -DCMAKE_BUILD_TYPE=Release
+cmake --build build-conformance --parallel
+ctest --test-dir build-conformance --output-on-failure
+```
+
+It needs no capture: it loads `example_models/A2.nam` from the pinned upstream
+checkout. It runs free on GitHub's hosted runners on every push, and no timing
+is ever read from it. See [CONFORMANCE.md](CONFORMANCE.md).
+
+## Benchmarking off the Mac
+
+The same build also produces `nam_benchmark`, a port of `BenchCore`'s protocol
+that runs where Xcode does not — which currently means a Raspberry Pi:
+
+```bash
+cmake -S . -B build-benchmark -DCMAKE_BUILD_TYPE=Release -DNAMBENCH_BUILD_BENCHMARK=ON
+cmake --build build-benchmark --target nam_benchmark --parallel
+./Scripts/run-benchmark.sh --cpu-set 0-3
+```
+
+On a Pi 500 (Cortex-A76) the fused engine is worth **2.44x**, against 1.90x on
+an M2. Results are tracked over time with Bencher, one testbed per machine.
+See [BENCHMARKING.md](BENCHMARKING.md).
+
 ## What it measures, and why it is built this way
 
 **Which submodel, chosen by shape not by position.** The `.nam` is a

@@ -1,0 +1,173 @@
+# Measure, on hardware somebody owns, and keep the history.
+#
+# The opposite of conformance.yml in every respect. That one runs anywhere and
+# reads no timing; this one runs only on machines registered as self-hosted
+# runners, and timing is the entire point. Nothing here will ever run on a
+# GitHub-hosted runner — there is no `runs-on: ubuntu-latest` in this file and
+# there must not be, because a shared cloud VM cannot produce a number worth
+# putting in a history that future work is compared against.
+#
+# Each machine is its own Bencher *testbed*, so its history is only ever compared
+# with itself. An M2 and a Cortex-A76 are not two samples of one population, and
+# a threshold that averaged them would alert on neither.
+#
+# Setting up a runner, and what the thresholds mean: BENCHMARKING.md
+#
+# Manual by default. These runners are somebody's laptop.
+
+name: benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      testbeds:
+        description: "Which machines to run on (comma-separated labels, or 'all')"
+        default: all
+        type: string
+      timing-seconds:
+        description: "Timing window per variant, seconds"
+        default: "30"
+        type: string
+      submodel:
+        description: "Which submodel to measure"
+        default: widest
+        type: choice
+        options: [widest, narrowest]
+
+permissions:
+  contents: read
+
+# One benchmark at a time, globally. Two runs sharing a machine would measure
+# each other, and the queue is preferable to the alternative — so this must not
+# cancel in progress.
+concurrency:
+  group: benchmark
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: ${{ matrix.testbed }}
+    runs-on: ${{ matrix.runner }}
+    if: >-
+      github.event.inputs.testbeds == 'all'
+      || contains(github.event.inputs.testbeds, matrix.testbed)
+    strategy:
+      fail-fast: false
+      # Never parallel: these are physical machines, and on a laptop that also
+      # has a browser open the only thing worse than a slow benchmark is two.
+      max-parallel: 1
+      matrix:
+        include:
+          # driver: `xcode` is the canonical tool — the one every published
+          # number came from — and is used wherever it can run. `portable` is
+          # Tools/nam_benchmark, which exists because the Pi cannot run the
+          # other one. The two agree to well under 1% on the same machine, but
+          # each testbed sticks to one of them for life, so no history ever
+          # contains a mixture.
+          - testbed: m2-air
+            runner: [self-hosted, macOS, ARM64, nambench-m2air]
+            driver: xcode
+          - testbed: m1-air
+            runner: [self-hosted, macOS, ARM64, nambench-m1air]
+            driver: xcode
+          - testbed: pi500
+            runner: [self-hosted, Linux, ARM64, nambench-pi500]
+            driver: portable
+            cpu-set: "0-3"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Not cached. A benchmark runner is a machine somebody owns, so the
+      # checkouts persist between runs anyway, and fetch-vendor.sh is a no-op
+      # when they are already at the pinned commits. It still re-asserts that
+      # both variants pin the same Eigen and that a2_fast is byte-identical
+      # across them, which is worth doing before every measurement.
+      - name: Fetch pinned sources
+        run: ./Scripts/fetch-vendor.sh
+
+      # --- The portable driver ------------------------------------------
+      - name: Build (portable)
+        if: matrix.driver == 'portable'
+        run: |
+          cmake -S . -B build-benchmark \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DNAMBENCH_BUILD_BENCHMARK=ON
+          cmake --build build-benchmark --target nam_benchmark --parallel
+
+      - name: Measure (portable)
+        if: matrix.driver == 'portable'
+        run: |
+          ./Scripts/run-benchmark.sh \
+            --build-dir build-benchmark \
+            --output report.json \
+            --bmf bmf.json \
+            ${{ matrix.cpu-set && format('--cpu-set {0}', matrix.cpu-set) || '' }} \
+            -- \
+            --submodel "${{ inputs.submodel }}" \
+            --timing-seconds "${{ inputs.timing-seconds }}"
+
+      # --- The canonical Xcode driver -----------------------------------
+      - name: Build (xcode)
+        if: matrix.driver == 'xcode'
+        run: |
+          command -v xcodegen >/dev/null || {
+            echo "xcodegen is not installed on this runner: brew install xcodegen" >&2
+            exit 1
+          }
+          xcodegen generate
+          xcodebuild -project NAMBench.xcodeproj -scheme nambench-cli \
+            -configuration Release build
+
+      - name: Measure (xcode)
+        if: matrix.driver == 'xcode'
+        run: |
+          products="$(xcodebuild -project NAMBench.xcodeproj -scheme nambench-cli \
+            -configuration Release -showBuildSettings \
+            | awk -F' = ' '/ BUILT_PRODUCTS_DIR =/{print $2; exit}')"
+          "$products/nambench" \
+            --submodel "${{ inputs.submodel }}" \
+            --timing-seconds "${{ inputs.timing-seconds }}" \
+            --output "$PWD/benchmark-results"
+          # The CLI stamps its filename with the time it started.
+          latest="$(ls -t benchmark-results/*.json | head -1)"
+          cp "$latest" report.json
+          python3 Scripts/bencher-report.py report.json --output bmf.json
+
+      # --- Publish -------------------------------------------------------
+      - uses: bencherdev/bencher@main
+
+      - name: Track
+        env:
+          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+          BENCHER_PROJECT: ${{ vars.BENCHER_PROJECT }}
+        run: |
+          if [ -z "${BENCHER_API_TOKEN:-}" ] || [ -z "${BENCHER_PROJECT:-}" ]; then
+            echo "::warning::BENCHER_API_TOKEN secret or BENCHER_PROJECT variable is unset;"\
+                 "the run is complete but nothing was uploaded. See BENCHMARKING.md."
+            exit 0
+          fi
+          bencher run \
+            --project "$BENCHER_PROJECT" \
+            --token "$BENCHER_API_TOKEN" \
+            --branch "$GITHUB_REF_NAME" \
+            --hash "$GITHUB_SHA" \
+            --testbed "${{ matrix.testbed }}" \
+            --adapter json \
+            --file bmf.json \
+            --threshold-measure latency \
+            --threshold-test t_test \
+            --threshold-max-sample-size 64 \
+            --threshold-upper-boundary 0.98 \
+            --thresholds-reset \
+            --error-on-alert
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-${{ matrix.testbed }}
+          path: |
+            report.json
+            bmf.json
+          retention-days: 90
+          if-no-files-found: warn

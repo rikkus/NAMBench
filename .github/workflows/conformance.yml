@@ -1,0 +1,322 @@
+# Does the engine code still compile, and does it still compute the same audio,
+# everywhere?
+#
+# This workflow is deliberately not a benchmark. Every runner here is a shared
+# virtual machine with no thermal control, no clock pinning and a neighbour;
+# a millisecond measured on one would be a number with no meaning attached, and
+# publishing it next to the numbers this project does measure would devalue
+# those. What CI is good at is the other half: taking the same engine sources to
+# platforms no Mac can reach and checking the arithmetic survives the trip.
+#
+# See CONFORMANCE.md for what is checked and why, and for how the pinned
+# hardware fits in.
+#
+# Everything below runs free of charge on a public repository.
+
+name: conformance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: conformance-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Fetch the pinned checkouts once, and hand the same bytes to every platform.
+  #
+  # Scripts/fetch-vendor.sh asserts more than it downloads — that both variants
+  # pin the same Eigen commit, and that a2_fast is byte-identical across the two
+  # checkouts. Running it once rather than per-matrix-entry means those
+  # assertions are made once, and that no two matrix entries can possibly be
+  # testing different sources. It also keeps the script off Windows, where it
+  # would need a POSIX shell it has no reason to care about.
+  # ---------------------------------------------------------------------------
+  vendor:
+    name: fetch pinned sources
+    runs-on: ubuntu-24.04
+    outputs:
+      key: ${{ steps.key.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute cache key
+        id: key
+        run: echo "value=vendor-$(shasum -a 256 Scripts/fetch-vendor.sh | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore vendor/
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ steps.key.outputs.value }}
+
+      # Eigen's history is large and the fetch-by-SHA fallback is a full clone,
+      # so a cache miss is worth avoiding but is not fatal.
+      - name: Fetch
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: ./Scripts/fetch-vendor.sh
+
+      - name: Report what was pinned
+        run: |
+          cat vendor/pins.json
+          {
+            echo '### Pinned sources'
+            echo '```json'
+            cat vendor/pins.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vendor
+          path: vendor
+          retention-days: 1
+          # These are checkouts of other repositories at known commits; the
+          # compression is not worth the minutes.
+          compression-level: 1
+
+  # ---------------------------------------------------------------------------
+  # The matrix.
+  #
+  # `experimental` entries are ones no-one has yet run to completion — they are
+  # here to find out, and they do not gate a pull request until they have earned
+  # it. Everything else is a real gate.
+  # ---------------------------------------------------------------------------
+  conformance:
+    needs: vendor
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
+    continue-on-error: ${{ matrix.experimental || false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # --- Linux x86_64 -------------------------------------------------
+          - name: linux x86_64 · gcc-13
+            runs-on: ubuntu-24.04
+            apt: g++-13
+            cmake-args: -DCMAKE_CXX_COMPILER=g++-13
+          - name: linux x86_64 · gcc-14
+            runs-on: ubuntu-24.04
+            apt: g++-14
+            cmake-args: -DCMAKE_CXX_COMPILER=g++-14
+          - name: linux x86_64 · clang-18
+            runs-on: ubuntu-24.04
+            apt: clang-18
+            cmake-args: -DCMAKE_CXX_COMPILER=clang++-18
+          # An older toolchain floor. The engines claim C++20 and nothing more
+          # exotic, so the oldest still-supported LTS should build them.
+          - name: linux x86_64 · gcc-12 (22.04)
+            runs-on: ubuntu-22.04
+            apt: g++-12
+            cmake-args: -DCMAKE_CXX_COMPILER=g++-12
+
+          # --- Linux AArch64 ------------------------------------------------
+          #
+          # Free for public repositories. Azure Cobalt 100 — Neoverse N2, so
+          # Armv9 with SVE2 present. Worth knowing that the NEON kernels behave
+          # on a core that is nothing like an Apple P-core or a Cortex-A76.
+          - name: linux aarch64 · gcc-14
+            runs-on: ubuntu-24.04-arm
+            apt: g++-14
+            cmake-args: -DCMAKE_CXX_COMPILER=g++-14
+          - name: linux aarch64 · clang-18
+            runs-on: ubuntu-24.04-arm
+            apt: clang-18
+            cmake-args: -DCMAKE_CXX_COMPILER=clang++-18
+
+          # --- macOS --------------------------------------------------------
+          #
+          # macos-15 is M2, macos-26 is M4. Both are virtualised and both are
+          # shared, which is exactly why only correctness is read from them.
+          - name: macos 15 arm64 · apple clang
+            runs-on: macos-15
+          - name: macos 26 arm64 · apple clang
+            runs-on: macos-26
+
+          # --- Windows ------------------------------------------------------
+          - name: windows x64 · msvc
+            runs-on: windows-2025
+            cmake-args: -A x64
+          - name: windows x64 · clang-cl
+            runs-on: windows-2025
+            cmake-args: -T ClangCL -A x64
+          # MSVC on ARM64 has never been run against this code. fused.cpp
+          # reaches for <arm_neon.h> under _M_ARM64, which MSVC spells
+          # differently, so this may well fail — that is a finding for the fork
+          # rather than a reason not to look.
+          - name: windows arm64 · msvc
+            runs-on: windows-11-arm
+            cmake-args: -A ARM64
+            experimental: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vendor
+          path: vendor
+
+      - name: Install compiler
+        if: matrix.apt != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Check
+        run: ctest --test-dir build --build-config Release --output-on-failure
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: conformance-${{ strategy.job-index }}
+          path: |
+            build/conformance/*.json
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Apple cross-builds that the hosted fleet cannot run, only compile.
+  #
+  # Intel macOS runners exist (macos-15-intel, macos-26-intel) but sit in the
+  # larger-runner billing family rather than the free standard one, and Apple's
+  # own Intel support is winding down. A cross-compile from the arm64 runner
+  # catches the thing that actually breaks — x86_64 codegen under Apple Clang —
+  # for nothing. Add the real Intel runner later if a real Intel run is wanted.
+  # ---------------------------------------------------------------------------
+  macos-x86_64:
+    needs: vendor
+    name: macos x86_64 · apple clang (build only)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vendor
+          path: vendor
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+  # ---------------------------------------------------------------------------
+  # iOS, in the Simulator.
+  #
+  # The Simulator is worthless for timing — the README says so, and the report
+  # refuses to pretend otherwise when it detects one — but it is a real arm64
+  # execution of the real kernels, which makes it perfectly good for asking
+  # whether they compute the right thing. The binaries are plain command-line
+  # tools that simctl can spawn directly, so no app, no signing and no device is
+  # involved.
+  # ---------------------------------------------------------------------------
+  ios-simulator:
+    needs: vendor
+    name: ios-simulator arm64 · apple clang
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vendor
+          path: vendor
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Boot a simulator
+        id: sim
+        run: |
+          # Chosen from what the image actually has rather than by name, which
+          # changes with every Xcode.
+          udid=$(xcrun simctl list devices available --json \
+            | jq -r '[.devices[][] | select(.name | test("iPhone"))] | last | .udid')
+          if [ -z "$udid" ] || [ "$udid" = "null" ]; then
+            echo "no iPhone simulator available on this image" >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Check
+        run: |
+          out="$GITHUB_WORKSPACE/build/conformance"
+          mkdir -p "$out"
+          for app in build/*.app; do
+            name=$(basename "$app" .app)
+            echo "--- $name"
+            xcrun simctl spawn "${{ steps.sim.outputs.udid }}" \
+              "$GITHUB_WORKSPACE/$app/$name" \
+              --model "$GITHUB_WORKSPACE/vendor/upstream/example_models/A2.nam" \
+              --out "$out"
+          done
+          python3 Scripts/compare-conformance.py "$out"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: conformance-ios-simulator
+          path: build/conformance/*.json
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Android, cross-compiled with the NDK.
+  #
+  # Build only. Running would need an emulator, and an x86_64 Android emulator
+  # would exercise none of the NEON this project exists to measure; an
+  # arm64-v8a one needs an arm64 host to be anything but glacial. Real Android
+  # execution belongs on a real phone — see CONFORMANCE.md.
+  # ---------------------------------------------------------------------------
+  android:
+    needs: vendor
+    name: android ${{ matrix.abi }} · ndk clang (build only)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vendor
+          path: vendor
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=android-26
+
+      - name: Build
+        run: cmake --build build --parallel

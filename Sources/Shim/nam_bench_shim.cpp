@@ -10,6 +10,7 @@
 // any measured difference has to come from the engine, not the build.
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -108,10 +109,27 @@ inline void denormals_restore(uint64_t)
 }
 #endif
 
+// Apple keeps the clock it has always used, unchanged: CLOCK_UPTIME_RAW is
+// monotonic, unadjusted, and does not tick while the machine is asleep, which
+// is what every published number was measured against.
+//
+// The other platforms exist for the conformance build (CMakeLists.txt), which
+// checks *what the engines compute*, not how long they take. steady_clock is
+// monotonic everywhere and good enough to fill in the return value; no timing
+// from a non-Apple build is reported as a benchmark result.
+#if defined(__APPLE__)
 inline uint64_t now_ns()
 {
   return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
 }
+#else
+inline uint64_t now_ns()
+{
+  const auto since_epoch = std::chrono::steady_clock::now().time_since_epoch();
+  return static_cast<uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(since_epoch).count());
+}
+#endif
 
 void set_error(char* err, size_t errLen, const std::string& message)
 {

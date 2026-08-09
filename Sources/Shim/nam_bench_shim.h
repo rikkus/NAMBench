@@ -20,7 +20,16 @@
 extern "C" {
 #endif
 
-#define NB_EXPORT __attribute__((visibility("default")))
+// The Xcode build compiles each variant into its own dynamic framework with
+// -fvisibility=hidden, so this attribute is what makes the handful of symbols
+// below the only ones exported. The portable conformance build (CMakeLists.txt)
+// links one variant per *executable* instead, where nothing needs exporting —
+// hence the empty definition under MSVC, which has no such attribute.
+#if defined(_MSC_VER)
+  #define NB_EXPORT
+#else
+  #define NB_EXPORT __attribute__((visibility("default")))
+#endif
 
 /// Which WaveNet implementation a config will be routed to.
 ///

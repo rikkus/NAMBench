@@ -66,7 +66,7 @@ Add `--bmf out.json` to also write Bencher Metric Format.
 |---|---|---|---|
 | `m2-air` | M2 MacBook Air 15" | xcode | on macOS 27 beta |
 | `m1-air` | M1 MacBook Air | xcode | |
-| `pi500` | Raspberry Pi 500, Cortex-A76 | portable | Ubuntu 24.04 aarch64, planar forced |
+| `pi500` | Raspberry Pi 500, Cortex-A76 | portable | Ubuntu 24.04 aarch64 |
 
 **The Pi is a Pi 500, not a Pi 5.** Same BCM2712 and the same Cortex-A76, so as
 a *core* it is the Pi 5 datapoint — but the 500 is passively cooled inside a
@@ -110,7 +110,7 @@ M2 MacBook Air, 64-frame blocks, against a real capture:
 which independently reproduces the PR's own table (2.43x and 2.01x) on different
 audio, through a different harness.
 
-Raspberry Pi 500, Cortex-A76, GCC 13, planar forced on:
+Raspberry Pi 500, Cortex-A76, GCC 13:
 
 | | `a2_fast` | planar | |
 |---|---:|---:|---:|
@@ -130,46 +130,36 @@ accepted samples was 0.04–0.17%, where the M2 routinely lands between 1% and 4
 and sometimes fails all five attempts. A dedicated machine with nothing else
 running is worth more than a fast one.
 
-## The planar gate, and forcing it
+## The planar gate
 
-`a2_planar.h` defines `NAM_A2_PLANAR` only for `__APPLE__ && __aarch64__`.
-Everywhere else the checkout compiles to plain `a2_fast`. PR #313 explains the
-choice: the kernels are "almost certainly correct and probably faster on any
-AArch64 part", but the tile widths are M2 measurements and bit-identity leans on
-the compiler contracting `a*b+c` into an FMA inside `a2_fast`'s own 3-channel
-branch — and no non-Apple target had been measured.
-
-That means a Pi build of the planar variant is, silently, `a2_fast`. Measuring
-it against `upstream` would produce two identical numbers and read as the
-kernels achieving nothing. So the driver asks which engine it actually got and
-**refuses to run** when planar did not route:
+`a2_planar.h` defines `NAM_A2_PLANAR` wherever `__aarch64__` is defined. Off
+AArch64 the translation unit compiles to an object with no symbols and the
+variant is plain `a2_fast` — which the driver reports honestly, and then
+**refuses to run**, because measuring the reference against itself would land
+within noise and read as the kernels achieving nothing:
 
 ```
 error: the planar variant routed to a2_fast, not to the planar kernels.
 ```
 
-`-DNAMBENCH_FORCE_A2_PLANAR=ON` opens the gate on any AArch64 target. The header
-guards on the macro after including itself, so predefining it is enough.
+The gate was `__APPLE__ && __aarch64__` when the kernels were first proposed,
+and NAMBench carried a `NAMBENCH_FORCE_A2_PLANAR` option to open it. Both are
+gone: the gate was widened on the evidence that option was added to collect.
+Nothing needs forcing, and the Pi needs no special build.
 
-Do the conformance run before trusting a forced number — it holds planar to
-exact bit-identity, which is the property the gate exists to protect:
+`__aarch64__` specifically, rather than a spelling that would also catch MSVC's
+`_M_ARM64`. That is the one part of the old gate worth keeping — MSVC at
+`/fp:precise` does not contract `a*b+c` into an FMA, so the reference branch it
+would be compared against computes something else and bit-identity would not
+hold. clang-cl on ARM64 defines `__aarch64__` and is unaffected.
 
-```bash
-cmake -S . -B build-force -DCMAKE_BUILD_TYPE=Release -DNAMBENCH_FORCE_A2_PLANAR=ON
-cmake --build build-force --parallel
-ctest --test-dir build-force --output-on-failure
-```
+Conformance holds `planar` to exact bit-identity with `upstream`, so the claim
+keeps being tested rather than remembered — on Apple Silicon, on the Pi, and on
+GitHub's free Linux arm64 runners under both GCC and Clang on every push.
 
-On the Pi 500 that passes: both submodels bit-identical to `a2_fast` under
-GCC 13, on a Cortex-A76. `conformance.yml` also runs it on GitHub's free Linux
-arm64 runners under both GCC and Clang on every push, so the claim keeps being
-tested rather than remembered. That is evidence for the one-line change the PR
-says it wants, from the two things it says it lacks: a non-Apple AArch64 part
-and a compiler that is not Apple Clang.
-
-It is evidence about *correctness*, not about the tile widths — those are still
-M2 measurements, and the Pi's very different profile suggests re-tuning them
-there would be worth someone's afternoon.
+The tile widths remain M2 measurements. They affect speed only, never output,
+and the Cortex-A76's rather different profile suggests re-tuning them per part
+would be worth someone's afternoon.
 
 ## Continuous tracking with Bencher
 

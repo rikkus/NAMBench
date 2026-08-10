@@ -60,12 +60,12 @@ typedef enum NbEngine {
   /// The planar NEON kernels proposed to Core in PR #313, covering both the
   /// 3-channel and 8-channel A2 submodels.
   ///
-  /// Reported only when the build actually has them. `NAM_A2_PLANAR` is gated on
-  /// `__APPLE__ && __aarch64__`, so on every other target the planar checkout
-  /// compiles to plain `a2_fast` and this build honestly reports
-  /// `NbEngineA2Fast`. That distinction is the whole reason the engine is asked
-  /// for rather than inferred: a "planar" number that was quietly `a2_fast`
-  /// would read as the kernels having achieved nothing.
+  /// Reported only when the build actually has them. `NAM_A2_PLANAR` is defined
+  /// wherever `__aarch64__` is, so off AArch64 the planar checkout compiles to
+  /// plain `a2_fast` and this build honestly reports `NbEngineA2Fast`. That
+  /// distinction is the whole reason the engine is asked for rather than
+  /// inferred: a "planar" number that was quietly `a2_fast` would read as the
+  /// kernels having achieved nothing.
   NbEnginePlanar = 6,
 } NbEngine;
 

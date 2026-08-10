@@ -31,8 +31,12 @@ FUSED_SHA="4596b54ce102d3ceef9fd2b4a158978ea794fe9a"
 # cut from upstream main and carries no fused engine at all: a2_fast, plus
 # a2_planar, plus a two-line change in A2FastConfig::create that prefers the
 # planar model where one exists.
+#
+# The gate is __aarch64__, not __APPLE__ && __aarch64__: the kernels are selected
+# on every AArch64 target that defines it. Off AArch64 the translation unit has
+# no symbols in it and the A2 path is byte for byte what upstream ships.
 PLANAR_URL="${FUSED_URL}"
-PLANAR_SHA="a4de938b4dfa5d3f7e2375067e64f95fe3b92e7f"
+PLANAR_SHA="ca349f6cfe07200aea9e6767cd29025d7152b33a"
 
 EIGEN_URL="https://gitlab.com/libeigen/eigen.git"
 

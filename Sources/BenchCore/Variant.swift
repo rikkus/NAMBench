@@ -278,10 +278,10 @@ public final class Variant {
   ///
   /// `expectedEngine` is `.planar`, and `makeModel` refuses to run when the
   /// model routes anywhere else. That check earns its keep here more than
-  /// anywhere: `NAM_A2_PLANAR` is gated on `__APPLE__ && __aarch64__`, so on any
-  /// other target this framework builds happily and *is* `a2_fast`. Without the
-  /// assertion the run would measure a2_fast twice and read as the kernels being
-  /// worthless rather than absent.
+  /// anywhere: `NAM_A2_PLANAR` follows `__aarch64__`, so off AArch64 this
+  /// framework builds happily and *is* `a2_fast`. Without the assertion the run
+  /// would measure a2_fast twice and read as the kernels being worthless rather
+  /// than absent.
   public static let planar = Variant(
     name: "planar",
     repository: "rikkus/OptimisationWorkOnNeuralAmpModelerCore@apple-silicon-a2-planar",

@@ -72,10 +72,10 @@ NB_DECLARE_KERNEL_LAB_(NB_PREFIX)
   #define NB_ARCH "unknown"
 #endif
 
-// The planar kernels are gated on __APPLE__ *and* __aarch64__, so arch alone
-// cannot say whether they were supposed to be present. An Apple Silicon Mac and
-// a Raspberry Pi are both "aarch64" and only one of them is expected to have
-// them.
+// Recorded for the report rather than for any decision. The planar kernels now
+// follow __aarch64__ alone, so the architecture is what decides whether they are
+// present — but knowing an Apple Silicon Mac from a Raspberry Pi is still worth
+// having in a result that someone reads six months later.
 #if defined(__APPLE__)
   #include <TargetConditionals.h>
   #if TARGET_OS_IPHONE

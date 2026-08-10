@@ -11,9 +11,9 @@
 // only NB_VENDOR_HAS_PLANAR, which lets the shim see a2_planar.h and report
 // which of the two it actually got.
 //
-// It reports `planar` only where the kernels exist. NAM_A2_PLANAR is gated on
-// __APPLE__ && __aarch64__, so an Intel Mac builds this framework and honestly
-// reports a2_fast; the runner refuses to present that as a comparison.
+// It reports `planar` only where the kernels exist. NAM_A2_PLANAR follows
+// __aarch64__, so an x86 build of this framework honestly reports a2_fast and
+// the runner refuses to present that as a comparison.
 
 #ifndef NAM_ENGINE_PLANAR_H
 #define NAM_ENGINE_PLANAR_H

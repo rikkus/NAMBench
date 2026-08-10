@@ -204,42 +204,22 @@ nb_add_variant(nam_conformance_upstream
 # thing proposed there cannot drift apart.
 #
 # NAM_A2_PLANAR — the switch that decides whether the kernels exist at all — is
-# gated inside a2_planar.h on `__APPLE__ && __aarch64__`. Everywhere else the
-# translation unit compiles to an object with no symbols and this variant is
-# plain a2_fast. That is not a build failure and must not be treated as one: the
-# driver asks which engine it actually got, and reports a2_fast honestly.
+# defined inside a2_planar.h for any target that defines __aarch64__. Off
+# AArch64 the translation unit compiles to an object with no symbols and this
+# variant is plain a2_fast. That is not a build failure and must not be treated
+# as one: the driver asks which engine it actually got, and reports a2_fast
+# honestly.
 #
-# NAMBENCH_FORCE_A2_PLANAR defines NAM_A2_PLANAR from the command line, which
-# opens the gate on any AArch64 target. a2_planar.cpp guards on the macro
-# *after* including the header, so predefining it is enough; the header's own
-# `#define` sits inside the Apple test and never fires to conflict.
-#
-# This is exactly the measurement the PR says is missing — "opening it up to
-# Linux arm64 is a one-line change for whoever can measure there". A Pi 5 can
-# measure there. Two caveats travel with any number it produces, and both are in
-# the PR: the tile widths are M2 measurements, and bit-identity depends on the
-# compiler contracting a*b+c into an FMA inside a2_fast's own 3-channel branch.
-# The conformance harness checks the second one on every platform, which is what
-# makes this safe to try rather than merely tempting.
+# Nothing needs forcing. The gate used to be __APPLE__ && __aarch64__, and this
+# file used to carry a NAMBENCH_FORCE_A2_PLANAR option to open it; the gate has
+# since been widened upstream on the evidence that option was added to collect,
+# so both are gone.
 # ---------------------------------------------------------------------------
-option(NAMBENCH_FORCE_A2_PLANAR
-	"Force the planar kernels on non-Apple AArch64 (see PR #313)" OFF)
-
-set(NB_PLANAR_DEFINES NB_VENDOR_HAS_PLANAR=1)
-if(NAMBENCH_FORCE_A2_PLANAR)
-	if(NOT NB_AARCH64)
-		message(FATAL_ERROR
-			"NAMBENCH_FORCE_A2_PLANAR needs an AArch64 target; these are NEON kernels.")
-	endif()
-	list(APPEND NB_PLANAR_DEFINES NAM_A2_PLANAR=1)
-	message(STATUS "NAMBench: forcing planar kernels on (non-Apple AArch64)")
-endif()
-
 nb_add_variant(nam_conformance_planar
 	VENDOR planar
 	PREFIX nb_planar
 	NAME planar
-	DEFINES ${NB_PLANAR_DEFINES})
+	DEFINES NB_VENDOR_HAS_PLANAR=1)
 
 # --- Variant 2: the fork, under ScopedEnginePrefer(FusedNeon) ---------------
 #
@@ -362,7 +342,7 @@ if(NAMBENCH_BUILD_BENCHMARK)
 
 	nb_add_engine_library(nam_engine_planar
 		VENDOR planar PREFIX nb_planar NAME planar
-		DEFINES ${NB_PLANAR_DEFINES})
+		DEFINES NB_VENDOR_HAS_PLANAR=1)
 
 	# `fused` is no longer in the measured line-up — the planar kernels supersede
 	# it, and they cover the 3-channel submodel it never could. It stays built so

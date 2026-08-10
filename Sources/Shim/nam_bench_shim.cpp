@@ -34,7 +34,7 @@
 // Defined only for the build made from vendor/planar. Including the header is
 // what makes NAM_A2_PLANAR visible here, and NAM_A2_PLANAR is what says whether
 // this target actually got the kernels — the checkout alone does not, because
-// the header gates itself on __APPLE__ && __aarch64__.
+// the header gates itself on __aarch64__.
 #if defined(NB_VENDOR_HAS_PLANAR)
   #include "NAM/wavenet/a2_planar.h"
 #endif

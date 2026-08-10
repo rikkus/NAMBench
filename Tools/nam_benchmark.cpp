@@ -935,7 +935,7 @@ int main(int argc, char** argv)
 
   // The planar kernels cover both A2 submodels — 3 channels and 8 — so unlike
   // `fused` there is no shape gate here. What there is instead is a check that
-  // they are actually present: off Apple Silicon the checkout compiles to plain
+  // they are actually present: off AArch64 the checkout compiles to plain
   // a2_fast, and measuring that against upstream would produce two identical
   // numbers and the false impression that the kernels achieve nothing.
   if (probe.channels == 3 || probe.channels == 8)
@@ -1057,24 +1057,21 @@ int main(int argc, char** argv)
       std::printf("%s: %s, %d channels\n", subject.name.c_str(),
                   engine_name(subject.api->engine(models[i])), subject.api->channels(models[i]));
 
-    // The one failure this driver cannot let pass quietly. a2_planar.h gates
-    // NAM_A2_PLANAR on __APPLE__ && __aarch64__, so on a Pi — or any other
-    // non-Apple target — the planar checkout builds to plain a2_fast. It would
-    // then measure the same code as `upstream`, land within noise of it, and
-    // read as "the kernels are worth nothing" rather than "the kernels are not
-    // in this build".
+    // The one failure this driver cannot let pass quietly. a2_planar.h defines
+    // NAM_A2_PLANAR only where __aarch64__ is defined, so anywhere else the
+    // planar checkout builds to plain a2_fast. It would then measure the same
+    // code as `upstream`, land within noise of it, and read as "the kernels are
+    // worth nothing" rather than "the kernels are not in this build".
     if (subject.name == "planar" && subject.api->engine(models[i]) != NbEnginePlanar)
     {
       std::fprintf(stderr,
                    "\nerror: the planar variant routed to %s, not to the planar kernels.\n"
-                   "  a2_planar.h enables them only on __APPLE__ && __aarch64__, so this build\n"
-                   "  is measuring a2_fast twice. Refusing to report that as a comparison.\n"
+                   "  a2_planar.h enables them where __aarch64__ is defined, so this build is\n"
+                   "  measuring a2_fast twice. Refusing to report that as a comparison.\n"
                    "\n"
-                   "  On non-Apple AArch64 (a Raspberry Pi, say) configure with:\n"
-                   "      -DNAMBENCH_FORCE_A2_PLANAR=ON\n"
-                   "  which is the one-line change Core PR #313 says it wants measured. Check\n"
-                   "  the conformance suite passes there first — it asserts bit-identity, which\n"
-                   "  is the property that gate exists to protect.\n",
+                   "  Expected on x86, and on MSVC/ARM64, which spells the architecture\n"
+                   "  _M_ARM64 and never defines __aarch64__. Unexpected anywhere else — and\n"
+                   "  on AArch64 it would mean the gate has regressed.\n",
                    engine_name(subject.api->engine(models[i])));
       return 1;
     }

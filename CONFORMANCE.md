@@ -30,8 +30,8 @@ reports the engine it actually got by asking the same detectors
 | | 8-channel submodel | 3-channel submodel |
 |---|---|---|
 | `upstream` | `a2_fast` | `a2_fast` |
-| `planar`, on Apple Silicon | `planar` | `planar` |
-| `planar`, elsewhere | `a2_fast` (or `planar`, if forced) | same |
+| `planar`, on AArch64 | `planar` | `planar` |
+| `planar`, elsewhere | `a2_fast` | `a2_fast` |
 | `fused`, on AArch64 | `fused` | `generic` |
 | `fused`, elsewhere | `generic` | `generic` |
 | slim lab | not built | `slim` |

@@ -247,9 +247,9 @@ do {
   // The planar kernels cover both A2 submodels — 3 channels and 8 — so unlike
   // fused there is no shape gate here, only the channel counts they implement.
   // Whether they are actually *in* this build is a different question, and one
-  // makeModel asserts rather than this: off Apple Silicon the framework is
-  // a2_fast, and the engine check refuses the run rather than measuring the
-  // reference against itself.
+  // makeModel asserts rather than this: off AArch64 the framework is a2_fast,
+  // and the engine check refuses the run rather than measuring the reference
+  // against itself.
   if shape.channels == 3 || shape.channels == 8 {
     variants.append(.planar)
   } else if !quiet {

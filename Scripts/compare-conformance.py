@@ -190,19 +190,19 @@ def expected_engine(record: Record, aarch64: bool) -> str | tuple[str, ...]:
         return "a2_fast"
 
     if variant == "planar":
-        # a2_planar.h defines NAM_A2_PLANAR only for __APPLE__ && __aarch64__,
-        # so on Apple Silicon the kernels MUST be there — if they quietly stopped
-        # being selected, every "planar" number would become an a2_fast number
-        # wearing its name, which is the one thing worth failing a build over.
+        # a2_planar.h defines NAM_A2_PLANAR for any target that defines
+        # __aarch64__, so on AArch64 the kernels MUST be there — if they quietly
+        # stopped being selected, every "planar" number would become an a2_fast
+        # number wearing its name, which is the one thing worth failing a build
+        # over. Off AArch64 the same checkout is plain a2_fast.
         #
-        # Elsewhere the same checkout is plain a2_fast, unless the build was
-        # configured with -DNAMBENCH_FORCE_A2_PLANAR=ON (the one-line change
-        # PR #313 says it wants measured on Linux arm64). Both are legitimate
-        # there, so both are accepted and the run reports which happened.
-        if aarch64 and record.platform in {"macos", "ios"}:
+        # MSVC is the exception, and deliberately: it spells the architecture
+        # _M_ARM64 and never defines __aarch64__, so the gate does not open. That
+        # is the one part of the old Apple-only gate worth keeping — MSVC at
+        # /fp:precise does not contract a*b+c into an FMA, so the reference
+        # branch would compute something else and bit-identity would not hold.
+        if aarch64 and not record.compiler.startswith("msvc"):
             return "planar"
-        if aarch64:
-            return ("planar", "a2_fast")
         return "a2_fast"
 
     if variant == "fused":

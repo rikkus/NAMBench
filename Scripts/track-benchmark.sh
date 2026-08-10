@@ -308,10 +308,10 @@ esac
 
 THRESHOLD_ARGS=()
 if [ "${SET_THRESHOLDS}" -eq 1 ]; then
-	# A t-test on latency, and no alert until there are ten runs to compare
+	# A t-test on core_percent, and no alert until there are ten runs to compare
 	# against — below that the test is arithmetic on nothing.
 	THRESHOLD_ARGS=(
-		--threshold-measure latency
+		--threshold-measure core_percent
 		--threshold-test t_test
 		--threshold-min-sample-size 10
 		--threshold-max-sample-size 64

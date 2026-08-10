@@ -605,6 +605,10 @@ struct Result
   double spread = 0.0;
   double standardDeviationMs = 0.0;
   double realTimeFactor = 0.0;
+  /// What one instance costs as a percentage of one core while keeping up with
+  /// real-time audio. The whole-file render time this comes from is an artefact
+  /// of how long the test signal happens to be; this is not.
+  double corePercent = 0.0;
   double checksum = 0.0;
   std::vector<Attempt> attempts;
 };
@@ -1216,6 +1220,9 @@ int main(int argc, char** argv)
       result.standardDeviationMs = stddev_of(selection.accepted);
       result.realTimeFactor =
         selection.mean > 0.0 ? audio.durationSeconds() / (selection.mean / 1000.0) : 0.0;
+      result.corePercent = audio.durationSeconds() > 0.0
+                            ? (selection.mean / 1000.0) / audio.durationSeconds() * 100.0
+                            : 0.0;
       break;
     }
 
@@ -1230,10 +1237,10 @@ int main(int argc, char** argv)
     if (!config.quiet)
     {
       if (result.succeeded)
-        std::printf("%s: %.2f ms  (median %.2f, spread %.2f%%, RTF %.1fx, %zu accepted / %zu "
+        std::printf("%s: %.3f%% of one core  (%.2f ms, spread %.2f%%, %zu accepted / %zu "
                     "discarded)\n",
-                    result.variant.c_str(), result.meanMs, result.medianMs, result.spread * 100.0,
-                    result.realTimeFactor, result.acceptedMs.size(), result.discardedMs.size());
+                    result.variant.c_str(), result.corePercent, result.meanMs, result.spread * 100.0,
+                    result.acceptedMs.size(), result.discardedMs.size());
       else
         std::printf("%s: FAILED — %s\n", result.variant.c_str(), result.failureReason.c_str());
     }
@@ -1257,8 +1264,11 @@ int main(int argc, char** argv)
       std::printf("  %-24s REJECTED — %s\n", result.variant.c_str(), result.failureReason.c_str());
       continue;
     }
-    std::printf("  %-24s %8.2f ms  (min %.2f)  RTF %5.1fx", result.variant.c_str(), result.meanMs,
-                result.minMs, result.realTimeFactor);
+    // CPU percent first: it is the number that answers the question the
+    // benchmark exists for. The milliseconds stay because they are the raw
+    // measurement and a diagnosis needs them.
+    std::printf("  %-24s %7.3f%% of one core  (%8.2f ms, min %.2f)", result.variant.c_str(),
+                result.corePercent, result.meanMs, result.minMs);
     if (baselineMs > 0.0 && result.meanMs > 0.0 && &result != &results[0])
       std::printf("  %6.3fx vs %s", baselineMs / result.meanMs, results[0].variant.c_str());
     std::printf("\n");
@@ -1327,9 +1337,9 @@ int main(int argc, char** argv)
            r.variant.c_str(), r.engine.c_str(), r.channels, r.succeeded ? "true" : "false");
     append("\"meanMs\": %.6f, \"medianMs\": %.6f, \"minMs\": %.6f, \"maxMs\": %.6f, "
            "\"spread\": %.6f, \"standardDeviationMs\": %.6f, \"realTimeFactor\": %.6f, "
-           "\"checksum\": %.10g, ",
+           "\"corePercent\": %.6f, \"checksum\": %.10g, ",
            r.meanMs, r.medianMs, r.minMs, r.maxMs, r.spread, r.standardDeviationMs,
-           r.realTimeFactor, r.checksum);
+           r.realTimeFactor, r.corePercent, r.checksum);
     if (!r.failureReason.empty())
       append("\"failureReason\": \"%s\", ", r.failureReason.c_str());
     json += "\"acceptedMs\": ";

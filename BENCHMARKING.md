@@ -104,8 +104,8 @@ M2 MacBook Air, 64-frame blocks, against a real capture:
 
 | | `a2_fast` | planar | |
 |---|---:|---:|---:|
-| A2 standard | 406.5 ms | 164.6 ms | **2.47x** |
-| A2 nano | 56.5 ms | 28.2 ms | **2.00x** |
+| A2 standard | 3.69% of a core | **1.49%** | 2.47x |
+| A2 nano | 0.515% | **0.251%** | 2.00x |
 
 which independently reproduces the PR's own table (2.43x and 2.01x) on different
 audio, through a different harness.
@@ -114,8 +114,8 @@ Raspberry Pi 500, Cortex-A76, GCC 13:
 
 | | `a2_fast` | planar | |
 |---|---:|---:|---:|
-| A2 standard | 1163.5 ms | 546.2 ms | **2.13x** |
-| A2 nano | 279.4 ms | 95.0 ms | **2.94x** |
+| A2 standard | 10.7% of a core | **5.02%** | 2.13x |
+| A2 nano | 2.56% | **0.87%** | 2.94x |
 
 Bit-identical in every one of those runs — `max|diff|` exactly zero, not a
 tolerance.
@@ -170,21 +170,50 @@ would be worth someone's afternoon.
 Each machine is its own Bencher testbed, so its history is only ever compared
 with itself. An M2 and a Cortex-A76 are not two samples of one population.
 
-Two measures are reported per variant:
+One measure is reported per variant: **`core_percent`** — what a single NAM
+instance costs, as a percentage of one CPU core, while keeping up with real-time
+audio.
 
-- **`latency`** — milliseconds per pass over the whole input file. `value` is
-  the mean of the accepted samples; `lower_value` and `upper_value` are the min
-  and max of that same accepted set, so the error bars are the real spread of
-  what was kept rather than a symmetric guess.
-- **`throughput`** — the real-time factor, in seconds of audio per second of
-  wall clock. Bigger is better, which is the direction Bencher already assumes.
+```
+core_percent = (meanMs / 1000) / audioSeconds x 100
+```
+
+Real-time audio is constrained by how much work the CPU can do inside each
+callback, so that fraction is the number worth tracking. The whole-file render
+time it is derived from is not: the test file's length is arbitrary, so a
+duration in milliseconds says as much about the signal as about the engine.
+Dividing it out leaves a figure invariant to the length of the input and to the
+sample rate.
+
+Of one **core**, not of the whole CPU package. `process()` is single-threaded,
+so an instance can never use more than one core; dividing by the core count
+would give a smaller number that hides how close the audio thread is to its
+deadline, and on a heterogeneous part like an M2 it would pretend four
+efficiency cores are interchangeable with four performance cores. Keeping the
+denominator at one core also keeps the useful inverse honest — `100 /
+core_percent` is how many instances fit on one core, under ideal conditions with
+no contention, no thermal limit and no headroom.
+
+Two things it does not tell you. It is a mean, so it says nothing about whether a
+block misses its deadline — that depends on the worst case, and the protocol
+deliberately discards slow outliers as interference. And it is specific to the
+block size the run used, since smaller blocks cost more per sample; the
+converter warns if a run used anything other than 64 frames, because block size
+is not part of the benchmark name.
+
+`latency` and `throughput` were reported until this became the measure. They
+were the same information in less useful forms — a render time that depended on
+the test file, and a real-time factor that is exactly `100 / core_percent`. Both
+were also being fed in the wrong units: Bencher's built-in `latency` is
+nanoseconds and its `throughput` is operations per second, so the dashboard was
+labelling milliseconds as nanoseconds.
 
 A variant that failed its agreement threshold is **omitted entirely**, never
 reported as zero. `Scripts/bencher-report.py` refuses to emit an empty run for
 the same reason: an empty result set uploads as "nothing regressed".
 
-The threshold is a t-test on `latency` with a 0.98 upper boundary over a rolling
-64-sample window, and `--err` makes a breach fail the job.
+The threshold is a t-test on `core_percent` with a 0.98 upper boundary over a
+rolling 64-sample window, and `--error-on-alert` makes a breach fail the job.
 
 ### By hand, without a runner
 
@@ -301,6 +330,14 @@ printing their values:
 
 ```bash
 op item get f2x4p5ymikp25e4hlocah2zexe --vault y6stxkiynyni73l5xoygigzswi --format json | jq '.fields[].label'
+```
+
+Once the first upload has created the measure, give it units — Bencher will
+otherwise label the axis with nothing, and the whole point of the name is that
+nobody reads it as a share of the whole chip:
+
+```bash
+bencher measure update --units '% of one core' "$BENCHER_PROJECT" core-percent
 ```
 
 Then the project slug, which is not a secret:

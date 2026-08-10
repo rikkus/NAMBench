@@ -5,17 +5,37 @@ Reads either producer's report — the Swift `nambench` CLI or the portable
 `nam_benchmark` — because the two share key names wherever they overlap, and
 emits the BMF that `bencher run --adapter json --file ...` expects.
 
-Two measures per variant:
+One measure:
 
-  latency     milliseconds per pass over the whole input file. value is the mean
-              of the accepted samples, with lower_value and upper_value set to
-              the min and max of that same accepted set — so the error bars
-              Bencher draws are the real spread of what was kept, not a
-              symmetric guess around the mean.
+  core_percent  what one NAM instance costs, as a percentage of one CPU core,
+               while keeping up with real-time audio.
 
-  throughput  the real-time factor: seconds of audio processed per second of
-              wall clock. Bigger is better, which is the direction Bencher
-              already assumes for this measure.
+                   (meanMs / 1000) / audio seconds x 100
+
+Real-time audio is constrained by how much work the CPU can do inside each
+callback, so that fraction is the number worth tracking. The whole-file render
+time this is derived from is not: the file's length is arbitrary, so a duration
+in milliseconds says as much about the test signal as about the engine. Dividing
+it out leaves a figure that is invariant to the length of the input and to the
+sample rate, and that can be compared across machines and across changes of test
+signal.
+
+Of one **core**, deliberately, not of the whole CPU package. process() is
+single-threaded, so an instance can never use more than one core; dividing by
+the core count would give a smaller number that hides how close the audio thread
+is to its deadline, and on a heterogeneous part like an M2 it would pretend four
+efficiency cores are interchangeable with four performance cores. It also keeps
+the useful inverse honest: 100 / core_percent is the number of instances that fit
+on one core, under ideal conditions with no contention, no thermal limit and no
+headroom.
+
+What it does not measure: whether a block misses its deadline. That depends on
+the worst case, and the protocol deliberately discards slow outliers as
+interference. core_percent is a cost and capacity measure, not a real-time-safety
+guarantee.
+
+It is also specific to the block size the run used — smaller blocks cost more
+per sample — so a run at a size other than the default is warned about below.
 
 A variant that failed its agreement threshold is **left out entirely**, not
 reported as zero. The protocol rejected it because the machine was too noisy to
@@ -81,8 +101,29 @@ def submodel_name(report: dict[str, Any]) -> str:
     return "unknown"
 
 
+# The block size every published number was measured at, and the one the
+# benchmark defaults to.
+DEFAULT_BLOCK_SIZE = 64
+
+
 def convert(report: dict[str, Any], prefix: str) -> tuple[dict[str, Any], list[str]]:
     submodel = submodel_name(report)
+
+    # Block size changes the answer — Core PR #313 measures a2_fast at 418 ms on
+    # 64-frame blocks and 470 ms on 32-frame ones — but it is not in the
+    # benchmark name, so a run at another size would land silently on top of the
+    # 64-frame history and corrupt it. Say so, and point at the flag that keeps
+    # them apart.
+    block_size = report.get("config", {}).get("blockSize")
+    if block_size and block_size != DEFAULT_BLOCK_SIZE and not prefix:
+        print(
+            f"warning: this run used {block_size}-frame blocks, not "
+            f"{DEFAULT_BLOCK_SIZE}. Block size is not part of the benchmark name, so "
+            f"these results would be recorded on top of the {DEFAULT_BLOCK_SIZE}-frame "
+            f"series as though they were comparable.\n"
+            f"  Separate them with:  --prefix 'block{block_size}/'",
+            file=sys.stderr,
+        )
     bmf: dict[str, Any] = {}
     skipped: list[str] = []
 
@@ -99,22 +140,27 @@ def convert(report: dict[str, Any], prefix: str) -> tuple[dict[str, Any], list[s
             skipped.append(f"{name} (no usable mean)")
             continue
 
-        latency: dict[str, float] = {"value": float(mean)}
-
-        # Bounds come from the accepted set, so they describe what was actually
-        # kept. Fall back to the reported min/max, then to nothing at all.
+        # The bounds are the min and max of the accepted set, so the error bars
+        # describe what was actually kept rather than a symmetric guess.
         accepted = result.get("acceptedMs") or []
         low = min(accepted) if accepted else result.get("minMs")
         high = max(accepted) if accepted else result.get("maxMs")
+
+        audio_seconds = report.get("audio", {}).get("durationSeconds")
+        if not audio_seconds or audio_seconds <= 0:
+            skipped.append(f"{name} (report has no audio duration to normalise by)")
+            continue
+
+        def core_percent(milliseconds: float) -> float:
+            return (milliseconds / 1000.0) / audio_seconds * 100.0
+
+        measure: dict[str, float] = {"value": core_percent(float(mean))}
+        # Faster is a smaller percentage, so the bounds keep their order.
         if low and high and low > 0 and high >= low:
-            latency["lower_value"] = float(low)
-            latency["upper_value"] = float(high)
+            measure["lower_value"] = core_percent(float(low))
+            measure["upper_value"] = core_percent(float(high))
 
-        measures: dict[str, Any] = {"latency": latency}
-
-        rtf = result.get("realTimeFactor")
-        if rtf and rtf > 0:
-            measures["throughput"] = {"value": float(rtf)}
+        measures: dict[str, Any] = {"core_percent": measure}
 
         bmf[name] = measures
 

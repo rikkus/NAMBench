@@ -168,7 +168,7 @@ jobs:
             --testbed "${{ matrix.testbed }}" \
             --adapter json \
             --file bmf.json \
-            --threshold-measure latency \
+            --threshold-measure core_percent \
             --threshold-test t_test \
             --threshold-max-sample-size 64 \
             --threshold-upper-boundary 0.98 \

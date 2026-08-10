@@ -291,6 +291,23 @@ do {
     pinsURL: pinsURL
   )
 
+  /// What one instance costs as a percentage of one CPU core while keeping up
+  /// with real-time audio.
+  ///
+  /// Of one *core*: `process()` is single-threaded, so an instance can never use
+  /// more than one, and dividing by the core count would both understate how
+  /// close the audio thread is to its deadline and pretend an M-series
+  /// efficiency core is interchangeable with a performance core.
+  ///
+  /// The reciprocal of the real-time factor, which is already
+  /// `audioSeconds / (meanMs / 1000)` — so this is exactly
+  /// `(meanMs / 1000) / audioSeconds x 100` without needing the audio duration,
+  /// which is not in scope while the run is still emitting events.
+  func corePercent(_ result: VariantResult) -> Double {
+    guard result.realTimeFactor > 0 else { return 0 }
+    return 100 / result.realTimeFactor
+  }
+
   var lastVariant = ""
 
   let report = try runner.run { event in
@@ -346,9 +363,9 @@ do {
     case let .variantFinished(result):
       if !quiet { endProgress() }
       if result.succeeded {
-        print(String(format: "%@: %.2f ms  (median %.2f, spread %.2f%%, RTF %.1fx, %d accepted / %d discarded)",
-                     result.variant, result.meanMs, result.medianMs, result.spread * 100,
-                     result.realTimeFactor, result.acceptedMs.count, result.discardedMs.count))
+        print(String(format: "%@: %.3f%% of one core  (%.2f ms, spread %.2f%%, %d accepted / %d discarded)",
+                     result.variant, corePercent(result), result.meanMs, result.spread * 100,
+                     result.acceptedMs.count, result.discardedMs.count))
       } else {
         print("\(result.variant): FAILED — \(result.failureReason ?? "unknown")")
       }
@@ -382,8 +399,12 @@ do {
     // The minimum is shown next to the mean because it is the most stable
     // number available: interference is additive, so the fastest pass is the
     // least contaminated estimate of the real cost.
-    var line = String(format: "  %@ %8.2f ms  (min %.2f)  RTF %5.1fx",
-                      name, result.meanMs, result.minMs, result.realTimeFactor)
+    // Core percent leads: it is the number the benchmark exists to produce. The
+    // milliseconds stay because they are the raw measurement and a diagnosis
+    // needs them, but the render time of an arbitrarily long test file is not
+    // the headline.
+    var line = String(format: "  %@ %7.3f%% of one core  (%8.2f ms, min %.2f)",
+                      name, corePercent(result), result.meanMs, result.minMs)
     if let factor = speedupByVariant[result.variant] {
       line += String(format: "  %6.3fx vs %@", factor, baselineName)
     }

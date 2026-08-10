@@ -1,42 +1,30 @@
 {
   "a2-nano/planar": {
-    "latency": {
-      "lower_value": 27.575667,
-      "upper_value": 27.852416,
-      "value": 27.699643924403222
-    },
-    "throughput": {
-      "value": 393.96414973597086
+    "core_percent": {
+      "lower_value": 0.2526941199828945,
+      "upper_value": 0.2552301545604496,
+      "value": 0.2538302027405757
     }
   },
   "a2-nano/upstream": {
-    "latency": {
-      "lower_value": 56.099417,
-      "upper_value": 56.334833,
-      "value": 56.22130285026743
-    },
-    "throughput": {
-      "value": 194.101988275335
+    "core_percent": {
+      "lower_value": 0.5140761530942636,
+      "upper_value": 0.5162334259881484,
+      "value": 0.5151930739532111
     }
   },
   "a2-standard/planar": {
-    "latency": {
-      "lower_value": 161.722875,
-      "upper_value": 166.24575,
-      "value": 163.64916560156243
-    },
-    "throughput": {
-      "value": 66.6833016016458
+    "core_percent": {
+      "lower_value": 1.4819739293787035,
+      "upper_value": 1.5234200317673652,
+      "value": 1.4996258073330297
     }
   },
   "a2-standard/upstream": {
-    "latency": {
-      "lower_value": 405.067917,
-      "upper_value": 407.861917,
-      "value": 406.5014873269229
-    },
-    "throughput": {
-      "value": 26.845330230957586
+    "core_percent": {
+      "lower_value": 3.711905892235323,
+      "upper_value": 3.737509166717576,
+      "value": 3.7250426476289595
     }
   }
 }

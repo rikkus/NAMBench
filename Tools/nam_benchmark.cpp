@@ -43,6 +43,7 @@
 
 extern "C" {
 NB_DECLARE_VARIANT(nb_upstream)
+NB_DECLARE_VARIANT(nb_planar)
 NB_DECLARE_VARIANT(nb_fused)
 #if defined(NAMBENCH_HAVE_LABS)
 NB_DECLARE_VARIANT(nb_slim)
@@ -677,6 +678,7 @@ const char* engine_name(NbEngine engine)
     case NbEngineFused: return "fused";
     case NbEngineSlim: return "slim";
     case NbEngineFull: return "full";
+    case NbEnginePlanar: return "planar";
     case NbEngineUnknown: break;
   }
   return "unknown";
@@ -708,6 +710,7 @@ int main(int argc, char** argv)
   fs::path outputPath = "benchmark.json";
   std::string slimSpec, fullSpec;
   std::string testbedNote;
+  bool includeFused = false;
 
   auto usage = []() {
     std::printf(
@@ -729,6 +732,7 @@ int main(int argc, char** argv)
       "  --accept-tolerance <r>   required agreement (default 0.03)\n"
       "  --min-samples <n>        extend the window below this many (default 15)\n"
       "  --max-attempts <n>       attempts before giving up (default 5)\n"
+      "  --with-fused             also measure the superseded fused engine\n"
       "  --no-parity              skip the output comparison\n"
       "  --note <text>            free text recorded in the report\n"
       "  --quiet, -q              only print the summary\n");
@@ -742,6 +746,14 @@ int main(int argc, char** argv)
   upstreamApi.codePath = "a2_fast";
   NB_FILL_BASE(upstreamApi, nb_upstream);
 
+  EngineApi planarApi;
+  planarApi.name = "planar";
+  planarApi.repository = "rikkus/OptimisationWorkOnNeuralAmpModelerCore@apple-silicon-a2-planar";
+  planarApi.codePath = "a2_planar (Core PR #313)";
+  NB_FILL_BASE(planarApi, nb_planar);
+
+  // Built, not measured. `fused` left the line-up when the planar kernels
+  // superseded it; the API stays bound so a run can still ask for it by name.
   EngineApi fusedApi;
   fusedApi.name = "fused";
   fusedApi.repository = "rikkus/OptimisationWorkOnNeuralAmpModelerCore";
@@ -812,6 +824,8 @@ int main(int argc, char** argv)
       config.maxAttempts = static_cast<int>(std::strtol(argv[++i], nullptr, 10));
     else if (arg == "--note" && has)
       testbedNote = argv[++i];
+    else if (arg == "--with-fused")
+      includeFused = true;
     else if (arg == "--no-parity")
       config.checkParity = false;
     else if (arg == "--quiet" || arg == "-q")
@@ -919,15 +933,33 @@ int main(int argc, char** argv)
   std::vector<Subject> subjects;
   subjects.push_back({"upstream", &upstreamApi, -1});
 
-  if (probe.channels % 4 == 0)
+  // The planar kernels cover both A2 submodels — 3 channels and 8 — so unlike
+  // `fused` there is no shape gate here. What there is instead is a check that
+  // they are actually present: off Apple Silicon the checkout compiles to plain
+  // a2_fast, and measuring that against upstream would produce two identical
+  // numbers and the false impression that the kernels achieve nothing.
+  if (probe.channels == 3 || probe.channels == 8)
   {
-    subjects.push_back({"fused", &fusedApi, -1});
+    subjects.push_back({"planar", &planarApi, -1});
   }
   else if (!config.quiet)
   {
-    std::printf("fused excluded: %d channels is not a multiple of 4, so the fused detector "
-                "rejects this shape and the fork falls through to the generic engine\n",
+    std::printf("planar excluded: the kernels cover 3 and 8 channels, this submodel has %d\n",
                 probe.channels);
+  }
+
+  if (includeFused)
+  {
+    if (probe.channels % 4 == 0)
+    {
+      subjects.push_back({"fused", &fusedApi, -1});
+    }
+    else if (!config.quiet)
+    {
+      std::printf("fused excluded: %d channels is not a multiple of 4, so its detector rejects "
+                  "this shape and the fork falls through to the generic engine\n",
+                  probe.channels);
+    }
   }
 
 #if defined(NAMBENCH_HAVE_LABS)
@@ -1024,6 +1056,28 @@ int main(int argc, char** argv)
     if (!config.quiet)
       std::printf("%s: %s, %d channels\n", subject.name.c_str(),
                   engine_name(subject.api->engine(models[i])), subject.api->channels(models[i]));
+
+    // The one failure this driver cannot let pass quietly. a2_planar.h gates
+    // NAM_A2_PLANAR on __APPLE__ && __aarch64__, so on a Pi — or any other
+    // non-Apple target — the planar checkout builds to plain a2_fast. It would
+    // then measure the same code as `upstream`, land within noise of it, and
+    // read as "the kernels are worth nothing" rather than "the kernels are not
+    // in this build".
+    if (subject.name == "planar" && subject.api->engine(models[i]) != NbEnginePlanar)
+    {
+      std::fprintf(stderr,
+                   "\nerror: the planar variant routed to %s, not to the planar kernels.\n"
+                   "  a2_planar.h enables them only on __APPLE__ && __aarch64__, so this build\n"
+                   "  is measuring a2_fast twice. Refusing to report that as a comparison.\n"
+                   "\n"
+                   "  On non-Apple AArch64 (a Raspberry Pi, say) configure with:\n"
+                   "      -DNAMBENCH_FORCE_A2_PLANAR=ON\n"
+                   "  which is the one-line change Core PR #313 says it wants measured. Check\n"
+                   "  the conformance suite passes there first — it asserts bit-identity, which\n"
+                   "  is the property that gate exists to protect.\n",
+                   engine_name(subject.api->engine(models[i])));
+      return 1;
+    }
   }
 
   // --- Parity, before timing anything ---------------------------------------

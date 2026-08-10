@@ -26,7 +26,8 @@
 #   --project SLUG      Bencher project (default: $BENCHER_PROJECT)
 #   --testbed NAME      this machine's testbed (default: detected, see below)
 #   --branch NAME       branch to record against (default: the current one)
-#   --submodel WHICH    widest (default) or narrowest
+#   --submodels LIST    which to measure (default: widest,narrowest — A2
+#                       standard and A2 nano, uploaded as separate series)
 #   --timing-seconds N  timing window per variant (default: 30)
 #   --cpu-set LIST      Linux only, taskset list, e.g. 0-3
 #   --dry-run           measure and convert, but do not upload
@@ -41,12 +42,17 @@ cd "${REPO_ROOT}"
 PROJECT="${BENCHER_PROJECT:-}"
 TESTBED=""
 BRANCH=""
-SUBMODEL="widest"
+SUBMODELS="widest,narrowest"
 TIMING="30"
 CPU_SET=""
 DRY_RUN=0
 FAIL_ON_ALERT=0
 SET_THRESHOLDS=0
+
+# Arrays below are expanded as ${arr[@]+"${arr[@]}"} rather than "${arr[@]}".
+# That is not a typo and not superstition: macOS ships bash 3.2, where under
+# `set -u` expanding an *empty* array is an unbound-variable error. bash 4.4
+# fixed it, which is why this script ran on the Pi and died on the Mac.
 EXTRA=()
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -58,7 +64,7 @@ while [ $# -gt 0 ]; do
 		--project) PROJECT="$2"; shift 2 ;;
 		--testbed) TESTBED="$2"; shift 2 ;;
 		--branch) BRANCH="$2"; shift 2 ;;
-		--submodel) SUBMODEL="$2"; shift 2 ;;
+		--submodels) SUBMODELS="$2"; shift 2 ;;
 		--timing-seconds) TIMING="$2"; shift 2 ;;
 		--cpu-set) CPU_SET="$2"; shift 2 ;;
 		--dry-run) DRY_RUN=1; shift ;;
@@ -138,24 +144,46 @@ case "$(uname -s)" in
 		log "driver: nambench (Xcode)"
 		command -v xcodegen >/dev/null || die "xcodegen is not installed: brew install xcodegen"
 		[ -d NAMBench.xcodeproj ] || xcodegen generate
-		xcodebuild -project NAMBench.xcodeproj -scheme nambench-cli \
-			-configuration Release build >/dev/null \
-			|| die "xcodebuild failed"
-		PRODUCTS="$(xcodebuild -project NAMBench.xcodeproj -scheme nambench-cli \
-			-configuration Release -showBuildSettings \
+		# -destination pins the ambiguity xcodebuild otherwise warns about twice:
+		# the scheme matches both "My Mac" and "Any Mac", and it picks the first.
+		# generic/platform=macOS says so explicitly without hardcoding an arch.
+		XCODE_ARGS=(
+			-project NAMBench.xcodeproj
+			-scheme nambench-cli
+			-configuration Release
+			-destination "generic/platform=macOS"
+		)
+		xcodebuild "${XCODE_ARGS[@]}" build >/dev/null || die "xcodebuild failed"
+		PRODUCTS="$(xcodebuild "${XCODE_ARGS[@]}" -showBuildSettings 2>/dev/null \
 			| awk -F' = ' '/ BUILT_PRODUCTS_DIR =/{print $2; exit}')"
+		[ -x "${PRODUCTS}/nambench" ] || die "no nambench binary at ${PRODUCTS}"
 
 		# The CLI names its own output file, so point it at a scratch directory
 		# and pick up what it wrote.
 		OUTDIR="$(mktemp -d)"
 		trap 'rm -rf "${OUTDIR}"' EXIT
-		"${PRODUCTS}/nambench" \
-			--submodel "${SUBMODEL}" \
-			--timing-seconds "${TIMING}" \
-			--output "${OUTDIR}" \
-			"${EXTRA[@]}"
-		cp "$(ls -t "${OUTDIR}"/*.json | head -1)" "${REPORT}"
-		python3 Scripts/bencher-report.py "${REPORT}" --output "${BMF}"
+
+		REPORTS=()
+		OLD_IFS="${IFS}"
+		IFS=','
+		for SUBMODEL in ${SUBMODELS}; do
+			IFS="${OLD_IFS}"
+			[ -n "${SUBMODEL}" ] || continue
+			log "measuring ${SUBMODEL}"
+			"${PRODUCTS}/nambench" \
+				--submodel "${SUBMODEL}" \
+				--timing-seconds "${TIMING}" \
+				--output "${OUTDIR}/${SUBMODEL}" \
+				${EXTRA[@]+"${EXTRA[@]}"}
+			one="${REPORT%.json}-${SUBMODEL}.json"
+			cp "$(ls -t "${OUTDIR}/${SUBMODEL}"/*.json | head -1)" "${one}"
+			REPORTS=("${REPORTS[@]+${REPORTS[@]}}" "${one}")
+			IFS=','
+		done
+		IFS="${OLD_IFS}"
+
+		python3 Scripts/bencher-report.py \
+			${REPORTS[@]+"${REPORTS[@]}"} --output "${BMF}"
 		;;
 
 	Linux)
@@ -165,10 +193,11 @@ case "$(uname -s)" in
 		cmake --build build-benchmark --target nam_benchmark --parallel >/dev/null
 		./Scripts/run-benchmark.sh \
 			--build-dir build-benchmark \
-			--output "${REPORT}" \
+			--submodels "${SUBMODELS}" \
+			--output-dir "$(dirname "${REPORT}")" \
 			--bmf "${BMF}" \
 			${CPU_SET:+--cpu-set "${CPU_SET}"} \
-			-- --submodel "${SUBMODEL}" --timing-seconds "${TIMING}" "${EXTRA[@]}"
+			-- --timing-seconds "${TIMING}" ${EXTRA[@]+"${EXTRA[@]}"}
 		;;
 
 	*) die "unsupported platform $(uname -s)" ;;
@@ -241,7 +270,7 @@ bencher run \
 	--testbed "${TESTBED}" \
 	--adapter json \
 	--file "${BMF}" \
-	"${THRESHOLD_ARGS[@]}" \
-	"${ALERT_ARGS[@]}"
+	${THRESHOLD_ARGS[@]+"${THRESHOLD_ARGS[@]}"} \
+	${ALERT_ARGS[@]+"${ALERT_ARGS[@]}"}
 
 log "done"

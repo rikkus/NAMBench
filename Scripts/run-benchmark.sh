@@ -26,8 +26,12 @@
 #   --build-dir DIR    where nam_benchmark lives (default: build-benchmark)
 #   --model PATH       .nam capture (default: the first one found, see below)
 #   --audio PATH       input .wav (default: audio-input/input.wav)
-#   --output PATH      JSON report (default: benchmark-results/<host>-<stamp>.json)
-#   --bmf PATH         also write Bencher Metric Format alongside
+#   --submodels LIST   which to measure (default: widest,narrowest — A2 standard
+#                      and A2 nano). Both run inside ONE governor window and one
+#                      thermal check, so the machine is in the same state for
+#                      each and the pair can be read together.
+#   --output-dir DIR   where reports go (default: benchmark-results)
+#   --bmf PATH         merge every submodel into one Bencher Metric Format file
 #   --cpu-set LIST     taskset list, e.g. 0-3 (default: no pinning)
 #   --no-governor      leave the CPU governor alone
 #   --keep-governor    set performance and do NOT restore it on exit
@@ -39,11 +43,15 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${REPO_ROOT}/build-benchmark"
 MODEL=""
 AUDIO="${REPO_ROOT}/audio-input/input.wav"
-OUTPUT=""
+SUBMODELS="widest,narrowest"
+OUTPUT_DIR="${REPO_ROOT}/benchmark-results"
 BMF=""
 CPU_SET=""
 TOUCH_GOVERNOR=1
 RESTORE_GOVERNOR=1
+
+# Expanded below as ${arr[@]+"${arr[@]}"}: macOS ships bash 3.2, where under
+# `set -u` expanding an empty array is an unbound-variable error.
 EXTRA=()
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -55,7 +63,8 @@ while [ $# -gt 0 ]; do
 		--build-dir) BUILD_DIR="$2"; shift 2 ;;
 		--model) MODEL="$2"; shift 2 ;;
 		--audio) AUDIO="$2"; shift 2 ;;
-		--output) OUTPUT="$2"; shift 2 ;;
+		--submodels) SUBMODELS="$2"; shift 2 ;;
+		--output-dir) OUTPUT_DIR="$2"; shift 2 ;;
 		--bmf) BMF="$2"; shift 2 ;;
 		--cpu-set) CPU_SET="$2"; shift 2 ;;
 		--no-governor) TOUCH_GOVERNOR=0; shift ;;
@@ -92,10 +101,7 @@ fi
 
 HOST="$(hostname -s 2>/dev/null || hostname)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-if [ -z "${OUTPUT}" ]; then
-	mkdir -p "${REPO_ROOT}/benchmark-results"
-	OUTPUT="${REPO_ROOT}/benchmark-results/${HOST}-${STAMP}.json"
-fi
+mkdir -p "${OUTPUT_DIR}"
 
 # --- Governor ---------------------------------------------------------------
 
@@ -181,33 +187,63 @@ fi
 log "model $(basename "${MODEL}")"
 log "audio $(basename "${AUDIO}")"
 
-set +e
-"${RUNNER[@]}" "${BINARY}" \
-	--model "${MODEL}" \
-	--audio "${AUDIO}" \
-	--output "${OUTPUT}" \
-	--note "${HOST}${CPU_SET:+ cpus=${CPU_SET}}" \
-	"${EXTRA[@]}"
-STATUS=$?
-set -e
+# Every submodel runs inside the one governor window and between the one pair of
+# thermal readings, so A2 standard and A2 nano describe the same machine in the
+# same state and can honestly be read side by side.
+STATUS=0
+REPORTS=()
+
+OLD_IFS="${IFS}"
+IFS=','
+for SUBMODEL in ${SUBMODELS}; do
+	IFS="${OLD_IFS}"
+	[ -n "${SUBMODEL}" ] || continue
+
+	REPORT="${OUTPUT_DIR}/${HOST}-${STAMP}-${SUBMODEL}.json"
+	log "measuring ${SUBMODEL}"
+
+	set +e
+	${RUNNER[@]+"${RUNNER[@]}"} "${BINARY}" \
+		--model "${MODEL}" \
+		--audio "${AUDIO}" \
+		--submodel "${SUBMODEL}" \
+		--output "${REPORT}" \
+		--note "${HOST}${CPU_SET:+ cpus=${CPU_SET}}" \
+		${EXTRA[@]+"${EXTRA[@]}"}
+	ONE_STATUS=$?
+	set -e
+
+	[ "${ONE_STATUS}" -eq 0 ] || STATUS="${ONE_STATUS}"
+	[ -s "${REPORT}" ] && REPORTS=("${REPORTS[@]+${REPORTS[@]}}" "${REPORT}")
+
+	IFS=','
+done
+IFS="${OLD_IFS}"
 
 AFTER_THROTTLED="$(throttle_state)"
 if [ -n "${AFTER_THROTTLED}" ]; then
 	log "throttle state: ${BEFORE_THROTTLED:-unknown} -> ${AFTER_THROTTLED}"
 	if [ "${AFTER_THROTTLED}" != "throttled=0x0" ] && [ "${BEFORE_THROTTLED}" = "throttled=0x0" ]; then
 		warn "the machine started throttling DURING this run (${AFTER_THROTTLED}).
-  The numbers in ${OUTPUT} describe a machine that changed speed while being
-  measured. Treat them as void."
+  Everything measured here describes a machine that changed speed while it was
+  being measured. Treat these numbers as void."
 	fi
 fi
+
+for r in ${REPORTS[@]+"${REPORTS[@]}"}; do
+	log "report ${r}"
+done
 
 # --- Bencher Metric Format --------------------------------------------------
 
 if [ -n "${BMF}" ]; then
 	if [ "${STATUS}" -ne 0 ]; then
 		warn "not writing BMF: at least one variant produced no trustworthy result"
+	elif [ "${#REPORTS[@]}" -eq 0 ]; then
+		warn "not writing BMF: no reports were produced"
 	else
-		python3 "${REPO_ROOT}/Scripts/bencher-report.py" "${OUTPUT}" --output "${BMF}"
+		python3 "${REPO_ROOT}/Scripts/bencher-report.py" \
+			${REPORTS[@]+"${REPORTS[@]}"} --output "${BMF}"
 	fi
 fi
 

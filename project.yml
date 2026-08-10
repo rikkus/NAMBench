@@ -101,8 +101,43 @@ targets:
         headerVisibility: project
 
   # -------------------------------------------------------------------------
-  # Variant 2: rikkus/OptimisationWorkOnNeuralAmpModelerCore with the fused
-  # NEON engine, constructed under ScopedEnginePrefer(FusedNeon).
+  # Variant 2: the planar NEON kernels, as proposed to Core in PR #313.
+  #
+  # Built from the head of the apple-silicon-a2-planar branch, which is cut from
+  # upstream main and carries no fused engine — so this target is configured
+  # exactly as NAMEngineUpstream is, with no NAM_ENABLE_FUSED. The only addition
+  # is NB_VENDOR_HAS_PLANAR, which lets the shim include a2_planar.h and so
+  # report whether it got the kernels or fell back to a2_fast.
+  #
+  # Unlike fused, these cover both A2 submodels: 3 channels and 8.
+  # -------------------------------------------------------------------------
+  NAMEnginePlanar:
+    templates: [Engine]
+    settings:
+      base:
+        VENDOR_DIR: planar
+        NB_PREFIX: nb_planar
+        NB_VARIANT_NAME: planar
+        ENGINE_DEFINES: "NB_VENDOR_HAS_PLANAR=1"
+        PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench.engine.planar
+    sources:
+      - path: Sources/Shim/NAMEnginePlanar.h
+        headerVisibility: public
+      - path: Sources/Shim/nam_bench_shim.h
+        headerVisibility: public
+      - path: Sources/Shim/nam_bench_shim.cpp
+      - path: vendor/planar/NAM
+        name: NAM
+        headerVisibility: project
+
+  # -------------------------------------------------------------------------
+  # rikkus/OptimisationWorkOnNeuralAmpModelerCore with the fused NEON engine,
+  # constructed under ScopedEnginePrefer(FusedNeon).
+  #
+  # No longer part of the measured line-up: the planar kernels supersede it, and
+  # cover the 3-channel submodel it never could. Still built, because the full
+  # lab's fu* candidates are validated against it — remove it and those kernels
+  # lose the reference that makes their numbers mean anything.
   # -------------------------------------------------------------------------
   NAMEngineFused:
     templates: [Engine]
@@ -211,6 +246,7 @@ targets:
       - Sources/BenchCore
     dependencies:
       - target: NAMEngineUpstream
+      - target: NAMEnginePlanar
       - target: NAMEngineFused
       - target: NAMEngineSlim
       - target: NAMEngineFull
@@ -244,6 +280,8 @@ targets:
       - target: BenchCore
         embed: true
       - target: NAMEngineUpstream
+        embed: true
+      - target: NAMEnginePlanar
         embed: true
       - target: NAMEngineFused
         embed: true
@@ -294,6 +332,7 @@ targets:
     dependencies:
       - target: BenchCore
       - target: NAMEngineUpstream
+      - target: NAMEnginePlanar
       - target: NAMEngineFused
       - target: NAMEngineSlim
       - target: NAMEngineFull

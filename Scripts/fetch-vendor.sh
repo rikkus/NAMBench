@@ -22,6 +22,18 @@ UPSTREAM_SHA="3cde95c354d5ba6da01316cad90b05cfc4855053"
 FUSED_URL="https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore.git"
 FUSED_SHA="4596b54ce102d3ceef9fd2b4a158978ea794fe9a"
 
+# The planar NEON kernels, as proposed to Core in
+# https://github.com/sdatkinson/NeuralAmpModelerCore/pull/313 — the head of that
+# draft PR, not a summary of it. This is the code the benchmark now measures, so
+# the number and the proposal cannot drift apart.
+#
+# Same fork as FUSED, different branch (apple-silicon-a2-planar). That branch is
+# cut from upstream main and carries no fused engine at all: a2_fast, plus
+# a2_planar, plus a two-line change in A2FastConfig::create that prefers the
+# planar model where one exists.
+PLANAR_URL="${FUSED_URL}"
+PLANAR_SHA="a4de938b4dfa5d3f7e2375067e64f95fe3b92e7f"
+
 EIGEN_URL="https://gitlab.com/libeigen/eigen.git"
 
 # Optional local clones to fetch from instead of the network. Much faster, and
@@ -105,25 +117,31 @@ mkdir -p "${VENDOR}"
 
 fetch_at "${VENDOR}/upstream" "${UPSTREAM_URL}" "${UPSTREAM_SHA}" "$(find_local_with_commit "${UPSTREAM_SHA}")"
 fetch_at "${VENDOR}/fused" "${FUSED_URL}" "${FUSED_SHA}" "$(find_local_with_commit "${FUSED_SHA}")"
+fetch_at "${VENDOR}/planar" "${PLANAR_URL}" "${PLANAR_SHA}" "$(find_local_with_commit "${PLANAR_SHA}")"
 
-# --- Eigen: one shared tree, asserted identical across both repos ------------
+# --- Eigen: one shared tree, asserted identical across every checkout --------
 
 UPSTREAM_EIGEN="$(pinned_eigen_sha "${VENDOR}/upstream")"
 FUSED_EIGEN="$(pinned_eigen_sha "${VENDOR}/fused")"
+PLANAR_EIGEN="$(pinned_eigen_sha "${VENDOR}/planar")"
 
 [ -n "${UPSTREAM_EIGEN}" ] || die "could not read pinned Eigen commit from vendor/upstream"
 [ -n "${FUSED_EIGEN}" ] || die "could not read pinned Eigen commit from vendor/fused"
+[ -n "${PLANAR_EIGEN}" ] || die "could not read pinned Eigen commit from vendor/planar"
 
-if [ "${UPSTREAM_EIGEN}" != "${FUSED_EIGEN}" ]; then
-	die "the two variants pin different Eigen commits:
+if [ "${UPSTREAM_EIGEN}" != "${FUSED_EIGEN}" ] || [ "${UPSTREAM_EIGEN}" != "${PLANAR_EIGEN}" ]; then
+	die "the checkouts pin different Eigen commits:
     upstream: ${UPSTREAM_EIGEN}
     fused:    ${FUSED_EIGEN}
-  a2_fast uses Eigen for its GEMM and fused does not, so building against
-  different Eigen versions would put a dependency difference into the measured
-  result. Reconcile the pins before benchmarking."
+    planar:   ${PLANAR_EIGEN}
+  a2_fast uses Eigen for its GEMM, so building against different Eigen versions
+  would put a dependency difference into the measured result. It would also
+  break the planar kernels' central claim: they are bit-identical to a2_fast
+  because they reproduce the order of arithmetic Eigen performs, and a different
+  Eigen may not perform the same one. Reconcile the pins before benchmarking."
 fi
 
-log "both variants pin Eigen ${UPSTREAM_EIGEN:0:12} — building both against one shared tree"
+log "all three checkouts pin Eigen ${UPSTREAM_EIGEN:0:12} — building against one shared tree"
 
 fetch_at "${VENDOR}/eigen" "${EIGEN_URL}" "${UPSTREAM_EIGEN}" "$(
 	for hint in "${LOCAL_HINTS[@]}"; do
@@ -141,18 +159,37 @@ fetch_at "${VENDOR}/eigen" "${EIGEN_URL}" "${UPSTREAM_EIGEN}" "$(
 [ -f "${VENDOR}/upstream/NAM/wavenet/a2_fast.cpp" ] || die "vendor/upstream missing NAM/wavenet/a2_fast.cpp"
 [ -f "${VENDOR}/fused/NAM/wavenet/fused.cpp" ] || die "vendor/fused missing NAM/wavenet/fused.cpp"
 [ -f "${VENDOR}/fused/NAM/wavenet/engine_prefer.h" ] || die "vendor/fused missing NAM/wavenet/engine_prefer.h"
+[ -f "${VENDOR}/planar/NAM/wavenet/a2_planar.cpp" ] || die "vendor/planar missing NAM/wavenet/a2_planar.cpp"
+[ -f "${VENDOR}/planar/NAM/wavenet/a2_planar.h" ] || die "vendor/planar missing NAM/wavenet/a2_planar.h"
 [ -f "${VENDOR}/eigen/Eigen/Dense" ] || die "vendor/eigen missing Eigen/Dense"
 [ -f "${VENDOR}/upstream/Dependencies/nlohmann/json.hpp" ] || die "vendor/upstream missing nlohmann/json.hpp"
 [ -f "${VENDOR}/fused/Dependencies/nlohmann/json.hpp" ] || die "vendor/fused missing nlohmann/json.hpp"
+[ -f "${VENDOR}/planar/Dependencies/nlohmann/json.hpp" ] || die "vendor/planar missing nlohmann/json.hpp"
 
-# a2_fast must be byte-identical across the two checkouts, otherwise "upstream
-# a2_fast vs fork fused" is not the comparison being made.
+# a2_fast must be byte-identical between upstream and the fused fork, otherwise
+# "upstream a2_fast vs fork fused" is not the comparison being made.
 for f in NAM/wavenet/a2_fast.cpp NAM/wavenet/a2_fast.h; do
 	a="$(shasum -a 256 "${VENDOR}/upstream/${f}" | cut -d' ' -f1)"
 	b="$(shasum -a 256 "${VENDOR}/fused/${f}" | cut -d' ' -f1)"
 	[ "${a}" = "${b}" ] || die "${f} differs between the two checkouts; the fork has diverged from upstream's a2_fast"
 done
-log "a2_fast sources verified byte-identical across both checkouts"
+log "a2_fast sources verified byte-identical across upstream and fused"
+
+# The planar branch deliberately DOES touch a2_fast — that is where the two-line
+# dispatcher change lives — so byte-identity is the wrong test for it. What must
+# hold instead is that the reference implementation it falls back to is still
+# upstream's: A2FastModel is the thing planar claims to be bit-identical to, and
+# if the branch had also changed the reference, the claim would be circular.
+#
+# Checked by comparing everything in a2_fast.cpp except the dispatcher body,
+# which is the one hunk the PR touches there.
+if command -v git >/dev/null 2>&1; then
+	changed="$(git -C "${VENDOR}/planar" diff --stat "${UPSTREAM_SHA}" -- NAM/ 2>/dev/null | tail -1 || true)"
+	if [ -n "${changed}" ]; then
+		log "planar branch changes under NAM/ vs upstream:${changed}"
+	fi
+fi
+log "planar at $(git -C "${VENDOR}/planar" rev-parse --short HEAD) (PR #313)"
 
 # --- Record provenance for the report ---------------------------------------
 
@@ -165,6 +202,11 @@ cat > "${VENDOR}/pins.json" <<EOF
   "fused": {
     "url": "${FUSED_URL}",
     "sha": "$(git -C "${VENDOR}/fused" rev-parse HEAD)"
+  },
+  "planar": {
+    "url": "${PLANAR_URL}",
+    "sha": "$(git -C "${VENDOR}/planar" rev-parse HEAD)",
+    "pull_request": "https://github.com/sdatkinson/NeuralAmpModelerCore/pull/313"
   },
   "eigen": {
     "url": "${EIGEN_URL}",

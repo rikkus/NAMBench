@@ -23,8 +23,12 @@ measure, and a zero — or worse, a plausible-looking number — entering the
 history would be a fabricated data point that every future comparison is drawn
 against.
 
+Several reports can be merged into one upload, which is how a run that measured
+both A2 submodels becomes a single Bencher report. Names carry the submodel, so
+`a2-standard/planar` and `a2-nano/planar` are distinct series that never collide.
+
 Usage:
-    bencher-report.py <report.json> [--output bmf.json] [--prefix <text>]
+    bencher-report.py <report.json> [more.json ...] [--output bmf.json]
 """
 
 from __future__ import annotations
@@ -37,14 +41,27 @@ from typing import Any
 
 
 def submodel_name(report: dict[str, Any]) -> str:
-    """Which submodel the run measured.
+    """What to call this submodel in Bencher.
 
-    The two producers spell this differently. The portable driver writes a plain
-    string. Swift's `SubmodelSelection` is an enum with an associated value, so
-    Codable renders it as an object — `{"widest": {}}`, or `{"index": {"_0": 2}}`.
-    Both are handled rather than assumed, because guessing wrong would silently
-    merge the 3-channel and 8-channel histories into one series.
+    Named by channel count, and by the names the A2 models are actually known
+    by rather than the repository's internal vocabulary. `widest` and
+    `narrowest` exist in the code because selection is by max_value rather than
+    by position — a deliberate choice, and the wrong words for a dashboard.
+    Core PR #313, and everyone discussing these models, says A2 standard and
+    A2 nano.
+
+    Channel count first because it is unambiguous and present in every report;
+    the submodel selector is the fallback, and it is spelled differently by the
+    two producers — the portable driver writes a plain string, while Swift's
+    `SubmodelSelection` is an enum with an associated value, so Codable renders
+    it as `{"widest": {}}` or `{"index": {"_0": 2}}`.
     """
+    channels = report.get("model", {}).get("channels")
+    if channels == 8:
+        return "a2-standard"
+    if channels == 3:
+        return "a2-nano"
+
     value = report.get("config", {}).get("submodel")
 
     if isinstance(value, str):
@@ -59,9 +76,6 @@ def submodel_name(report: dict[str, Any]) -> str:
             return "index"
         return key
 
-    # Fall back to the channel count, which distinguishes the two A2 submodels
-    # just as well and is present in every report.
-    channels = report.get("model", {}).get("channels")
     if channels:
         return f"{channels}ch"
     return "unknown"
@@ -109,7 +123,12 @@ def convert(report: dict[str, Any], prefix: str) -> tuple[dict[str, Any], list[s
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("report", type=Path, help="a nambench or nam_benchmark JSON report")
+    parser.add_argument(
+        "reports",
+        type=Path,
+        nargs="+",
+        help="one or more nambench / nam_benchmark JSON reports, merged into one BMF",
+    )
     parser.add_argument("--output", "-o", type=Path, help="where to write BMF (default: stdout)")
     parser.add_argument(
         "--prefix",
@@ -118,12 +137,30 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    try:
-        report = json.loads(args.report.read_text())
-    except (OSError, json.JSONDecodeError) as error:
-        sys.exit(f"error: could not read {args.report}: {error}")
+    bmf: dict[str, Any] = {}
+    skipped: list[str] = []
 
-    bmf, skipped = convert(report, args.prefix)
+    for path in args.reports:
+        try:
+            report = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            sys.exit(f"error: could not read {path}: {error}")
+
+        converted, missing = convert(report, args.prefix)
+
+        # Two reports of the same submodel in one upload is a mistake worth
+        # stopping for: Bencher would take the last one silently, and the run
+        # would look complete while half of it had been discarded.
+        collisions = sorted(set(converted) & set(bmf))
+        if collisions:
+            sys.exit(
+                f"error: {path} repeats benchmarks already present: "
+                f"{', '.join(collisions[:4])}"
+                + (" ..." if len(collisions) > 4 else "")
+            )
+
+        bmf.update(converted)
+        skipped.extend(missing)
 
     if skipped:
         # stderr, so it is visible in the CI log without contaminating the BMF.

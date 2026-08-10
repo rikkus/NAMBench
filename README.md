@@ -5,7 +5,8 @@ Compares NAM A2 WaveNet processing code, macOS and iOS.
 | Variant | Repository | Code path |
 |---|---|---|
 | `upstream` | [sdatkinson/NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) | `a2_fast` (Eigen GEMM) |
-| `fused` | [rikkus/OptimisationWorkOnNeuralAmpModelerCore](https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore) | `fused` (hand-written NEON) |
+| `planar` | [Core PR #313](https://github.com/sdatkinson/NeuralAmpModelerCore/pull/313) | `a2_planar` (planar NEON, both submodels) |
+| `fused` | [rikkus/OptimisationWorkOnNeuralAmpModelerCore](https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore) | `fused` — superseded by `planar`, `--with-fused` to include |
 | `slim:*` | this repo, `Sources/SlimEngines` | experimental kernels for the 3-channel submodel |
 | `full:*` | this repo, `Sources/FullEngines` | experimental kernels for the 8-channel submodel |
 
@@ -88,9 +89,15 @@ cmake --build build-benchmark --target nam_benchmark --parallel
 ./Scripts/run-benchmark.sh --cpu-set 0-3
 ```
 
-On a Pi 500 (Cortex-A76) the fused engine is worth **2.44x**, against 1.90x on
-an M2. Results are tracked over time with Bencher, one testbed per machine.
-See [BENCHMARKING.md](BENCHMARKING.md).
+The default line-up is `upstream` against `planar`, on both A2 submodels:
+
+| | M2 Air | Pi 500 (Cortex-A76) |
+|---|---|---|
+| A2 standard (8 ch) | 2.47x | 2.13x |
+| A2 nano (3 ch) | 2.00x | 2.94x |
+
+Bit-identical to `a2_fast` in every case. Results are tracked over time with
+Bencher, one testbed per machine. See [BENCHMARKING.md](BENCHMARKING.md).
 
 ## What it measures, and why it is built this way
 

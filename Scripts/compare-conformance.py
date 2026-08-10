@@ -56,6 +56,7 @@ DEFAULT_MIN_DB = 100.0
 class Record:
     variant: str
     arch: str
+    platform: str
     compiler: str
     label: str
     submodel: str
@@ -81,6 +82,7 @@ def load(directory: Path) -> list[Record]:
         report = json.loads(report_path.read_text())
         variant = report["variant"]
         arch = report.get("arch", "unknown")
+        platform_name = report.get("platform", "unknown")
         compiler = report.get("compiler", "unknown")
 
         for entry in report["records"]:
@@ -100,6 +102,7 @@ def load(directory: Path) -> list[Record]:
                 Record(
                     variant=variant,
                     arch=arch,
+                    platform=platform_name,
                     compiler=compiler,
                     label=entry["label"],
                     submodel=entry["submodel"],
@@ -173,15 +176,33 @@ def db_text(parity: Parity) -> str:
 # --------------------------------------------------------------------------
 
 
-def expected_engine(variant: str, submodel: str, kernel: str | None, aarch64: bool) -> str:
+def expected_engine(record: Record, aarch64: bool) -> str | tuple[str, ...]:
     """Which engine this case is supposed to have been routed to.
 
     Mirrors detect_engine in the shim rather than restating the build flags,
     which is the whole reason the driver reports what it actually got.
     """
+    variant, submodel = record.variant, record.submodel
+
     if variant == "upstream":
         # a2_fast is compiled into every variant and matches the A2 shape on
         # both submodels, regardless of architecture.
+        return "a2_fast"
+
+    if variant == "planar":
+        # a2_planar.h defines NAM_A2_PLANAR only for __APPLE__ && __aarch64__,
+        # so on Apple Silicon the kernels MUST be there — if they quietly stopped
+        # being selected, every "planar" number would become an a2_fast number
+        # wearing its name, which is the one thing worth failing a build over.
+        #
+        # Elsewhere the same checkout is plain a2_fast, unless the build was
+        # configured with -DNAMBENCH_FORCE_A2_PLANAR=ON (the one-line change
+        # PR #313 says it wants measured on Linux arm64). Both are legitimate
+        # there, so both are accepted and the run reports which happened.
+        if aarch64 and record.platform in {"macos", "ios"}:
+            return "planar"
+        if aarch64:
+            return ("planar", "a2_fast")
         return "a2_fast"
 
     if variant == "fused":
@@ -218,6 +239,9 @@ def reference_for(record: Record) -> tuple[str, str] | None:
     if record.variant == "upstream":
         return None
 
+    if record.variant == "planar":
+        return ("upstream", record.submodel)
+
     if record.variant == "fused":
         return ("upstream", record.submodel)
 
@@ -242,6 +266,14 @@ def expect_bit_identical(record: Record) -> bool:
     than trusted. Every other kernel reassociates deliberately and is only held
     to the dB floor.
     """
+    # The planar kernels' whole claim is bit-identity — "not within a tolerance,
+    # not below the noise floor: the same float32 bits, sample for sample". That
+    # is the property the PR is asking Core to rely on, so it is checked as
+    # stated, on every platform and every compiler this suite reaches, rather
+    # than allowed to pass at some number of dB.
+    if record.variant == "planar":
+        return True
+
     return record.kernel is not None and record.kernel.endswith("baseline")
 
 
@@ -299,10 +331,13 @@ def main() -> int:
     print("\nrouting")
     for record in sorted(records, key=lambda r: r.name):
         aarch64 = record.arch == "aarch64" if args.arch == "record" else args.arch == "aarch64"
-        want = expected_engine(record.variant, record.submodel, record.kernel, aarch64)
-        ok = record.engine == want
+        want = expected_engine(record, aarch64)
+        allowed = want if isinstance(want, tuple) else (want,)
+        ok = record.engine in allowed
         if not ok:
-            failures.append(f"{record.name}: routed to {record.engine}, expected {want}")
+            failures.append(
+                f"{record.name}: routed to {record.engine}, expected {' or '.join(allowed)}"
+            )
 
         if record.non_finite:
             failures.append(f"{record.name}: {record.non_finite} non-finite output samples")
@@ -342,8 +377,13 @@ def main() -> int:
 
         if not ok:
             if strict:
+                claim = (
+                    "claims bit-identity with"
+                    if record.variant == "planar"
+                    else "is a verbatim port of"
+                )
                 failures.append(
-                    f"{record.name} is a verbatim port of {reference.name} but differs: "
+                    f"{record.name} {claim} {reference.name} but differs: "
                     f"max|diff| {parity.max_abs_diff:.3e} ({db_text(parity)})"
                 )
             else:

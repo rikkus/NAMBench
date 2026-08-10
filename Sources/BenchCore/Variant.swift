@@ -1,6 +1,7 @@
 import Foundation
 import NAMEngineFull
 import NAMEngineFused
+import NAMEnginePlanar
 import NAMEngineSlim
 import NAMEngineUpstream
 
@@ -10,6 +11,7 @@ public enum Engine: String, Sendable, Codable {
   case generic
   case a2Fast = "a2_fast"
   case fused
+  case planar
   case slim
   case full
 
@@ -18,6 +20,7 @@ public enum Engine: String, Sendable, Codable {
     case NbEngineGeneric.rawValue: self = .generic
     case NbEngineA2Fast.rawValue: self = .a2Fast
     case NbEngineFused.rawValue: self = .fused
+    case NbEnginePlanar.rawValue: self = .planar
     case NbEngineSlim.rawValue: self = .slim
     case NbEngineFull.rawValue: self = .full
     default: self = .unknown
@@ -30,6 +33,7 @@ public enum Engine: String, Sendable, Codable {
     case .generic: return "generic (Eigen WaveNet)"
     case .a2Fast: return "a2_fast (Eigen GEMM)"
     case .fused: return "fused (NEON)"
+    case .planar: return "planar NEON (Core PR #313)"
     case .slim: return "slim lab kernel"
     case .full: return "full lab kernel"
     }
@@ -114,6 +118,18 @@ struct VariantAPI {
     sampleRate: nb_fused_sample_rate,
     reset: nb_fused_reset,
     process: nb_fused_process
+  )
+
+  static let planar = VariantAPI(
+    hasFused: nb_planar_has_fused,
+    probe: nb_planar_probe,
+    create: nb_planar_create,
+    destroy: nb_planar_destroy,
+    engine: nb_planar_engine,
+    channels: nb_planar_channels,
+    sampleRate: nb_planar_sample_rate,
+    reset: nb_planar_reset,
+    process: nb_planar_process
   )
 
   static let slim = VariantAPI(
@@ -253,8 +269,33 @@ public final class Variant {
     api: .upstream
   )
 
+  /// The planar NEON kernels, as proposed to Core in PR #313.
+  ///
+  /// Built from the head of that draft PR rather than from a copy of it, so a
+  /// number measured here belongs to the proposal being discussed. Unlike
+  /// `fused` these cover both A2 submodels — 3 channels and 8 — which is why
+  /// they replaced it in the line-up rather than joining it.
+  ///
+  /// `expectedEngine` is `.planar`, and `makeModel` refuses to run when the
+  /// model routes anywhere else. That check earns its keep here more than
+  /// anywhere: `NAM_A2_PLANAR` is gated on `__APPLE__ && __aarch64__`, so on any
+  /// other target this framework builds happily and *is* `a2_fast`. Without the
+  /// assertion the run would measure a2_fast twice and read as the kernels being
+  /// worthless rather than absent.
+  public static let planar = Variant(
+    name: "planar",
+    repository: "rikkus/OptimisationWorkOnNeuralAmpModelerCore@apple-silicon-a2-planar",
+    codePath: "a2_planar",
+    expectedEngine: .planar,
+    api: .planar
+  )
+
   /// The optimisation fork, built with `NAM_ENABLE_FUSED` and constructed
   /// under `ScopedEnginePrefer(FusedNeon)`.
+  ///
+  /// Superseded by `planar` and no longer in the default line-up. Kept because
+  /// the full lab's `fu*` candidates are validated against it, and because a
+  /// result that has been published should stay reproducible.
   public static let fused = Variant(
     name: "fused",
     repository: "rikkus/OptimisationWorkOnNeuralAmpModelerCore",
@@ -293,8 +334,12 @@ public final class Variant {
     )
   }
 
-  /// The two shipping engines, the historical default line-up.
-  public static let all: [Variant] = [.upstream, .fused]
+  /// The default line-up: the reference, and the kernels proposed to replace it.
+  ///
+  /// `fused` was here until the planar kernels superseded it. It is still
+  /// buildable and still selectable by name; it is simply no longer the thing
+  /// being proposed, and a line-up is a claim about what is worth measuring.
+  public static let all: [Variant] = [.upstream, .planar]
 
   public var hasFusedEngine: Bool { api.hasFused() != 0 }
 

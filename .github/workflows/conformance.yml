@@ -133,6 +133,31 @@ jobs:
             apt: clang-18
             cmake-args: -DCMAKE_CXX_COMPILER=clang++-18
 
+          # --- The planar kernels off Apple Silicon -------------------------
+          #
+          # a2_planar.h gates itself on `__APPLE__ && __aarch64__`, and Core
+          # PR #313 says why: the kernels are "almost certainly correct and
+          # probably faster on any AArch64 part", but bit-identity leans on the
+          # compiler contracting a*b+c into an FMA inside a2_fast's own
+          # 3-channel branch, and nobody had measured a non-Apple target.
+          #
+          # This job measures it. NAMBENCH_FORCE_A2_PLANAR opens the gate, and
+          # the comparator then holds planar to exact bit-identity with
+          # upstream on both submodels — the property the gate protects. Two
+          # compilers, because "gcc and clang both contract by default" is the
+          # assumption under test, not a given.
+          #
+          # If either goes red, the gate is right to be where it is and this
+          # job is the evidence for keeping it.
+          - name: linux aarch64 · gcc-14 · planar forced
+            runs-on: ubuntu-24.04-arm
+            apt: g++-14
+            cmake-args: -DCMAKE_CXX_COMPILER=g++-14 -DNAMBENCH_FORCE_A2_PLANAR=ON
+          - name: linux aarch64 · clang-18 · planar forced
+            runs-on: ubuntu-24.04-arm
+            apt: clang-18
+            cmake-args: -DCMAKE_CXX_COMPILER=clang++-18 -DNAMBENCH_FORCE_A2_PLANAR=ON
+
           # --- macOS --------------------------------------------------------
           #
           # macos-15 is M2, macos-26 is M4. Both are virtualised and both are

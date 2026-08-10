@@ -30,6 +30,8 @@ reports the engine it actually got by asking the same detectors
 | | 8-channel submodel | 3-channel submodel |
 |---|---|---|
 | `upstream` | `a2_fast` | `a2_fast` |
+| `planar`, on Apple Silicon | `planar` | `planar` |
+| `planar`, elsewhere | `a2_fast` (or `planar`, if forced) | same |
 | `fused`, on AArch64 | `fused` | `generic` |
 | `fused`, elsewhere | `generic` | `generic` |
 | slim lab | not built | `slim` |
@@ -53,6 +55,10 @@ from runners this project would otherwise have no use for.
 Every variant is compared against the one it is derived from, as `max|diff|` and
 as dB below the reference signal — the same measure `BenchCore` reports.
 
+- `planar` against `upstream` — held to **exact bit-identity**, on every
+  platform and compiler, because that is precisely what Core PR #313 claims and
+  asks Core to rely on: "not within a tolerance, not below the noise floor — the
+  same float32 bits, sample for sample"
 - `fused` against `upstream`
 - slim-lab kernels against `upstream` on the 3-channel submodel
 - full-lab `a2*` kernels against `upstream`, `fu*` kernels against `fused`

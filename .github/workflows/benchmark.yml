@@ -28,11 +28,10 @@ on:
         description: "Timing window per variant, seconds"
         default: "30"
         type: string
-      submodel:
-        description: "Which submodel to measure"
-        default: widest
-        type: choice
-        options: [widest, narrowest]
+      submodels:
+        description: "Which submodels to measure (A2 standard, A2 nano, or both)"
+        default: widest,narrowest
+        type: string
 
 permissions:
   contents: read
@@ -100,11 +99,11 @@ jobs:
         run: |
           ./Scripts/run-benchmark.sh \
             --build-dir build-benchmark \
-            --output report.json \
+            --submodels "${{ inputs.submodels }}" \
+            --output-dir "$PWD/benchmark-results" \
             --bmf bmf.json \
             ${{ matrix.cpu-set && format('--cpu-set {0}', matrix.cpu-set) || '' }} \
             -- \
-            --submodel "${{ inputs.submodel }}" \
             --timing-seconds "${{ inputs.timing-seconds }}"
 
       # --- The canonical Xcode driver -----------------------------------
@@ -125,14 +124,23 @@ jobs:
           products="$(xcodebuild -project NAMBench.xcodeproj -scheme nambench-cli \
             -configuration Release -showBuildSettings \
             | awk -F' = ' '/ BUILT_PRODUCTS_DIR =/{print $2; exit}')"
-          "$products/nambench" \
-            --submodel "${{ inputs.submodel }}" \
-            --timing-seconds "${{ inputs.timing-seconds }}" \
-            --output "$PWD/benchmark-results"
-          # The CLI stamps its filename with the time it started.
-          latest="$(ls -t benchmark-results/*.json | head -1)"
-          cp "$latest" report.json
-          python3 Scripts/bencher-report.py report.json --output bmf.json
+          # Both submodels become separate Bencher series — a2-standard/* and
+          # a2-nano/* — merged into one upload so a run is one report.
+          reports=()
+          IFS=','
+          for submodel in ${{ inputs.submodels }}; do
+            unset IFS
+            echo "--- $submodel"
+            "$products/nambench" \
+              --submodel "$submodel" \
+              --timing-seconds "${{ inputs.timing-seconds }}" \
+              --output "$PWD/benchmark-results/$submodel"
+            # The CLI stamps its own filename with the time it started.
+            reports+=("$(ls -t "benchmark-results/$submodel"/*.json | head -1)")
+            IFS=','
+          done
+          unset IFS
+          python3 Scripts/bencher-report.py "${reports[@]}" --output bmf.json
 
       # --- Publish -------------------------------------------------------
       - uses: bencherdev/bencher@main
@@ -167,7 +175,7 @@ jobs:
         with:
           name: benchmark-${{ matrix.testbed }}
           path: |
-            report.json
+            benchmark-results/**/*.json
             bmf.json
           retention-days: 90
           if-no-files-found: warn

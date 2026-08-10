@@ -31,6 +31,14 @@
   #include "NAM/wavenet/fused.h"
 #endif
 
+// Defined only for the build made from vendor/planar. Including the header is
+// what makes NAM_A2_PLANAR visible here, and NAM_A2_PLANAR is what says whether
+// this target actually got the kernels — the checkout alone does not, because
+// the header gates itself on __APPLE__ && __aarch64__.
+#if defined(NB_VENDOR_HAS_PLANAR)
+  #include "NAM/wavenet/a2_planar.h"
+#endif
+
 #if defined(NB_ENABLE_SLIM_LAB)
   #include "slim_common.h"
 #endif
@@ -281,7 +289,21 @@ NbEngine detect_engine(const nlohmann::json& modelConfig, int32_t* channels)
     return NbEngineFull;
 #endif
 
-#if defined(NAM_ENABLE_FUSED)
+#if defined(NB_VENDOR_HAS_PLANAR) && defined(NAM_A2_PLANAR)
+  // Mirrors A2FastConfig::create on the planar branch, which does:
+  //
+  //     if (auto planar = create_a2_planar_model(channels, weights, rate))
+  //       return planar;
+  //     return create_a2_fast_reference_model(channels, ...);
+  //
+  // and create_a2_planar_model returns nullptr for any channel count other than
+  // 3 or 8. Restating the dispatcher rather than trusting the build flag is the
+  // same discipline applied to fused below, for the same reason: this is a
+  // fallthrough, and a silent one.
+  if (isA2 && (a2Channels == 3 || a2Channels == 8))
+    return NbEnginePlanar;
+  return isA2 ? NbEngineA2Fast : NbEngineGeneric;
+#elif defined(NAM_ENABLE_FUSED)
   if (nam::wavenet::fused::available() && nam::wavenet::fused::is_fused_shape(modelConfig))
     return NbEngineFused;
   return NbEngineGeneric;

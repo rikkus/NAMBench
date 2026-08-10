@@ -72,6 +72,27 @@ NB_DECLARE_KERNEL_LAB_(NB_PREFIX)
   #define NB_ARCH "unknown"
 #endif
 
+// The planar kernels are gated on __APPLE__ *and* __aarch64__, so arch alone
+// cannot say whether they were supposed to be present. An Apple Silicon Mac and
+// a Raspberry Pi are both "aarch64" and only one of them is expected to have
+// them.
+#if defined(__APPLE__)
+  #include <TargetConditionals.h>
+  #if TARGET_OS_IPHONE
+    #define NB_PLATFORM "ios"
+  #else
+    #define NB_PLATFORM "macos"
+  #endif
+#elif defined(__ANDROID__)
+  #define NB_PLATFORM "android"
+#elif defined(__linux__)
+  #define NB_PLATFORM "linux"
+#elif defined(_WIN32)
+  #define NB_PLATFORM "windows"
+#else
+  #define NB_PLATFORM "unknown"
+#endif
+
 #if defined(__clang__)
   #define NB_COMPILER "clang " __clang_version__
 #elif defined(__GNUC__)
@@ -144,6 +165,7 @@ const char* engine_name(NbEngine engine)
     case NbEngineFused: return "fused";
     case NbEngineSlim: return "slim";
     case NbEngineFull: return "full";
+    case NbEnginePlanar: return "planar";
     case NbEngineUnknown: break;
   }
   return "unknown";
@@ -204,7 +226,7 @@ bool write_report(const fs::path& path, const std::string& variant, int hasFused
 
   out += "{\n  \"variant\": \"";
   json_escape(out, variant);
-  out += "\",\n  \"arch\": \"" NB_ARCH "\",\n  \"compiler\": \"";
+  out += "\",\n  \"arch\": \"" NB_ARCH "\",\n  \"platform\": \"" NB_PLATFORM "\",\n  \"compiler\": \"";
   json_escape(out, NB_COMPILER);
   out += "\",\n";
 

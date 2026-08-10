@@ -12,13 +12,15 @@
 #   Linux  ->  nam_benchmark, via Scripts/run-benchmark.sh, which also handles
 #              the CPU governor and the thermal check.
 #
-# The API token is never passed on the command line, never written to a file and
+# The API key is never passed on the command line, never written to a file and
 # never echoed. It comes from the environment, or straight out of 1Password into
 # this process:
 #
-#   export BENCHER_API_TOKEN="$(op read 'op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential')"
+#   export BENCHER_API_KEY="$(op read 'op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential')"
 #
 # or set BENCHER_OP_REF to that op:// reference and let this script do it.
+# BENCHER_API_TOKEN is accepted as an alias, since that is what the variable used
+# to be called, and is translated to BENCHER_API_KEY before the CLI sees it.
 #
 # Usage:
 #   Scripts/track-benchmark.sh [options] [-- <extra driver arguments>]
@@ -26,6 +28,10 @@
 #   --project SLUG      Bencher project (default: $BENCHER_PROJECT)
 #   --testbed NAME      this machine's testbed (default: detected, see below)
 #   --branch NAME       branch to record against (default: the current one)
+#   --hash SHA          commit to attribute the result to (default: HEAD).
+#                       Both are needed on a machine with no git checkout — an
+#                       rsync'd copy on a Pi, say — or its results land in a
+#                       different Bencher branch from the laptop's.
 #   --submodels LIST    which to measure (default: widest,narrowest — A2
 #                       standard and A2 nano, uploaded as separate series)
 #   --timing-seconds N  timing window per variant (default: 30)
@@ -42,6 +48,7 @@ cd "${REPO_ROOT}"
 PROJECT="${BENCHER_PROJECT:-}"
 TESTBED=""
 BRANCH=""
+HASH=""
 SUBMODELS="widest,narrowest"
 TIMING="30"
 CPU_SET=""
@@ -64,6 +71,7 @@ while [ $# -gt 0 ]; do
 		--project) PROJECT="$2"; shift 2 ;;
 		--testbed) TESTBED="$2"; shift 2 ;;
 		--branch) BRANCH="$2"; shift 2 ;;
+		--hash) HASH="$2"; shift 2 ;;
 		--submodels) SUBMODELS="$2"; shift 2 ;;
 		--timing-seconds) TIMING="$2"; shift 2 ;;
 		--cpu-set) CPU_SET="$2"; shift 2 ;;
@@ -117,15 +125,40 @@ fi
 
 # --- Provenance -------------------------------------------------------------
 
+# The Pi runs from an rsync'd copy with no .git in it, so neither of these is
+# discoverable there. Silently falling back to "main" with no hash was worse than
+# it looked: the laptop would report its real branch while the Pi reported main,
+# and the two machines' results would land in different Bencher branches and stop
+# being comparable — which is the one thing this whole arrangement exists to
+# prevent. Say so instead, and take both explicitly.
+IN_GIT_REPO=0
+git rev-parse --git-dir >/dev/null 2>&1 && IN_GIT_REPO=1
+
 if [ -z "${BRANCH}" ]; then
-	BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+	if [ "${IN_GIT_REPO}" -eq 1 ]; then
+		BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+	else
+		BRANCH="main"
+	fi
 fi
-HASH="$(git rev-parse HEAD 2>/dev/null || true)"
+if [ -z "${HASH}" ] && [ "${IN_GIT_REPO}" -eq 1 ]; then
+	HASH="$(git rev-parse HEAD)"
+fi
+
+if [ "${IN_GIT_REPO}" -eq 0 ] && [ -z "${HASH}" ]; then
+	warn "this is not a git checkout, so the branch and commit cannot be read here.
+
+  Recording against branch '${BRANCH}'${HASH:+ at ${HASH:0:12}}. If the machine you
+  ran the laptop from is on a different branch, the two sets of results land in
+  different Bencher branches and stop being comparable. Pass them explicitly:
+      --branch \"\$(git -C <checkout> rev-parse --abbrev-ref HEAD)\" \\
+      --hash   \"\$(git -C <checkout> rev-parse HEAD)\""
+fi
 
 # A measurement is attributed to a commit. If the tree does not match that
 # commit, the attribution is a lie, and it is a lie that survives in the history
 # long after the working copy is gone.
-if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+if [ "${IN_GIT_REPO}" -eq 1 ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
 	warn "the working tree has uncommitted changes.
 
   This result will be recorded against ${HASH:0:12}, which is not the code that
@@ -227,22 +260,51 @@ command -v bencher >/dev/null || die "the bencher CLI is not on PATH.
   Pass --project <slug>, or:
       export BENCHER_PROJECT=<slug>"
 
-# Resolve the token last, and only into this process's environment. Never a
+# Resolve the credential last, and only into this process's environment. Never a
 # command-line argument: those are visible to every other process on the machine
 # for as long as the command runs.
-if [ -z "${BENCHER_API_TOKEN:-}" ] && [ -n "${BENCHER_OP_REF:-}" ]; then
-	command -v op >/dev/null || die "BENCHER_OP_REF is set but the 1Password CLI is not installed"
-	log "reading the API token from 1Password"
-	BENCHER_API_TOKEN="$(op read "${BENCHER_OP_REF}")"
-	export BENCHER_API_TOKEN
+#
+# BENCHER_API_KEY, not BENCHER_API_TOKEN. The CLI now reserves --token for JWTs
+# and takes an API key (bencher_user_* or bencher_run_*) via --key; handed a key
+# through the old variable it refuses outright:
+#
+#   error: invalid value (redacted) for '--token <TOKEN>': You supplied a
+#   Bencher API key to `--token`/`BENCHER_API_TOKEN`. Use `--key`/`BENCHER_API_KEY`
+#
+# BENCHER_API_TOKEN is still accepted *here* as an input, because plenty of
+# shells and CI configs still export it under that name — but it is translated
+# and then removed from the environment below, because the CLI reads it directly
+# and would reject the run no matter which flag this script passes.
+if [ -z "${BENCHER_API_KEY:-}" ] && [ -n "${BENCHER_API_TOKEN:-}" ]; then
+	BENCHER_API_KEY="${BENCHER_API_TOKEN}"
 fi
 
-[ -n "${BENCHER_API_TOKEN:-}" ] || die "no API token.
+if [ -z "${BENCHER_API_KEY:-}" ] && [ -n "${BENCHER_OP_REF:-}" ]; then
+	command -v op >/dev/null || die "BENCHER_OP_REF is set but the 1Password CLI is not installed"
+	log "reading the API key from 1Password"
+	BENCHER_API_KEY="$(op read "${BENCHER_OP_REF}")"
+fi
+
+[ -n "${BENCHER_API_KEY:-}" ] || die "no API key.
 
   Either:
-      export BENCHER_API_TOKEN=\"\$(op read 'op://Developer/<item>/credential')\"
+      export BENCHER_API_KEY=\"\$(op read 'op://Developer/<item>/credential')\"
   or set BENCHER_OP_REF to that op:// reference and let this script read it.
   Do not pass it as an argument — process arguments are world-readable."
+
+export BENCHER_API_KEY
+# Whatever the CLI would otherwise find and object to.
+unset BENCHER_API_TOKEN
+
+# Checked by prefix only; the value is never printed. A JWT in this slot is a
+# real possibility for anyone who set the credential up before the CLI split the
+# two, and the resulting error names the wrong fix.
+case "${BENCHER_API_KEY}" in
+	bencher_user_*|bencher_run_*) ;;
+	*) warn "this does not look like a Bencher API key (they begin bencher_user_ or
+  bencher_run_). If it is an older JWT, the CLI wants it in --token instead, and
+  the better fix is to mint an API key in the Bencher console." ;;
+esac
 
 THRESHOLD_ARGS=()
 if [ "${SET_THRESHOLDS}" -eq 1 ]; then

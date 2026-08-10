@@ -194,9 +194,22 @@ way and runs made later by a self-hosted runner form **one continuous history**
 rather than two forked ones.
 
 ```bash
-export BENCHER_API_TOKEN="$(op read 'op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential')"
+export BENCHER_API_KEY="$(op read 'op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential')"
 export BENCHER_PROJECT=nambench
 ```
+
+**`BENCHER_API_KEY`, not `BENCHER_API_TOKEN`.** The CLI reserves `--token` for
+JWTs and refuses an API key given to it:
+
+```
+error: invalid value (redacted) for '--token <TOKEN>': You supplied a Bencher
+API key to `--token`/`BENCHER_API_TOKEN`. Use `--key`/`BENCHER_API_KEY` instead.
+```
+
+The script accepts either variable and translates, but it also *unsets* the old
+one before calling `bencher` — the CLI reads that variable itself, so a stale
+`BENCHER_API_TOKEN` still exported in your shell would sink the run whatever
+flag the script passed.
 
 Then, on the M2 Air:
 
@@ -207,8 +220,19 @@ Then, on the M2 Air:
 and on the Pi:
 
 ```bash
-ssh piv 'cd ~/NAMBench && PATH="$HOME/.cargo/bin:$PATH" BENCHER_API_TOKEN=... BENCHER_PROJECT=nambench ./Scripts/track-benchmark.sh --cpu-set 0-3'
+ssh piv "cd ~/NAMBench && PATH=\$HOME/.cargo/bin:\$PATH \
+  BENCHER_API_KEY='$BENCHER_API_KEY' BENCHER_PROJECT=nambench \
+  ./Scripts/track-benchmark.sh --cpu-set 0-3 \
+    --branch '$(git rev-parse --abbrev-ref HEAD)' \
+    --hash '$(git rev-parse HEAD)'"
 ```
+
+**Pass `--branch` and `--hash` on the Pi.** Its copy is rsync'd without `.git`,
+so it cannot read either, and would otherwise record against `main` with no
+commit — while the laptop records against whatever branch it is really on. The
+two machines' results would then sit in different Bencher branches and stop
+being comparable, which is the one thing this arrangement exists to prevent. The
+script warns when it has to guess.
 
 The script works out which machine it is on — `m2-air`, `m1-air`, `pi500` — and
 refuses to guess if it cannot. That matters more than it looks: a wrong testbed
@@ -241,7 +265,7 @@ gone.
 The token is read into the process environment and never passed as an argument:
 process arguments are readable by every other process on the machine for as long
 as the command runs. Set `BENCHER_OP_REF` to the `op://` reference instead of
-exporting the token, and the script will read it from 1Password itself.
+exporting the key, and the script will read it from 1Password itself.
 
 ### Setup, once
 
@@ -264,12 +288,12 @@ bencher project list --format json | jq -r '.[].slug'
 
 ### For the GitHub workflow
 
-The API token is yours to install — I have not touched it, and it should not
+The API key is yours to install — I have not touched it, and it should not
 pass through a terminal, a file in the repo, or a chat window. With the
 1Password CLI, it never becomes visible at all:
 
 ```bash
-op read "op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential" | gh secret set BENCHER_API_TOKEN --repo rikkus/NAMBench
+op read "op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential" | gh secret set BENCHER_API_KEY --repo rikkus/NAMBench
 ```
 
 If the field is not called `credential`, this lists the item's fields without
@@ -288,7 +312,7 @@ gh variable set BENCHER_PROJECT --repo rikkus/NAMBench --body "your-bencher-proj
 For running by hand on the Pi, put it in the environment rather than in a file:
 
 ```bash
-export BENCHER_API_TOKEN="$(op read 'op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential')"
+export BENCHER_API_KEY="$(op read 'op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential')"
 ```
 
 ### Registering a runner

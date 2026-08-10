@@ -147,17 +147,22 @@ jobs:
 
       - name: Track
         env:
-          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+          # BENCHER_API_KEY, not BENCHER_API_TOKEN: the CLI reserves --token for
+          # JWTs and rejects an API key handed to it. Either secret name works
+          # here — plenty of setups still have it stored under the old one.
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY || secrets.BENCHER_API_TOKEN }}
           BENCHER_PROJECT: ${{ vars.BENCHER_PROJECT }}
         run: |
-          if [ -z "${BENCHER_API_TOKEN:-}" ] || [ -z "${BENCHER_PROJECT:-}" ]; then
-            echo "::warning::BENCHER_API_TOKEN secret or BENCHER_PROJECT variable is unset;"\
+          if [ -z "${BENCHER_API_KEY:-}" ] || [ -z "${BENCHER_PROJECT:-}" ]; then
+            echo "::warning::BENCHER_API_KEY secret or BENCHER_PROJECT variable is unset;"\
                  "the run is complete but nothing was uploaded. See BENCHMARKING.md."
             exit 0
           fi
+          # The key reaches the CLI through the environment rather than argv:
+          # process arguments are readable by anything else on the runner, and
+          # these runners are somebody's laptop.
           bencher run \
             --project "$BENCHER_PROJECT" \
-            --token "$BENCHER_API_TOKEN" \
             --branch "$GITHUB_REF_NAME" \
             --hash "$GITHUB_SHA" \
             --testbed "${{ matrix.testbed }}" \

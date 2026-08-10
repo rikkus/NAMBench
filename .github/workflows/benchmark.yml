@@ -44,35 +44,77 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  measure:
-    name: ${{ matrix.testbed }}
-    runs-on: ${{ matrix.runner }}
-    if: >-
-      github.event.inputs.testbeds == 'all'
-      || contains(github.event.inputs.testbeds, matrix.testbed)
-    strategy:
-      fail-fast: false
-      # Never parallel: these are physical machines, and on a laptop that also
-      # has a browser open the only thing worse than a slow benchmark is two.
-      max-parallel: 1
-      matrix:
-        include:
+  # ---------------------------------------------------------------------------
+  # Which machines to run on.
+  #
+  # The obvious way to write this — a static matrix plus a job-level
+  # `if: contains(inputs.testbeds, matrix.testbed)` — is not merely wrong, it is
+  # rejected: the `matrix` context is not available in a job-level `if`, and
+  # GitHub fails the whole workflow file for it. It does that on every push,
+  # even though this workflow is workflow_dispatch only, which is a confusing
+  # way to find out.
+  #
+  # So the selection happens here, in a place where it is allowed to, and
+  # `measure` consumes the filtered matrix. Filtering rather than skipping also
+  # means an unselected machine is never asked for a runner — which matters when
+  # the runner is a laptop that may be shut.
+  # ---------------------------------------------------------------------------
+  plan:
+    name: choose testbeds
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        env:
+          WANTED: ${{ inputs.testbeds }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, sys
+
           # driver: `xcode` is the canonical tool — the one every published
           # number came from — and is used wherever it can run. `portable` is
           # Tools/nam_benchmark, which exists because the Pi cannot run the
           # other one. The two agree to well under 1% on the same machine, but
           # each testbed sticks to one of them for life, so no history ever
           # contains a mixture.
-          - testbed: m2-air
-            runner: [self-hosted, macOS, ARM64, nambench-m2air]
-            driver: xcode
-          - testbed: m1-air
-            runner: [self-hosted, macOS, ARM64, nambench-m1air]
-            driver: xcode
-          - testbed: pi500
-            runner: [self-hosted, Linux, ARM64, nambench-pi500]
-            driver: portable
-            cpu-set: "0-3"
+          machines = [
+              {"testbed": "m2-air", "driver": "xcode",
+               "runner": ["self-hosted", "macOS", "ARM64", "nambench-m2air"]},
+              {"testbed": "m1-air", "driver": "xcode",
+               "runner": ["self-hosted", "macOS", "ARM64", "nambench-m1air"]},
+              {"testbed": "pi500", "driver": "portable", "cpu-set": "0-3",
+               "runner": ["self-hosted", "Linux", "ARM64", "nambench-pi500"]},
+          ]
+          known = {m["testbed"] for m in machines}
+
+          wanted = (os.environ.get("WANTED") or "all").strip()
+          if wanted == "all":
+              chosen = machines
+          else:
+              names = {n.strip() for n in wanted.split(",") if n.strip()}
+              unknown = names - known
+              if unknown:
+                  sys.exit(f"unknown testbed(s): {', '.join(sorted(unknown))}. "
+                           f"Known: {', '.join(sorted(known))}")
+              chosen = [m for m in machines if m["testbed"] in names]
+
+          if not chosen:
+              sys.exit("no testbeds selected")
+
+          print("matrix=" + json.dumps({"include": chosen}))
+          PY
+
+  measure:
+    needs: plan
+    name: ${{ matrix.testbed }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      # Never parallel: these are physical machines, and on a laptop that also
+      # has a browser open the only thing worse than a slow benchmark is two.
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4

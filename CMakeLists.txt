@@ -26,7 +26,7 @@
 #
 # Usage:
 #   cmake -S . -B build-conformance -DCMAKE_BUILD_TYPE=Release
-#   cmake --build build-conformance --parallel
+#   cmake --build build-conformance --parallel 4
 #   ctest --test-dir build-conformance --output-on-failure
 #
 # vendor/ must be populated first: ./Scripts/fetch-vendor.sh
@@ -191,11 +191,37 @@ function(nb_add_variant target)
 	endif()
 endfunction()
 
+# ---------------------------------------------------------------------------
+# Which variants to build.
+#
+# `upstream` and `planar` are the live comparison — the reference against the
+# kernels proposed in Core PR #313 — and are always built. Everything else is
+# regression insurance on code that no longer changes, and it is not cheap:
+# measured on an M2, all six conformance targets take 256 s against 32 s for
+# these two alone. Most of that is the kernel labs compiling 67 NEON candidates
+# at -O3, which is also what makes a CI job sit silent at 95% long enough to
+# look hung.
+#
+# NAMBENCH_ALL_VARIANTS brings back `fused` and both labs. What it buys:
+#
+#   fused     the reference the full lab's fu* candidates are validated
+#             against, and — off AArch64 — the only thing that exercises the
+#             generic engine, because there the upstream-vs-fused comparison
+#             is a2_fast against the generic reference implementation.
+#   labs      bit-identity checks on the verbatim ports, which are what make
+#             every other lab number mean anything.
+#
+# Neither is worthless; both are checks on static code. They belong on a
+# deliberate run rather than on every push.
+# ---------------------------------------------------------------------------
+option(NAMBENCH_ALL_VARIANTS
+	"Also build the superseded fused engine and the kernel labs" OFF)
+
 # --- Variant 1: sdatkinson/NeuralAmpModelerCore, routed to a2_fast ----------
 nb_add_variant(nam_conformance_upstream
 	VENDOR upstream
 	PREFIX nb_upstream
-	NAME upstream)
+	NAME a2_fast)
 
 # ---------------------------------------------------------------------------
 # The planar NEON kernels, as proposed to Core in PR #313.
@@ -218,20 +244,17 @@ nb_add_variant(nam_conformance_upstream
 nb_add_variant(nam_conformance_planar
 	VENDOR planar
 	PREFIX nb_planar
-	NAME planar
+	NAME a2_planar
 	DEFINES NB_VENDOR_HAS_PLANAR=1)
 
-# --- Variant 2: the fork, under ScopedEnginePrefer(FusedNeon) ---------------
-#
-# On AArch64 this is the fused NEON engine. Elsewhere its detector declines the
-# shape and the fork falls through to the *generic* engine, never to a2_fast —
-# so the driver reports which one it actually got and the comparator asserts the
-# right answer for the architecture rather than assuming one.
-nb_add_variant(nam_conformance_fused
-	VENDOR fused
-	PREFIX nb_fused
-	NAME fused
-	DEFINES NAM_ENABLE_FUSED=1)
+# --- The superseded fused engine, on request only ---------------------------
+if(NAMBENCH_ALL_VARIANTS)
+	nb_add_variant(nam_conformance_fused
+		VENDOR fused
+		PREFIX nb_fused
+		NAME fused
+		DEFINES NAM_ENABLE_FUSED=1)
+endif()
 
 # The labs need more than AArch64. They are written for the Clang/GCC dialect —
 # `#pragma clang loop`, `#pragma clang fp contract`, __builtin_prefetch — which
@@ -239,12 +262,12 @@ nb_add_variant(nam_conformance_fused
 # pragmas are how a candidate kernel pins down the codegen it is testing, and a
 # version with them stripped out would be a different kernel. clang-cl is fine
 # and is not excluded here, because it understands all of it.
-if(NB_AARCH64 AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+if(NAMBENCH_ALL_VARIANTS AND NB_AARCH64 AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 	set(NB_BUILD_LABS ON)
 else()
 	set(NB_BUILD_LABS OFF)
 endif()
-message(STATUS "NAMBench conformance: kernel labs = ${NB_BUILD_LABS}")
+message(STATUS "NAMBench conformance: all variants = ${NAMBENCH_ALL_VARIANTS}, kernel labs = ${NB_BUILD_LABS}")
 
 if(NB_BUILD_LABS)
 	file(GLOB _slim_sources CONFIGURE_DEPENDS "${NB_ROOT}/Sources/SlimEngines/*.cpp")
@@ -338,21 +361,24 @@ if(NAMBENCH_BUILD_BENCHMARK)
 	endfunction()
 
 	nb_add_engine_library(nam_engine_upstream
-		VENDOR upstream PREFIX nb_upstream NAME upstream)
+		VENDOR upstream PREFIX nb_upstream NAME a2_fast)
 
 	nb_add_engine_library(nam_engine_planar
-		VENDOR planar PREFIX nb_planar NAME planar
+		VENDOR planar PREFIX nb_planar NAME a2_planar
 		DEFINES NB_VENDOR_HAS_PLANAR=1)
 
-	# `fused` is no longer in the measured line-up — the planar kernels supersede
-	# it, and they cover the 3-channel submodel it never could. It stays built so
-	# the full lab's fu* candidates keep the reference they are validated against;
-	# nothing measures it unless asked.
-	nb_add_engine_library(nam_engine_fused
-		VENDOR fused PREFIX nb_fused NAME fused
-		DEFINES NAM_ENABLE_FUSED=1)
+	set(NB_ENGINE_LIBRARIES nam_engine_upstream nam_engine_planar)
 
-	set(NB_ENGINE_LIBRARIES nam_engine_upstream nam_engine_planar nam_engine_fused)
+	# `fused` left the measured line-up when the planar kernels superseded it, so
+	# it is only built when asked for — either to reproduce a published fused
+	# number with --with-fused, or as the reference the full lab's fu* candidates
+	# are validated against.
+	if(NAMBENCH_ALL_VARIANTS)
+		nb_add_engine_library(nam_engine_fused
+			VENDOR fused PREFIX nb_fused NAME fused
+			DEFINES NAM_ENABLE_FUSED=1)
+		list(APPEND NB_ENGINE_LIBRARIES nam_engine_fused)
+	endif()
 
 	if(NB_BUILD_LABS)
 		nb_add_engine_library(nam_engine_slim
@@ -375,6 +401,9 @@ if(NAMBENCH_BUILD_BENCHMARK)
 
 	if(NB_BUILD_LABS)
 		target_compile_definitions(nam_benchmark PRIVATE NAMBENCH_HAVE_LABS=1)
+	endif()
+	if(NAMBENCH_ALL_VARIANTS)
+		target_compile_definitions(nam_benchmark PRIVATE NAMBENCH_HAVE_FUSED=1)
 	endif()
 
 	# Find the engine libraries next to the executable, so the build tree can be
@@ -407,7 +436,10 @@ set(NB_CONFORMANCE_MODEL "${NB_VENDOR}/upstream/example_models/A2.nam"
 
 find_package(Python3 COMPONENTS Interpreter)
 
-set(NB_RUN_TARGETS nam_conformance_upstream nam_conformance_planar nam_conformance_fused)
+set(NB_RUN_TARGETS nam_conformance_upstream nam_conformance_planar)
+if(NAMBENCH_ALL_VARIANTS)
+	list(APPEND NB_RUN_TARGETS nam_conformance_fused)
+endif()
 if(NB_BUILD_LABS)
 	list(APPEND NB_RUN_TARGETS nam_conformance_slim nam_conformance_full)
 endif()

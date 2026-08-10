@@ -4,9 +4,9 @@ Compares NAM A2 WaveNet processing code, macOS and iOS.
 
 | Variant | Repository | Code path |
 |---|---|---|
-| `upstream` | [sdatkinson/NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) | `a2_fast` (Eigen GEMM) |
-| `planar` | [Core PR #313](https://github.com/sdatkinson/NeuralAmpModelerCore/pull/313) | `a2_planar` (planar NEON, both submodels) |
-| `fused` | [rikkus/OptimisationWorkOnNeuralAmpModelerCore](https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore) | `fused` — superseded by `planar`, `--with-fused` to include |
+| `a2_fast` | [sdatkinson/NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) | `a2_fast` (Eigen GEMM) — the reference |
+| `a2_planar` | [Core PR #313](https://github.com/sdatkinson/NeuralAmpModelerCore/pull/313) | `a2_planar` (planar NEON, both submodels) |
+| `fused` | [rikkus/OptimisationWorkOnNeuralAmpModelerCore](https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore) | `fused` — superseded by `a2_planar`, `--with-fused` to include |
 | `slim:*` | this repo, `Sources/SlimEngines` | experimental kernels for the 3-channel submodel |
 | `full:*` | this repo, `Sources/FullEngines` | experimental kernels for the 8-channel submodel |
 
@@ -70,7 +70,7 @@ and bit-identity for the kernels that claim to be verbatim ports.
 
 ```bash
 cmake -S . -B build-conformance -DCMAKE_BUILD_TYPE=Release
-cmake --build build-conformance --parallel
+cmake --build build-conformance --parallel 4
 ctest --test-dir build-conformance --output-on-failure
 ```
 
@@ -85,11 +85,11 @@ that runs where Xcode does not — which currently means a Raspberry Pi:
 
 ```bash
 cmake -S . -B build-benchmark -DCMAKE_BUILD_TYPE=Release -DNAMBENCH_BUILD_BENCHMARK=ON
-cmake --build build-benchmark --target nam_benchmark --parallel
+cmake --build build-benchmark --target nam_benchmark --parallel 4
 ./Scripts/run-benchmark.sh --cpu-set 0-3
 ```
 
-The default line-up is `upstream` against `planar`, on both A2 submodels:
+The default line-up is `a2_fast` against `a2_planar`, on both A2 submodels:
 
 | | M2 Air | Pi 500 (Cortex-A76) |
 |---|---|---|
@@ -124,11 +124,11 @@ pinned checkout into its own dynamic framework with `-fvisibility=hidden`,
 exporting only a handful of prefixed C symbols. Apple's two-level namespace
 keeps each framework bound to its own `nam::` internals.
 
-**The slim lab is a third framework built from the same tree as `upstream`,**
+**The slim lab is built from the same `vendor/upstream` tree as `a2_fast`,**
 through the same target template with the same flags — the only differences are
 `NB_ENABLE_SLIM_LAB` and the extra sources. That is what makes its kernel 0,
 `baseline` (a verbatim port of `a2_fast`'s `Channels == 3` branch), a usable
-control: it is bit-identical in output and lands within about 1% of `upstream`
+control: it is bit-identical in output and lands within about 1% of `a2_fast`
 in time, so anything a later kernel gains is the kernel and not the lab.
 
 **The engine is asserted, never assumed.** Before anything is measured, the app
@@ -226,7 +226,8 @@ Kernels are `nam::DSP` subclasses selected by index at runtime, sharing one
 weight loader (`slim_common.h`) so the only thing that varies between two
 measurements is the kernel. The planar family shares one templated
 implementation (`slim_planar_kernel.h`) parameterised by an options struct, so
-each candidate file reads as a diff against `planar`.
+each candidate file reads as a diff against the lab's own `planar` kernel
+(which is not the `a2_planar` variant — different thing, same idea).
 
 ## The full-path kernel lab
 
@@ -243,7 +244,7 @@ there are two families and two controls:
 - **`fu*`** reproduce `fused`'s arithmetic and are **bit-identical to it**.
 
 Kernel 0 (`a2_baseline`) is a verbatim port of `a2_fast`'s `Channels == 8`
-branch and has to land on `upstream`'s number; kernel 1 (`fu_baseline`) is a
+branch and has to land on `a2_fast`'s number; kernel 1 (`fu_baseline`) is a
 verbatim port of `fused`'s C=8 path and has to land on `fused`'s. Because a
 candidate can be derived from either engine, the runner compares every full-lab
 kernel against **both**, and the reports carry two parity columns — "bit-identical"

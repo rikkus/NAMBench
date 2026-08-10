@@ -79,7 +79,7 @@ BINARY="${BUILD_DIR}/nam_benchmark"
 [ -x "${BINARY}" ] || die "no nam_benchmark at ${BINARY}
   Build it with:
     cmake -S . -B ${BUILD_DIR} -DCMAKE_BUILD_TYPE=Release -DNAMBENCH_BUILD_BENCHMARK=ON
-    cmake --build ${BUILD_DIR} --target nam_benchmark --parallel"
+    cmake --build ${BUILD_DIR} --target nam_benchmark --parallel 4"
 
 # --- Model ------------------------------------------------------------------
 #

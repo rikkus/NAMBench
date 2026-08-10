@@ -20,6 +20,19 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      variants:
+        description: "Which variants to build"
+        default: lean
+        type: choice
+        options: [lean, all]
+  schedule:
+    # Weekly. `fused` and the kernel labs are checked here rather than on every
+    # push: they are regression insurance on code that no longer changes, and
+    # building them costs roughly ten times what the live comparison does — 34 s
+    # against 400 s on an M2. Once a week keeps the bit-identity checks on the
+    # verbatim ports alive without paying for them on every commit.
+    - cron: "17 4 * * 1"
 
 concurrency:
   group: conformance-${{ github.ref }}
@@ -27,6 +40,15 @@ concurrency:
 
 permissions:
   contents: read
+
+env:
+  # `upstream` and `planar` alone on a push; everything on the weekly run or on
+  # request. Expanded by Actions rather than by the shell, so it works the same
+  # on the Windows entries, where the default shell is pwsh and $NB_VARIANTS
+  # would silently expand to nothing.
+  NB_VARIANTS: >-
+    ${{ (inputs.variants == 'all' || github.event_name == 'schedule')
+        && '-DNAMBENCH_ALL_VARIANTS=ON' || '' }}
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -171,10 +193,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }} ${{ env.NB_VARIANTS }}
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel 4
 
       - name: Check
         run: ctest --test-dir build --build-config Release --output-on-failure
@@ -210,10 +232,10 @@ jobs:
           path: vendor
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 ${{ env.NB_VARIANTS }}
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel 4
 
   # ---------------------------------------------------------------------------
   # iOS, in the Simulator.
@@ -243,10 +265,10 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 ${{ env.NB_VARIANTS }}
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel 4
 
       - name: Boot a simulator
         id: sim
@@ -316,7 +338,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=${{ matrix.abi }} \
-            -DANDROID_PLATFORM=android-26
+            -DANDROID_PLATFORM=android-26 ${{ env.NB_VARIANTS }}
 
       - name: Build
-        run: cmake --build build --parallel
+        run: cmake --build build --parallel 4

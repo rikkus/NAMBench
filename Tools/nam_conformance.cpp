@@ -165,7 +165,7 @@ const char* engine_name(NbEngine engine)
     case NbEngineFused: return "fused";
     case NbEngineSlim: return "slim";
     case NbEngineFull: return "full";
-    case NbEnginePlanar: return "planar";
+    case NbEnginePlanar: return "a2_planar";
     case NbEngineUnknown: break;
   }
   return "unknown";

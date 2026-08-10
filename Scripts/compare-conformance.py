@@ -184,12 +184,12 @@ def expected_engine(record: Record, aarch64: bool) -> str | tuple[str, ...]:
     """
     variant, submodel = record.variant, record.submodel
 
-    if variant == "upstream":
+    if variant == "a2_fast":
         # a2_fast is compiled into every variant and matches the A2 shape on
         # both submodels, regardless of architecture.
         return "a2_fast"
 
-    if variant == "planar":
+    if variant == "a2_planar":
         # a2_planar.h defines NAM_A2_PLANAR for any target that defines
         # __aarch64__, so on AArch64 the kernels MUST be there — if they quietly
         # stopped being selected, every "planar" number would become an a2_fast
@@ -202,7 +202,7 @@ def expected_engine(record: Record, aarch64: bool) -> str | tuple[str, ...]:
         # /fp:precise does not contract a*b+c into an FMA, so the reference
         # branch would compute something else and bit-identity would not hold.
         if aarch64 and not record.compiler.startswith("msvc"):
-            return "planar"
+            return "a2_planar"
         return "a2_fast"
 
     if variant == "fused":
@@ -228,31 +228,31 @@ def reference_for(record: Record) -> tuple[str, str] | None:
     The kernel labs name their candidates after the engine whose arithmetic they
     reproduce, which is what makes this mechanical:
 
-      full lab   a2*  reproduce a2_fast   -> upstream/widest
+      full lab   a2*  reproduce a2_fast   -> a2_fast/widest
                  fu*  reproduce fused     -> fused/widest
-      slim lab   all reproduce a2_fast's 3-channel branch -> upstream/narrowest
+      slim lab   all reproduce a2_fast's 3-channel branch -> a2_fast/narrowest
 
-    `upstream` is the root of the tree and has nothing above it. `fused` is
-    compared against `upstream` because that is the comparison the project
-    exists to make.
+    `a2_fast` is the root of the tree and has nothing above it. Everything
+    else is compared against it, because reproducing what it computes is what
+    every one of them claims to do.
     """
-    if record.variant == "upstream":
+    if record.variant == "a2_fast":
         return None
 
-    if record.variant == "planar":
-        return ("upstream", record.submodel)
+    if record.variant == "a2_planar":
+        return ("a2_fast", record.submodel)
 
     if record.variant == "fused":
-        return ("upstream", record.submodel)
+        return ("a2_fast", record.submodel)
 
     if record.variant == "slim":
-        return ("upstream", "narrowest")
+        return ("a2_fast", "narrowest")
 
     if record.variant == "full":
         assert record.kernel is not None
         if record.kernel.startswith("fu"):
             return ("fused", "widest")
-        return ("upstream", "widest")
+        return ("a2_fast", "widest")
 
     return None
 
@@ -271,7 +271,7 @@ def expect_bit_identical(record: Record) -> bool:
     # is the property the PR is asking Core to rely on, so it is checked as
     # stated, on every platform and every compiler this suite reaches, rather
     # than allowed to pass at some number of dB.
-    if record.variant == "planar":
+    if record.variant == "a2_planar":
         return True
 
     return record.kernel is not None and record.kernel.endswith("baseline")
@@ -379,7 +379,7 @@ def main() -> int:
             if strict:
                 claim = (
                     "claims bit-identity with"
-                    if record.variant == "planar"
+                    if record.variant == "a2_planar"
                     else "is a verbatim port of"
                 )
                 failures.append(

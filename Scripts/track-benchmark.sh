@@ -62,6 +62,33 @@ SET_THRESHOLDS=0
 # fixed it, which is why this script ran on the Pi and died on the Mac.
 EXTRA=()
 
+# How many compiler processes to run at once.
+#
+# `cmake --build --parallel` with no number passes a bare -j to make, which
+# means *unlimited*: on an 8-core M2 Air that is 25-odd clang processes, 0% idle
+# and kernel_task pinned at 45% while macOS forces the machine to cool. The
+# build gets slower, not faster, and everything else on the laptop stops.
+#
+# Performance cores only on Apple silicon. The efficiency cores add little to a
+# memory-bound C++ compile and a great deal to the heat, and this is a machine
+# that has to be quiet enough to benchmark on afterwards.
+#
+# NAMBENCH_BUILD_JOBS overrides.
+build_jobs() {
+	if [ -n "${NAMBENCH_BUILD_JOBS:-}" ]; then
+		printf '%s' "${NAMBENCH_BUILD_JOBS}"
+		return
+	fi
+	local jobs=""
+	if [ "$(uname -s)" = "Darwin" ]; then
+		jobs="$(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null || true)"
+		[ -n "${jobs}" ] || jobs="$(sysctl -n hw.logicalcpu 2>/dev/null || true)"
+	else
+		jobs="$(nproc 2>/dev/null || true)"
+	fi
+	printf '%s' "${jobs:-4}"
+}
+
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -223,7 +250,7 @@ case "$(uname -s)" in
 		log "driver: nam_benchmark (portable)"
 		cmake -S . -B build-benchmark -DCMAKE_BUILD_TYPE=Release \
 			-DNAMBENCH_BUILD_BENCHMARK=ON >/dev/null
-		cmake --build build-benchmark --target nam_benchmark --parallel >/dev/null
+		cmake --build build-benchmark --target nam_benchmark --parallel "$(build_jobs)" >/dev/null
 		./Scripts/run-benchmark.sh \
 			--build-dir build-benchmark \
 			--submodels "${SUBMODELS}" \

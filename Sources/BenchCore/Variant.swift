@@ -11,7 +11,7 @@ public enum Engine: String, Sendable, Codable {
   case generic
   case a2Fast = "a2_fast"
   case fused
-  case planar
+  case planar = "a2_planar"
   case slim
   case full
 
@@ -33,7 +33,7 @@ public enum Engine: String, Sendable, Codable {
     case .generic: return "generic (Eigen WaveNet)"
     case .a2Fast: return "a2_fast (Eigen GEMM)"
     case .fused: return "fused (NEON)"
-    case .planar: return "planar NEON (Core PR #313)"
+    case .planar: return "a2_planar (planar NEON, Core PR #313)"
     case .slim: return "slim lab kernel"
     case .full: return "full lab kernel"
     }
@@ -262,7 +262,7 @@ public final class Variant {
   /// Upstream NeuralAmpModelerCore. It has no fused engine, so
   /// `create_config` routes the A2 shape to `a2_fast` on its own.
   public static let upstream = Variant(
-    name: "upstream",
+    name: "a2_fast",
     repository: "sdatkinson/NeuralAmpModelerCore",
     codePath: "a2_fast",
     expectedEngine: .a2Fast,
@@ -283,7 +283,7 @@ public final class Variant {
   /// would measure a2_fast twice and read as the kernels being worthless rather
   /// than absent.
   public static let planar = Variant(
-    name: "planar",
+    name: "a2_planar",
     repository: "rikkus/OptimisationWorkOnNeuralAmpModelerCore@apple-silicon-a2-planar",
     codePath: "a2_planar",
     expectedEngine: .planar,

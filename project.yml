@@ -87,7 +87,7 @@ targets:
       base:
         VENDOR_DIR: upstream
         NB_PREFIX: nb_upstream
-        NB_VARIANT_NAME: upstream
+        NB_VARIANT_NAME: a2_fast
         ENGINE_DEFINES: ""
         PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench.engine.upstream
     sources:
@@ -117,7 +117,7 @@ targets:
       base:
         VENDOR_DIR: planar
         NB_PREFIX: nb_planar
-        NB_VARIANT_NAME: planar
+        NB_VARIANT_NAME: a2_planar
         ENGINE_DEFINES: "NB_VENDOR_HAS_PLANAR=1"
         PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench.engine.planar
     sources:

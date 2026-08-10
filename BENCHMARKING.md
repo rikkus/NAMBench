@@ -21,11 +21,11 @@ back to back on one M2, with everything else equal:
 
 | | `nambench` | `nam_benchmark` |
 |---|---|---|
-| `upstream` | 413.96 ms (min 411.13) | 415.00 ms (min 412.15) |
+| `a2_fast` | 413.96 ms (min 411.13) | 415.00 ms (min 412.15) |
 | `fused` | 220.27 ms (min 218.91) | 218.85 ms (min 217.01) |
 | ratio | 1.879x | 1.896x |
 
-Within 0.25% on `upstream`, 0.6% on `fused`, 0.9% on the ratio — on a machine
+Within 0.25% on `a2_fast`, 0.6% on `fused`, 0.9% on the ratio — on a machine
 that was not idle. Getting there needed one non-obvious thing: `BenchCore` runs
 its measurement on a `QOS_CLASS_USER_INTERACTIVE` thread, and until the portable
 driver did the same, macOS put it on the efficiency cores and the two disagreed
@@ -37,7 +37,7 @@ Each testbed uses one driver for life, so no history ever contains a mixture.
 
 ```bash
 cmake -S . -B build-benchmark -DCMAKE_BUILD_TYPE=Release -DNAMBENCH_BUILD_BENCHMARK=ON
-cmake --build build-benchmark --target nam_benchmark --parallel
+cmake --build build-benchmark --target nam_benchmark --parallel 4
 ./Scripts/run-benchmark.sh --cpu-set 0-3
 ```
 
@@ -76,7 +76,7 @@ later reads a thermal difference as a code change.
 
 ## What is measured
 
-The line-up is `upstream` — `a2_fast`, the reference — against `planar`, the
+The line-up is `a2_fast` — the reference — against `a2_planar`, the
 NEON kernels proposed to Core in
 [PR #313](https://github.com/sdatkinson/NeuralAmpModelerCore/pull/313). The
 planar checkout is pinned to the head of that draft PR rather than to a copy of
@@ -92,8 +92,8 @@ Both A2 submodels are measured on every run, as separate Bencher series:
 
 | | channels | Bencher name |
 |---|---|---|
-| A2 standard | 8 | `a2-standard/upstream`, `a2-standard/planar` |
-| A2 nano | 3 | `a2-nano/upstream`, `a2-nano/planar` |
+| A2 standard | 8 | `a2-standard/a2_fast`, `a2-standard/a2_planar` |
+| A2 nano | 3 | `a2-nano/a2_fast`, `a2-nano/a2_planar` |
 
 They run inside one governor window and between one pair of thermal readings, so
 the pair describes the same machine in the same state.
@@ -153,7 +153,7 @@ Nothing needs forcing, and the Pi needs no special build.
 would be compared against computes something else and bit-identity would not
 hold. clang-cl on ARM64 defines `__aarch64__` and is unaffected.
 
-Conformance holds `planar` to exact bit-identity with `upstream`, so the claim
+Conformance holds `a2_planar` to exact bit-identity with `a2_fast`, so the claim
 keeps being tested rather than remembered — on Apple Silicon, on the Pi, and on
 GitHub's free Linux arm64 runners under both GCC and Clang on every push.
 

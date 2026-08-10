@@ -44,7 +44,9 @@
 extern "C" {
 NB_DECLARE_VARIANT(nb_upstream)
 NB_DECLARE_VARIANT(nb_planar)
+#if defined(NAMBENCH_HAVE_FUSED)
 NB_DECLARE_VARIANT(nb_fused)
+#endif
 #if defined(NAMBENCH_HAVE_LABS)
 NB_DECLARE_VARIANT(nb_slim)
 NB_DECLARE_KERNEL_LAB(nb_slim)
@@ -112,7 +114,7 @@ struct EngineApi
 /// One thing to measure: an engine, and for a lab, which kernel of it.
 struct Subject
 {
-  std::string name; // "upstream", "fused", "slim:planar", "full:fu_s8_head"
+  std::string name; // "a2_fast", "a2_planar", "slim:planar", "full:fu_s8_head"
   const EngineApi* api = nullptr;
   int kernel = -1;
 };
@@ -682,7 +684,7 @@ const char* engine_name(NbEngine engine)
     case NbEngineFused: return "fused";
     case NbEngineSlim: return "slim";
     case NbEngineFull: return "full";
-    case NbEnginePlanar: return "planar";
+    case NbEnginePlanar: return "a2_planar";
     case NbEngineUnknown: break;
   }
   return "unknown";
@@ -745,24 +747,27 @@ int main(int argc, char** argv)
   // --- Assemble the engine table -------------------------------------------
 
   EngineApi upstreamApi;
-  upstreamApi.name = "upstream";
+  upstreamApi.name = "a2_fast";
   upstreamApi.repository = "sdatkinson/NeuralAmpModelerCore";
   upstreamApi.codePath = "a2_fast";
   NB_FILL_BASE(upstreamApi, nb_upstream);
 
   EngineApi planarApi;
-  planarApi.name = "planar";
+  planarApi.name = "a2_planar";
   planarApi.repository = "rikkus/OptimisationWorkOnNeuralAmpModelerCore@apple-silicon-a2-planar";
   planarApi.codePath = "a2_planar (Core PR #313)";
   NB_FILL_BASE(planarApi, nb_planar);
 
-  // Built, not measured. `fused` left the line-up when the planar kernels
-  // superseded it; the API stays bound so a run can still ask for it by name.
+  // Present only when the build asked for it. `fused` left the line-up when the
+  // planar kernels superseded it, and building it costs time on every platform
+  // for a comparison nobody is making any more.
+#if defined(NAMBENCH_HAVE_FUSED)
   EngineApi fusedApi;
   fusedApi.name = "fused";
   fusedApi.repository = "rikkus/OptimisationWorkOnNeuralAmpModelerCore";
   fusedApi.codePath = "fused";
   NB_FILL_BASE(fusedApi, nb_fused);
+#endif
 
 #if defined(NAMBENCH_HAVE_LABS)
   EngineApi slimApi;
@@ -935,7 +940,7 @@ int main(int argc, char** argv)
   // from the file, never infer it from the flag that was passed.
 
   std::vector<Subject> subjects;
-  subjects.push_back({"upstream", &upstreamApi, -1});
+  subjects.push_back({"a2_fast", &upstreamApi, -1});
 
   // The planar kernels cover both A2 submodels — 3 channels and 8 — so unlike
   // `fused` there is no shape gate here. What there is instead is a check that
@@ -944,7 +949,7 @@ int main(int argc, char** argv)
   // numbers and the false impression that the kernels achieve nothing.
   if (probe.channels == 3 || probe.channels == 8)
   {
-    subjects.push_back({"planar", &planarApi, -1});
+    subjects.push_back({"a2_planar", &planarApi, -1});
   }
   else if (!config.quiet)
   {
@@ -954,6 +959,7 @@ int main(int argc, char** argv)
 
   if (includeFused)
   {
+#if defined(NAMBENCH_HAVE_FUSED)
     if (probe.channels % 4 == 0)
     {
       subjects.push_back({"fused", &fusedApi, -1});
@@ -964,6 +970,11 @@ int main(int argc, char** argv)
                   "this shape and the fork falls through to the generic engine\n",
                   probe.channels);
     }
+#else
+    std::fprintf(stderr, "error: --with-fused, but this build has no fused engine.\n"
+                         "  Configure with -DNAMBENCH_ALL_VARIANTS=ON.\n");
+    return 2;
+#endif
   }
 
 #if defined(NAMBENCH_HAVE_LABS)
@@ -1066,7 +1077,7 @@ int main(int argc, char** argv)
     // planar checkout builds to plain a2_fast. It would then measure the same
     // code as `upstream`, land within noise of it, and read as "the kernels are
     // worth nothing" rather than "the kernels are not in this build".
-    if (subject.name == "planar" && subject.api->engine(models[i]) != NbEnginePlanar)
+    if (subject.name == "a2_planar" && subject.api->engine(models[i]) != NbEnginePlanar)
     {
       std::fprintf(stderr,
                    "\nerror: the planar variant routed to %s, not to the planar kernels.\n"

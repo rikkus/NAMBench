@@ -29,9 +29,9 @@ reports the engine it actually got by asking the same detectors
 
 | | 8-channel submodel | 3-channel submodel |
 |---|---|---|
-| `upstream` | `a2_fast` | `a2_fast` |
-| `planar`, on AArch64 | `planar` | `planar` |
-| `planar`, elsewhere | `a2_fast` | `a2_fast` |
+| `a2_fast` | `a2_fast` | `a2_fast` |
+| `a2_planar`, on AArch64 | `a2_planar` | `a2_planar` |
+| `a2_planar`, elsewhere | `a2_fast` | `a2_fast` |
 | `fused`, on AArch64 | `fused` | `generic` |
 | `fused`, elsewhere | `generic` | `generic` |
 | slim lab | not built | `slim` |
@@ -45,7 +45,7 @@ Off AArch64 the detector rejects everything, and on the 3-channel submodel it
 rejects a channel count that is not a multiple of four. Both are asserted rather
 than avoided.
 
-That has a useful consequence. On x86_64 the `upstream` versus `fused`
+That has a useful consequence. On x86_64 the `a2_fast` versus `fused`
 comparison *is* `a2_fast` against the generic reference implementation — a
 correctness check the Apple-only build cannot perform at all, obtained for free
 from runners this project would otherwise have no use for.
@@ -55,13 +55,13 @@ from runners this project would otherwise have no use for.
 Every variant is compared against the one it is derived from, as `max|diff|` and
 as dB below the reference signal — the same measure `BenchCore` reports.
 
-- `planar` against `upstream` — held to **exact bit-identity**, on every
+- `a2_planar` against `a2_fast` — held to **exact bit-identity**, on every
   platform and compiler, because that is precisely what Core PR #313 claims and
   asks Core to rely on: "not within a tolerance, not below the noise floor — the
   same float32 bits, sample for sample"
-- `fused` against `upstream`
-- slim-lab kernels against `upstream` on the 3-channel submodel
-- full-lab `a2*` kernels against `upstream`, `fu*` kernels against `fused`
+- `fused` against `a2_fast`
+- slim-lab kernels against `a2_fast` on the 3-channel submodel
+- full-lab `a2*` kernels against `a2_fast`, `fu*` kernels against `fused`
 
 The floor is 100 dB, about 17 bits down and far below the noise floor of any
 capture. Current pairings sit at 119–141 dB.
@@ -104,7 +104,7 @@ No NaN, no infinity, no silent output, no diverged output.
 ```bash
 ./Scripts/fetch-vendor.sh
 cmake -S . -B build-conformance -DCMAKE_BUILD_TYPE=Release
-cmake --build build-conformance --parallel
+cmake --build build-conformance --parallel 4
 ctest --test-dir build-conformance --output-on-failure
 ```
 

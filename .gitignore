@@ -25,3 +25,5 @@ __pycache__/
 # A Bencher API key lives here on machines that upload. It was untracked but not
 # ignored, which is one `git add .` away from being published.
 .env
+
+benchmark-results/

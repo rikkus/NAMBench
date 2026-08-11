@@ -44,8 +44,17 @@ history would be a fabricated data point that every future comparison is drawn
 against.
 
 Several reports can be merged into one upload, which is how a run that measured
-both A2 submodels becomes a single Bencher report. Names carry the submodel, so
-`a2-standard/planar` and `a2-nano/planar` are distinct series that never collide.
+both A2 submodels becomes a single Bencher report.
+
+A benchmark name is `<model>/<kernel>` — `a2_standard/a2_planar`, `a2_nano/a2_fast`
+— because Bencher has exactly one free-text dimension per series and two things
+to say with it. The machine is not in the name: that is the *testbed* dimension,
+which is what keeps an M2's history from being averaged with a Pi's. So the four
+names, across three testbeds, are twelve independent series, and a threshold on
+one of them alerts on that kernel, on that model, on that machine alone.
+
+Both halves are spelled the way the Core code path spells them, underscores and
+all, so that a label on a dashboard and a symbol in the source are the same word.
 
 Usage:
     bencher-report.py <report.json> [more.json ...] [--output bmf.json]
@@ -70,6 +79,11 @@ def submodel_name(report: dict[str, Any]) -> str:
     Core PR #313, and everyone discussing these models, says A2 standard and
     A2 nano.
 
+    Underscores, not hyphens, so that the model half of a benchmark name is
+    punctuated like the kernel half — `a2_standard/a2_fast`, not the
+    `a2-standard/a2_fast` this once emitted, where the two halves of one name
+    disagreed about their own spelling and neither matched the source.
+
     Channel count first because it is unambiguous and present in every report;
     the submodel selector is the fallback, and it is spelled differently by the
     two producers — the portable driver writes a plain string, while Swift's
@@ -78,9 +92,9 @@ def submodel_name(report: dict[str, Any]) -> str:
     """
     channels = report.get("model", {}).get("channels")
     if channels == 8:
-        return "a2-standard"
+        return "a2_standard"
     if channels == 3:
-        return "a2-nano"
+        return "a2_nano"
 
     value = report.get("config", {}).get("submodel")
 

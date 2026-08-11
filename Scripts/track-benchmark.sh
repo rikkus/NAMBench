@@ -12,9 +12,15 @@
 #   Linux  ->  nam_benchmark, via Scripts/run-benchmark.sh, which also handles
 #              the CPU governor and the thermal check.
 #
-# The API key is never passed on the command line, never written to a file and
-# never echoed. It comes from the environment, or straight out of 1Password into
-# this process:
+# Everything Bencher needs is settled *before* the benchmark runs, not after it.
+# A measurement takes minutes of a machine held quiet on purpose, and finding out
+# at the end that the key was stale means throwing all of that away. So the
+# credential is resolved, and a real read is made against the API, while it still
+# costs nothing to fix. `--check` does exactly that and stops.
+#
+# The API key is never passed on the command line and never echoed. It comes
+# from the environment, from a .env beside the checkout, or straight out of
+# 1Password into this process:
 #
 #   export BENCHER_API_KEY="$(op read 'op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential')"
 #
@@ -36,13 +42,19 @@
 #                       standard and A2 nano, uploaded as separate series)
 #   --timing-seconds N  timing window per variant (default: 30)
 #   --cpu-set LIST      Linux only, taskset list, e.g. 0-3
+#   --check             check this machine can reach Bencher, then stop.
+#                       Measures nothing and uploads nothing.
 #   --dry-run           measure and convert, but do not upload
 #   --fail-on-alert     exit non-zero if Bencher raises an alert
-#   --thresholds        install/refresh the regression thresholds
+#   --no-sync           skip the threshold and plot sync after uploading
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Where the caller was standing, before the cd below. A .env is looked for here
+# as well as in the checkout, so `cd ~/NAMBench && Scripts/track-benchmark.sh`
+# and an absolute path from somewhere else both find the same file.
+INVOKED_FROM="${PWD}"
 cd "${REPO_ROOT}"
 
 PROJECT="${BENCHER_PROJECT:-}"
@@ -54,7 +66,8 @@ TIMING="30"
 CPU_SET=""
 DRY_RUN=0
 FAIL_ON_ALERT=0
-SET_THRESHOLDS=0
+SYNC=1
+CHECK=0
 
 # Arrays below are expanded as ${arr[@]+"${arr[@]}"} rather than "${arr[@]}".
 # That is not a typo and not superstition: macOS ships bash 3.2, where under
@@ -93,6 +106,52 @@ log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# --- .env -------------------------------------------------------------------
+#
+# A machine that uploads keeps its key in a .env beside the checkout, because
+# the alternative is remembering to export it into every shell — and the Pi is
+# driven over ssh, where a forgotten export used to be discovered at the end of
+# a ten-minute measurement rather than at the start of one.
+#
+# Parsed, not sourced, and only BENCHER_* is taken. Sourcing runs whatever is in
+# the file as shell, and this is a script whose entire output is a timing: a
+# stray PATH or LD_PRELOAD picked up from a file nobody reads any more would not
+# fail, it would quietly produce a number.
+#
+# Anything already exported wins, so `BENCHER_PROJECT=other ./track-benchmark.sh`
+# still overrides the file. Values are never printed.
+DOTENV_LOADED=""
+
+load_dotenv() {
+	local file="$1" line name value
+	[ -f "${file}" ] || return 0
+
+	while IFS= read -r line || [ -n "${line}" ]; do
+		line="${line%$'\r'}"
+		line="${line#"${line%%[![:space:]]*}"}"
+		case "${line}" in
+			''|'#'*) continue ;;
+			"export "*) line="${line#export }" ;;
+		esac
+
+		name="${line%%=*}"
+		# No '=' at all: ${line%%=*} is the whole line, and there is nothing to set.
+		[ "${name}" != "${line}" ] || continue
+		case "${name}" in BENCHER_*) ;; *) continue ;; esac
+
+		value="${line#*=}"
+		value="${value%"${value##*[![:space:]]}"}"
+		case "${value}" in
+			'"'*'"') value="${value#\"}"; value="${value%\"}" ;;
+			"'"*"'") value="${value#\'}"; value="${value%\'}" ;;
+		esac
+
+		[ -z "${!name:-}" ] || continue
+		export "${name}=${value}"
+		DOTENV_LOADED="${file}"
+	done < "${file}"
+}
+
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--project) PROJECT="$2"; shift 2 ;;
@@ -102,14 +161,23 @@ while [ $# -gt 0 ]; do
 		--submodels) SUBMODELS="$2"; shift 2 ;;
 		--timing-seconds) TIMING="$2"; shift 2 ;;
 		--cpu-set) CPU_SET="$2"; shift 2 ;;
+		--check) CHECK=1; shift ;;
 		--dry-run) DRY_RUN=1; shift ;;
 		--fail-on-alert) FAIL_ON_ALERT=1; shift ;;
-		--thresholds) SET_THRESHOLDS=1; shift ;;
+		--no-sync) SYNC=0; shift ;;
 		--) shift; EXTRA=("$@"); break ;;
-		-h|--help) sed -n '2,38p' "${BASH_SOURCE[0]}"; exit 0 ;;
+		# Everything from line 2 up to the first line that is not a comment, so
+		# the help cannot drift out of date with the header the way a hardcoded
+		# line range does every time the header grows.
+		-h|--help) awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
+			"${BASH_SOURCE[0]}"; exit 0 ;;
 		*) die "unknown option $1" ;;
 	esac
 done
+
+load_dotenv "${INVOKED_FROM}/.env"
+[ "${INVOKED_FROM}" = "${REPO_ROOT}" ] || load_dotenv "${REPO_ROOT}/.env"
+[ -n "${PROJECT}" ] || PROJECT="${BENCHER_PROJECT:-}"
 
 # --- Which machine is this? -------------------------------------------------
 #
@@ -185,12 +253,147 @@ fi
 # A measurement is attributed to a commit. If the tree does not match that
 # commit, the attribution is a lie, and it is a lie that survives in the history
 # long after the working copy is gone.
-if [ "${IN_GIT_REPO}" -eq 1 ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+# Not under --check, which measures nothing and so attributes nothing.
+if [ "${CHECK}" -eq 0 ] && [ "${IN_GIT_REPO}" -eq 1 ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
 	warn "the working tree has uncommitted changes.
 
   This result will be recorded against ${HASH:0:12}, which is not the code that
   produced it. Fine while you are setting Bencher up; commit before you record
   anything you intend to compare against later."
+fi
+
+# --- Bencher preflight ------------------------------------------------------
+#
+# Before the measurement, not after it. A run is minutes of a machine held
+# deliberately quiet, and a key that expired, a project renamed, or an ssh
+# session that never had the variable exported are all things that used to
+# surface at the upload — with the measurement already made and the machine
+# already warm. Every one of them is visible from here for the cost of one GET.
+#
+# --dry-run skips it, because a dry run is the one mode that is meant to work
+# with no credential at all.
+
+# BENCHER_API_KEY, not BENCHER_API_TOKEN. The CLI now reserves --token for JWTs
+# and takes an API key (bencher_user_* or bencher_run_*) via --key; handed a key
+# through the old variable it refuses outright:
+#
+#   error: invalid value (redacted) for '--token <TOKEN>': You supplied a
+#   Bencher API key to `--token`/`BENCHER_API_TOKEN`. Use `--key`/`BENCHER_API_KEY`
+#
+# BENCHER_API_TOKEN is still accepted *here* as an input, because plenty of
+# shells, CI configs and .env files still spell it that way — but it is
+# translated and then removed from the environment, because the CLI reads it
+# directly and would reject the run no matter which flag this script passes.
+resolve_credential() {
+	if [ -z "${BENCHER_API_KEY:-}" ] && [ -n "${BENCHER_API_TOKEN:-}" ]; then
+		BENCHER_API_KEY="${BENCHER_API_TOKEN}"
+	fi
+
+	if [ -z "${BENCHER_API_KEY:-}" ] && [ -n "${BENCHER_OP_REF:-}" ]; then
+		command -v op >/dev/null || die "BENCHER_OP_REF is set but the 1Password CLI is not installed"
+		log "reading the API key from 1Password"
+		BENCHER_API_KEY="$(op read "${BENCHER_OP_REF}")"
+	fi
+
+	[ -n "${BENCHER_API_KEY:-}" ] || die "no API key.
+
+  Any of:
+      put BENCHER_API_KEY=... in a .env beside the checkout
+      export BENCHER_API_KEY=\"\$(op read 'op://Developer/<item>/credential')\"
+      set BENCHER_OP_REF to that op:// reference and let this script read it
+  Do not pass it as an argument — process arguments are world-readable."
+
+	# Resolved only into this process's environment, never a command-line
+	# argument: those are visible to every other process on the machine for as
+	# long as the command runs.
+	export BENCHER_API_KEY
+	# Whatever the CLI would otherwise find and object to.
+	unset BENCHER_API_TOKEN
+
+	# Checked by prefix only; the value is never printed. A JWT in this slot is a
+	# real possibility for anyone who set the credential up before the CLI split
+	# the two, and the resulting error names the wrong fix.
+	case "${BENCHER_API_KEY}" in
+		bencher_user_*|bencher_run_*) ;;
+		*) warn "this does not look like a Bencher API key (they begin bencher_user_ or
+  bencher_run_). If it is an older JWT, the CLI wants it in --token instead, and
+  the better fix is to mint an API key in the Bencher console." ;;
+	esac
+}
+
+preflight() {
+	# The Pi is driven over ssh, and a non-interactive shell does not read the
+	# profile that puts ~/.cargo/bin on PATH — which is where the Bencher CLI
+	# installs itself. *Appended*, never prepended: this is a script whose whole
+	# output is a timing, and putting a cargo bin directory ahead of the system
+	# one could quietly substitute a different compiler or linker into the build.
+	# Appending can only add a tool that was otherwise missing.
+	if ! command -v bencher >/dev/null && [ -x "${HOME}/.cargo/bin/bencher" ]; then
+		PATH="${PATH}:${HOME}/.cargo/bin"
+		export PATH
+	fi
+
+	command -v bencher >/dev/null || die "the bencher CLI is not on PATH.
+
+  Install it with:
+      curl --proto '=https' --tlsv1.2 -sSfL https://bencher.dev/download/install-cli.sh | sh
+  and make sure ~/.cargo/bin is on your PATH.
+  Over ssh that is worth checking twice: a non-interactive shell often does not
+  read the profile that puts ~/.cargo/bin there."
+
+	command -v python3 >/dev/null || die "python3 is not on PATH; it converts the
+  report to Bencher Metric Format and syncs the thresholds and plots."
+
+	[ -n "${PROJECT}" ] || die "no Bencher project.
+
+  Pass --project <slug>, put BENCHER_PROJECT=<slug> in a .env beside the
+  checkout, or export it."
+
+	resolve_credential
+
+	# The read. Deliberately the smallest one that proves all three of network,
+	# credential and project at once: an unreachable API, a key that is wrong or
+	# expired, and a project slug that does not exist each fail here, and each
+	# says so in the CLI's own words.
+	local output
+	if ! output="$(bencher project view "${PROJECT}" 2>&1)"; then
+		# Redacted before it is shown. The CLI quotes the key back at you when it
+		# fails its own format check — `invalid value 'bencher_user_...' for
+		# '--key'` — and this script's one promise about the credential is that it
+		# never appears in a terminal or a CI log.
+		die "cannot read project '${PROJECT}' from Bencher, so there is no point
+  measuring first and finding out afterwards. The CLI said:
+
+$(printf '%s\n' "${output}" \
+			| sed -E 's/bencher_(user|run)_[A-Za-z0-9]+/bencher_\1_<redacted>/g' \
+			| sed 's/^/    /')"
+	fi
+
+	local visibility
+	visibility="$(printf '%s' "${output}" \
+		| python3 -c 'import json,sys; print(json.load(sys.stdin).get("visibility", "?"))' 2>/dev/null || true)"
+	log "bencher: ${PROJECT} readable${visibility:+ (${visibility})}"
+}
+
+if [ "${DRY_RUN}" -eq 1 ]; then
+	[ "${CHECK}" -eq 0 ] || die "--check and --dry-run ask for opposite things:
+  one talks to Bencher and measures nothing, the other measures and talks to
+  nothing."
+	log "--dry-run: skipping the Bencher preflight"
+else
+	preflight
+fi
+
+if [ "${CHECK}" -eq 1 ]; then
+	log "check passed"
+	printf '  testbed  %s\n' "${TESTBED}"
+	printf '  project  %s\n' "${PROJECT}"
+	printf '  branch   %s%s\n' "${BRANCH}" "${HASH:+ @ ${HASH:0:12}}"
+	printf '  key      %s\n' "${DOTENV_LOADED:-the environment}"
+	printf '  driver   %s\n' \
+		"$([ "$(uname -s)" = "Darwin" ] && echo 'nambench (Xcode)' || echo 'nam_benchmark (portable)')"
+	log "nothing was measured and nothing was uploaded"
+	exit 0
 fi
 
 # --- Measure ----------------------------------------------------------------
@@ -275,82 +478,17 @@ if [ "${DRY_RUN}" -eq 1 ]; then
 fi
 
 # --- Upload -----------------------------------------------------------------
-
-command -v bencher >/dev/null || die "the bencher CLI is not on PATH.
-
-  Install it with:
-      curl --proto '=https' --tlsv1.2 -sSfL https://bencher.dev/download/install-cli.sh | sh
-  and make sure ~/.cargo/bin is on your PATH."
-
-[ -n "${PROJECT}" ] || die "no Bencher project.
-
-  Pass --project <slug>, or:
-      export BENCHER_PROJECT=<slug>"
-
-# Resolve the credential last, and only into this process's environment. Never a
-# command-line argument: those are visible to every other process on the machine
-# for as long as the command runs.
 #
-# BENCHER_API_KEY, not BENCHER_API_TOKEN. The CLI now reserves --token for JWTs
-# and takes an API key (bencher_user_* or bencher_run_*) via --key; handed a key
-# through the old variable it refuses outright:
-#
-#   error: invalid value (redacted) for '--token <TOKEN>': You supplied a
-#   Bencher API key to `--token`/`BENCHER_API_TOKEN`. Use `--key`/`BENCHER_API_KEY`
-#
-# BENCHER_API_TOKEN is still accepted *here* as an input, because plenty of
-# shells and CI configs still export it under that name — but it is translated
-# and then removed from the environment below, because the CLI reads it directly
-# and would reject the run no matter which flag this script passes.
-if [ -z "${BENCHER_API_KEY:-}" ] && [ -n "${BENCHER_API_TOKEN:-}" ]; then
-	BENCHER_API_KEY="${BENCHER_API_TOKEN}"
-fi
-
-if [ -z "${BENCHER_API_KEY:-}" ] && [ -n "${BENCHER_OP_REF:-}" ]; then
-	command -v op >/dev/null || die "BENCHER_OP_REF is set but the 1Password CLI is not installed"
-	log "reading the API key from 1Password"
-	BENCHER_API_KEY="$(op read "${BENCHER_OP_REF}")"
-fi
-
-[ -n "${BENCHER_API_KEY:-}" ] || die "no API key.
-
-  Either:
-      export BENCHER_API_KEY=\"\$(op read 'op://Developer/<item>/credential')\"
-  or set BENCHER_OP_REF to that op:// reference and let this script read it.
-  Do not pass it as an argument — process arguments are world-readable."
-
-export BENCHER_API_KEY
-# Whatever the CLI would otherwise find and object to.
-unset BENCHER_API_TOKEN
-
-# Checked by prefix only; the value is never printed. A JWT in this slot is a
-# real possibility for anyone who set the credential up before the CLI split the
-# two, and the resulting error names the wrong fix.
-case "${BENCHER_API_KEY}" in
-	bencher_user_*|bencher_run_*) ;;
-	*) warn "this does not look like a Bencher API key (they begin bencher_user_ or
-  bencher_run_). If it is an older JWT, the CLI wants it in --token instead, and
-  the better fix is to mint an API key in the Bencher console." ;;
-esac
-
-THRESHOLD_ARGS=()
-if [ "${SET_THRESHOLDS}" -eq 1 ]; then
-	# A t-test on core_percent, and no alert until there are ten runs to compare
-	# against — below that the test is arithmetic on nothing.
-	THRESHOLD_ARGS=(
-		--threshold-measure core_percent
-		--threshold-test t_test
-		--threshold-min-sample-size 10
-		--threshold-max-sample-size 64
-		--threshold-upper-boundary 0.98
-		--thresholds-reset
-	)
-	log "installing/refreshing thresholds on ${BRANCH}/${TESTBED}"
-fi
+# The CLI, the project, the key and the API were all checked before the
+# measurement, and BENCHER_API_KEY is already exported. Nothing to resolve here.
 
 ALERT_ARGS=()
 [ "${FAIL_ON_ALERT}" -eq 1 ] && ALERT_ARGS=(--error-on-alert)
 
+# No --threshold-* flags here. The model belongs to Scripts/bencher-sync.py, in
+# one place: those flags come with --thresholds-reset, so two upload paths that
+# disagree by a single argument would take turns quietly redefining the model
+# for a branch and testbed, and the one that alerts is whichever ran last.
 log "uploading to ${PROJECT} as ${BRANCH}/${TESTBED}"
 bencher run \
 	--project "${PROJECT}" \
@@ -359,7 +497,19 @@ bencher run \
 	--testbed "${TESTBED}" \
 	--adapter json \
 	--file "${BMF}" \
-	${THRESHOLD_ARGS[@]+"${THRESHOLD_ARGS[@]}"} \
 	${ALERT_ARGS[@]+"${ALERT_ARGS[@]}"}
+
+# After the upload, so a machine or a kernel measured here for the first time
+# gets its threshold and its chart from this run rather than from whenever
+# somebody next remembers. Idempotent, deletes nothing, and cheap enough that
+# there is no reason to make it opt-in.
+if [ "${SYNC}" -eq 1 ]; then
+	log "syncing thresholds and plots"
+	SYNC_ARGS=(--project "${PROJECT}" --branch "${BRANCH}")
+	# Plots are pinned, project-wide, and capped at 64, so they follow main
+	# only; a branch still gets thresholds, and its data can be plotted ad hoc.
+	[ "${BRANCH}" = "main" ] || SYNC_ARGS+=(--skip-plots)
+	python3 "${REPO_ROOT}/Scripts/bencher-sync.py" "${SYNC_ARGS[@]}"
+fi
 
 log "done"

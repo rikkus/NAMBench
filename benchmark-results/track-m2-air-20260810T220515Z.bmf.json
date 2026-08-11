@@ -1,0 +1,30 @@
+{
+  "a2-nano/a2_fast": {
+    "core_percent": {
+      "lower_value": 0.5130078257682203,
+      "upper_value": 0.5155893029506995,
+      "value": 0.5143289814222172
+    }
+  },
+  "a2-nano/a2_planar": {
+    "core_percent": {
+      "lower_value": 0.24949065000916365,
+      "upper_value": 0.25145091331174785,
+      "value": 0.2504676391683593
+    }
+  },
+  "a2-standard/a2_fast": {
+    "core_percent": {
+      "lower_value": 3.696697638829495,
+      "upper_value": 3.703801008002933,
+      "value": 3.700363131183311
+    }
+  },
+  "a2-standard/a2_planar": {
+    "core_percent": {
+      "lower_value": 1.482442421650681,
+      "upper_value": 1.4878192009285844,
+      "value": 1.485103070625996
+    }
+  }
+}

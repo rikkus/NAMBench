@@ -127,6 +127,29 @@ jobs:
       - name: Fetch pinned sources
         run: ./Scripts/fetch-vendor.sh
 
+      # --- Can we still talk to Bencher? --------------------------------
+      #
+      # Before the build and the measurement, for the same reason
+      # Scripts/track-benchmark.sh does it: these are physical machines held
+      # quiet for minutes at a time, and a rotated secret or a renamed project
+      # discovered at the upload throws all of that away. One GET says so first.
+      #
+      # A missing secret is still not an error — it means "measure, do not
+      # publish", which is a legitimate way to run this workflow.
+      - uses: bencherdev/bencher@main
+
+      - name: Check Bencher is reachable
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY || secrets.BENCHER_API_TOKEN }}
+          BENCHER_PROJECT: ${{ vars.BENCHER_PROJECT }}
+        run: |
+          if [ -z "${BENCHER_API_KEY:-}" ] || [ -z "${BENCHER_PROJECT:-}" ]; then
+            echo "::warning::BENCHER_API_KEY secret or BENCHER_PROJECT variable is unset;"\
+                 "this run will measure but not upload. See BENCHMARKING.md."
+            exit 0
+          fi
+          bencher project view "$BENCHER_PROJECT" > /dev/null
+
       # --- The portable driver ------------------------------------------
       - name: Build (portable)
         if: matrix.driver == 'portable'
@@ -166,8 +189,8 @@ jobs:
           products="$(xcodebuild -project NAMBench.xcodeproj -scheme nambench-cli \
             -configuration Release -showBuildSettings \
             | awk -F' = ' '/ BUILT_PRODUCTS_DIR =/{print $2; exit}')"
-          # Both submodels become separate Bencher series — a2-standard/* and
-          # a2-nano/* — merged into one upload so a run is one report.
+          # Both submodels become separate Bencher series — a2_standard/* and
+          # a2_nano/* — merged into one upload so a run is one report.
           reports=()
           IFS=','
           for submodel in ${{ inputs.submodels }}; do
@@ -185,9 +208,9 @@ jobs:
           python3 Scripts/bencher-report.py "${reports[@]}" --output bmf.json
 
       # --- Publish -------------------------------------------------------
-      - uses: bencherdev/bencher@main
-
+      # The CLI was installed before the build, by the preflight above.
       - name: Track
+        id: track
         env:
           # BENCHER_API_KEY, not BENCHER_API_TOKEN: the CLI reserves --token for
           # JWTs and rejects an API key handed to it. Either secret name works
@@ -203,6 +226,14 @@ jobs:
           # The key reaches the CLI through the environment rather than argv:
           # process arguments are readable by anything else on the runner, and
           # these runners are somebody's laptop.
+          #
+          # No --threshold-* flags, and no --thresholds-reset. The threshold
+          # model is owned by Scripts/bencher-sync.py below, in one place: these
+          # flags have to be repeated identically by every upload path or
+          # --thresholds-reset lets whichever ran last silently redefine the
+          # model for the branch and testbed. --error-on-alert stays, because
+          # honouring the threshold is this step's job even though defining it
+          # is not.
           bencher run \
             --project "$BENCHER_PROJECT" \
             --branch "$GITHUB_REF_NAME" \
@@ -210,12 +241,35 @@ jobs:
             --testbed "${{ matrix.testbed }}" \
             --adapter json \
             --file bmf.json \
-            --threshold-measure core_percent \
-            --threshold-test t_test \
-            --threshold-max-sample-size 64 \
-            --threshold-upper-boundary 0.98 \
-            --thresholds-reset \
             --error-on-alert
+
+      # After the upload, so that a kernel or a machine measured for the first
+      # time gets its threshold and its chart from the run that introduced it,
+      # rather than from whenever somebody next remembers. Idempotent, and it
+      # deletes nothing.
+      #
+      # Conditioned on Track having *run*, success or failure, rather than on
+      # success: an --error-on-alert failure is exactly when the charts are
+      # wanted, and a run that alerted still uploaded its metrics. A build that
+      # never got as far as uploading skips this, so the step cannot fail a
+      # second time over a CLI that was never installed.
+      - name: Sync thresholds and plots
+        if: steps.track.conclusion == 'success' || steps.track.conclusion == 'failure'
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY || secrets.BENCHER_API_TOKEN }}
+          BENCHER_PROJECT: ${{ vars.BENCHER_PROJECT }}
+        run: |
+          if [ -z "${BENCHER_API_KEY:-}" ] || [ -z "${BENCHER_PROJECT:-}" ]; then
+            exit 0
+          fi
+          # A branch gets thresholds, so a benchmark run on it is still checked.
+          # It does not get pinned plots: a plot is a fixed set of UUIDs on a
+          # project-wide dashboard limited to 64 of them, and one set per branch
+          # would fill that with charts nobody asked for and nobody deletes.
+          # Branch data is still there to be plotted ad hoc.
+          args=(--branch "$GITHUB_REF_NAME")
+          [ "$GITHUB_REF_NAME" = "main" ] || args+=(--skip-plots)
+          python3 Scripts/bencher-sync.py "${args[@]}"
 
       - uses: actions/upload-artifact@v4
         if: always()

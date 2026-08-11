@@ -92,8 +92,8 @@ Both A2 submodels are measured on every run, as separate Bencher series:
 
 | | channels | Bencher name |
 |---|---|---|
-| A2 standard | 8 | `a2-standard/a2_fast`, `a2-standard/a2_planar` |
-| A2 nano | 3 | `a2-nano/a2_fast`, `a2-nano/a2_planar` |
+| A2 standard | 8 | `a2_standard/a2_fast`, `a2_standard/a2_planar` |
+| A2 nano | 3 | `a2_nano/a2_fast`, `a2_nano/a2_planar` |
 
 They run inside one governor window and between one pair of thermal readings, so
 the pair describes the same machine in the same state.
@@ -212,8 +212,70 @@ A variant that failed its agreement threshold is **omitted entirely**, never
 reported as zero. `Scripts/bencher-report.py` refuses to emit an empty run for
 the same reason: an empty result set uploads as "nothing regressed".
 
-The threshold is a t-test on `core_percent` with a 0.98 upper boundary over a
-rolling 64-sample window, and `--error-on-alert` makes a breach fail the job.
+### What a series is
+
+A benchmark name is `<model>/<kernel>` — `a2_standard/a2_planar`,
+`a2_nano/a2_fast` — because Bencher gives a series exactly one free-text
+dimension and there are two things to say with it. The machine is deliberately
+not in the name: that is the *testbed* dimension, and keeping it separate is
+what stops an M2's history being averaged with a Pi's.
+
+So four names across three testbeds are twelve independent series. Both halves
+are spelled the way the Core code path spells them, underscores and all, so a
+label on the dashboard and a symbol in the source are the same word.
+
+### Thresholds, plots, and `bencher-sync.py`
+
+`bencher run` uploads metrics and nothing else. A chart has to be pinned before
+anyone can see it, and a threshold has to exist before a regression can raise an
+alert — and both are per-dimension, so the newest kernel or the newest machine
+is otherwise the one thing nobody is watching.
+
+[`Scripts/bencher-sync.py`](Scripts/bencher-sync.py) derives both from what is
+in the project, and runs after every upload from both paths. It is idempotent
+and it deletes nothing.
+
+```bash
+BENCHER_PROJECT=nambench Scripts/bencher-sync.py --dry-run
+```
+
+**Thresholds** — one per (branch, testbed, `core_percent`). That is the whole of
+Bencher's threshold scope; it is not per benchmark, and does not need to be. One
+model per machine is evaluated against each benchmark on that machine
+separately, so a single t-test alerts on `a2_nano/a2_planar` regressing while
+`a2_standard/a2_fast` holds. Per kernel, per model, per testbed — with one model
+to maintain rather than twelve.
+
+The model is a t-test over a rolling 64-sample window, with **both** boundaries
+at 0.98 and nothing alerting until there are ten samples to compare against.
+Slower is the regression anyone expects. The lower boundary catches the more
+dangerous case: a result that is suddenly and impossibly *fast* usually means
+the kernel stopped doing the work — a model that failed to load, a routing
+change that fell through to a smaller path, a loop the compiler found dead — and
+without it that arrives as a win and gets defended.
+
+Thresholds are installed for every testbed as soon as it exists, rather than
+being carried along by `bencher run --threshold-*`. Those flags come with
+`--thresholds-reset`, so two upload paths differing by one argument take turns
+redefining the model and the one that alerts is whichever ran last. That is why
+neither the workflow nor `track-benchmark.sh` passes them any more, while both
+still pass `--error-on-alert`.
+
+**Plots** — one per (testbed, model), carrying every kernel of that model.
+
+A pinned plot is a fixed list of UUIDs and cannot follow new data by itself,
+which is the reason for the sync rather than a one-off. Grouping this way puts
+`a2_fast` and `a2_planar` on one axis at one scale, which is the comparison this
+project exists to make. Machines stay apart because the faster one would flatten
+the other against the baseline, and `a2_standard` stays away from `a2_nano`
+because they differ by roughly seven times. Each plot draws the error bars — the
+min and max of the accepted set, so you can see how noisy the machine was before
+believing a step in the line — and the boundary limits.
+
+Plots follow `main` only. They are project-wide and capped at 64, so a set per
+branch would fill the dashboard with charts nobody asked for and nobody deletes;
+branch data is still there to be plotted ad hoc. Thresholds do follow the
+branch, so a run on one is still checked.
 
 ### By hand, without a runner
 
@@ -226,6 +288,57 @@ rather than two forked ones.
 export BENCHER_API_KEY="$(op read 'op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential')"
 export BENCHER_PROJECT=nambench
 ```
+
+Or put them in a **`.env` beside the checkout**, which is what the machines that
+upload regularly do — the Pi is driven over ssh, and an export forgotten in a
+non-interactive shell used to be discovered at the end of a ten-minute
+measurement rather than the start of one:
+
+```
+BENCHER_API_KEY=bencher_user_...
+BENCHER_PROJECT=nambench
+```
+
+Both `track-benchmark.sh` and `bencher-sync.py` read it, from the working
+directory and from the checkout. It is parsed rather than sourced, and only
+`BENCHER_*` is taken from it: sourcing runs whatever is in the file as shell,
+and a stray `PATH` or `LD_PRELOAD` left in a file nobody reads any more would
+not fail here, it would quietly produce a number. Anything already exported
+wins. `.env` is gitignored.
+
+### Check before you measure
+
+```bash
+./Scripts/track-benchmark.sh --check
+```
+
+Resolves the testbed, the branch and the credential, then makes one real read
+against the Bencher API — `bencher project view` — and stops. Measures nothing,
+uploads nothing.
+
+```
+==> detected testbed: pi500
+==> bencher: nambench readable (public)
+==> check passed
+  testbed  pi500
+  project  nambench
+  branch   main @ 75660a59201d
+  key      /home/rik/NAMBench/.env
+  driver   nam_benchmark (portable)
+```
+
+A normal run does the same check first, before the build. A run is minutes of a
+machine held deliberately quiet, and an expired key, a renamed project or a
+missing CLI found at the upload throws all of it away; one GET beforehand costs
+nothing. `.github/workflows/benchmark.yml` checks the same way, before its
+build, for the same reason. `--dry-run` skips it — that is the one mode meant to
+work with no credential at all.
+
+The CLI installs itself into `~/.cargo/bin`, which a non-interactive ssh shell
+does not have on `PATH`. The script appends that directory if `bencher` is not
+otherwise found — appended, never prepended, because putting a cargo bin
+directory ahead of the system one could substitute a different compiler into the
+build of the thing being timed.
 
 **`BENCHER_API_KEY`, not `BENCHER_API_TOKEN`.** The CLI reserves `--token` for
 JWTs and refuses an API key given to it:
@@ -249,11 +362,19 @@ Then, on the M2 Air:
 and on the Pi:
 
 ```bash
-ssh piv "cd ~/NAMBench && PATH=\$HOME/.cargo/bin:\$PATH \
-  BENCHER_API_KEY='$BENCHER_API_KEY' BENCHER_PROJECT=nambench \
-  ./Scripts/track-benchmark.sh --cpu-set 0-3 \
+ssh piv "cd ~/NAMBench && ./Scripts/track-benchmark.sh --cpu-set 0-3 \
     --branch '$(git rev-parse --abbrev-ref HEAD)' \
     --hash '$(git rev-parse HEAD)'"
+```
+
+No `BENCHER_API_KEY` and no `PATH` here any more: the key comes from the Pi's own
+`.env`, and the script finds `~/.cargo/bin` itself. Passing the key through an
+ssh command line put it in the process table of both machines for the duration
+of the run, which was the one thing everything else about it was arranged to
+avoid. Check first, from here:
+
+```bash
+ssh piv "cd ~/NAMBench && ./Scripts/track-benchmark.sh --check"
 ```
 
 **Pass `--branch` and `--hash` on the Pi.** Its copy is rsync'd without `.git`,
@@ -272,19 +393,19 @@ Useful flags:
 
 | | |
 |---|---|
+| `--check` | check this machine can reach Bencher, then stop |
 | `--dry-run` | measure and convert, print the BMF, upload nothing |
-| `--thresholds` | install the regression thresholds (see below) |
 | `--fail-on-alert` | exit non-zero when Bencher raises one |
+| `--no-sync` | skip the threshold and plot sync after uploading |
 | `--submodel narrowest` | measure the 3-channel path instead |
 | `--timing-seconds N` | shorter window while you are setting things up |
 
 Run `--dry-run` first. It exercises the whole path bar the upload.
 
-**Don't add `--thresholds` yet.** A t-test against fewer than ten runs is
-arithmetic on nothing; the flag sets `--threshold-min-sample-size 10` so nothing
-alerts before then, but there is no reason to install a model until there is a
-history for it to describe. Do a handful of runs on each machine first, then add
-`--thresholds` once, and drop it again afterwards.
+There is no `--thresholds` flag any more, and nothing to remember to add once a
+machine has a history: the sync installs the model straight away, and its
+minimum sample size of ten means it sits inert until there are ten runs for the
+t-test to describe.
 
 **Commit before recording anything you care about.** A result is attributed to a
 commit, and the script warns if the working tree does not match it — an

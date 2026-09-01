@@ -98,6 +98,16 @@ else()
 	set(NB_AARCH64 OFF)
 endif()
 
+# 32-bit ARM, which is its own target rather than "not AArch64": the RK3288 in
+# the HeadRush Core and Prime is a quad Cortex-A17, ARMv7-A, with NEON and
+# VFPv4 but only 16 Q registers and no by-element FMA. Sources/A32Engines is the
+# lab for it.
+if(NB_TARGET_ARCH MATCHES "^(armv7l|armv7-a|armv7ve|armv7|armhf|armeabi-v7a|arm)$")
+	set(NB_ARMV7 ON)
+else()
+	set(NB_ARMV7 OFF)
+endif()
+
 # A universal or multi-arch build would compile the lab sources for every slice,
 # including the ones with no NEON. Refuse rather than fail deep in a header.
 list(LENGTH NB_TARGET_ARCH _nb_arch_count)
@@ -133,9 +143,75 @@ else()
 		-O3 -Wall -Wextra -Wno-unused-parameter)
 endif()
 
+# ---------------------------------------------------------------------------
+# ARMv7: the architecture flags are a CORRECTNESS setting here, not tuning.
+#
+# Three facts, each measured on the toolchain rather than read off a manual:
+#
+#   1. GCC's default for arm-linux-gnueabihf is -march=armv7-a+fp -mfpu=auto,
+#      which defines neither __ARM_NEON__ nor __ARM_FEATURE_FMA. Without this
+#      block an armhf build of this repo has no NEON at all.
+#   2. -mfpu=neon gives __ARM_NEON__ but NOT __ARM_FEATURE_FMA. Eigen keys
+#      EIGEN_VECTORIZE_FMA off that macro (ConfigureVectorization.h), and then
+#      NEON/PacketMath.h selects the non-fused vmlaq_f32 for every pmadd instead
+#      of vfmaq_f32. That silently changes a2_fast's own C=8 arithmetic — the
+#      reference the whole lab is measured against.
+#   3. -mcpu=cortex-a17 implies armv7ve, so these binaries carry hardware
+#      integer divide and will not run on a plain armv7-a part. That is correct
+#      for this target; it is recorded in A32-PATH.md so nobody mistakes the
+#      result for a general armhf build.
+#
+# -ffp-contract=fast is GCC's default and is stated explicitly because a2_fast's
+# C=3 branch depends on it: its bit-identity premise is that the compiler
+# contracts a*b+c into a fused multiply-add. Kernels that must NOT contract block
+# it locally (a32lab::compat::round_now), never by turning this off globally.
+# ---------------------------------------------------------------------------
+set(NAMBENCH_ARM_CPU "cortex-a17" CACHE STRING "-mcpu for ARMv7 targets")
+set(NAMBENCH_ARM_FPU "neon-vfpv4" CACHE STRING "-mfpu for ARMv7 targets")
+
+if(NB_ARMV7 AND NOT MSVC)
+	target_compile_options(nb_conformance_flags INTERFACE
+		-mcpu=${NAMBENCH_ARM_CPU}
+		-mfpu=${NAMBENCH_ARM_FPU}
+		-mfloat-abi=hard
+		-ffp-contract=fast)
+	# The cross toolchain's libstdc++/libgcc are usually newer than the ones on
+	# the device. Static-linking just those two removes the most likely
+	# "cannot load" failure without touching the engine libraries, whose
+	# separation is the point of the layout.
+	target_link_options(nb_conformance_flags INTERFACE
+		-static-libstdc++ -static-libgcc)
+	message(STATUS "NAMBench conformance: ARMv7 flags -mcpu=${NAMBENCH_ARM_CPU} "
+		"-mfpu=${NAMBENCH_ARM_FPU} -mfloat-abi=hard")
+endif()
+
 target_compile_definitions(nb_conformance_flags INTERFACE
 	NDEBUG=1
 	NAM_ENABLE_A2_FAST=1)
+
+# The premise the A32 lab asserts in its compat header, checked once here so the
+# failure names the flag rather than arriving as a parity mismatch 40 minutes
+# into a sweep.
+if(NB_ARMV7 AND NOT MSVC)
+	include(CheckCXXSourceCompiles)
+	set(CMAKE_REQUIRED_FLAGS
+		"-mcpu=${NAMBENCH_ARM_CPU} -mfpu=${NAMBENCH_ARM_FPU} -mfloat-abi=hard")
+	check_cxx_source_compiles("
+		#if !defined(__ARM_NEON) || !defined(__ARM_FEATURE_FMA)
+		#error no neon-vfpv4
+		#endif
+		int main() { return 0; }"
+		NB_ARMV7_HAS_NEON_FMA)
+	unset(CMAKE_REQUIRED_FLAGS)
+	if(NOT NB_ARMV7_HAS_NEON_FMA)
+		message(FATAL_ERROR
+			"this ARMv7 toolchain does not provide NEON with VFPv4 fused multiply-add.\n"
+			"  -mcpu=${NAMBENCH_ARM_CPU} -mfpu=${NAMBENCH_ARM_FPU} defined neither\n"
+			"  __ARM_NEON nor __ARM_FEATURE_FMA. Without FMA, Eigen computes a2_fast's\n"
+			"  C=8 path with non-fused vmlaq_f32, which is a different arithmetic to be\n"
+			"  bit-identical to. Set NAMBENCH_ARM_FPU to an fpu that has it.")
+	endif()
+endif()
 
 # ---------------------------------------------------------------------------
 # One function builds all four variants, so the only things that can differ
@@ -164,7 +240,8 @@ function(nb_add_variant target)
 		"${_tree}"
 		"${NB_ROOT}/Sources/Shim"
 		"${NB_ROOT}/Sources/SlimEngines"
-		"${NB_ROOT}/Sources/FullEngines")
+		"${NB_ROOT}/Sources/FullEngines"
+		"${NB_ROOT}/Sources/A32Engines")
 
 	# Eigen and nlohmann as SYSTEM, so -Wall -Wextra stays about our code.
 	target_include_directories(${target} SYSTEM PRIVATE
@@ -267,7 +344,35 @@ if(NAMBENCH_ALL_VARIANTS AND NB_AARCH64 AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "
 else()
 	set(NB_BUILD_LABS OFF)
 endif()
-message(STATUS "NAMBench conformance: all variants = ${NAMBENCH_ALL_VARIANTS}, kernel labs = ${NB_BUILD_LABS}")
+
+# The A32 lab builds on AArch64 as well as on ARMv7, and that is deliberate.
+# Its compat header forwards every shim to the native instruction on AArch64, so
+# building it here costs nothing and gives a free bit-identity check on the
+# build host before anything is copied to the board. Only its *timings* are
+# ARMv7-only — on AArch64 they would just be a worse-tiled slim lab, which is why
+# the benchmark driver takes the lab from the ARMv7 build.
+if(NAMBENCH_ALL_VARIANTS AND (NB_ARMV7 OR NB_AARCH64) AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+	set(NB_BUILD_LABS_A32 ON)
+else()
+	set(NB_BUILD_LABS_A32 OFF)
+endif()
+
+message(STATUS "NAMBench conformance: all variants = ${NAMBENCH_ALL_VARIANTS}, kernel labs = ${NB_BUILD_LABS}, a32 lab = ${NB_BUILD_LABS_A32}")
+
+if(NB_BUILD_LABS_A32)
+	file(GLOB _a32_sources CONFIGURE_DEPENDS "${NB_ROOT}/Sources/A32Engines/*.cpp")
+
+	# --- Variant 5: the 32-bit ARM lab, both submodels ---------------------
+	#
+	# From vendor/upstream, like the slim lab: a2_fast is this lab's only
+	# reference at both channel counts, because `fused` is AArch64-only.
+	nb_add_variant(nam_conformance_a32
+		VENDOR upstream
+		PREFIX nb_a32
+		NAME a32
+		DEFINES NB_ENABLE_A32_LAB=1
+		SOURCES ${_a32_sources})
+endif()
 
 if(NB_BUILD_LABS)
 	file(GLOB _slim_sources CONFIGURE_DEPENDS "${NB_ROOT}/Sources/SlimEngines/*.cpp")
@@ -338,7 +443,8 @@ if(NAMBENCH_BUILD_BENCHMARK)
 			"${_tree}"
 			"${NB_ROOT}/Sources/Shim"
 			"${NB_ROOT}/Sources/SlimEngines"
-			"${NB_ROOT}/Sources/FullEngines")
+			"${NB_ROOT}/Sources/FullEngines"
+			"${NB_ROOT}/Sources/A32Engines")
 
 		target_include_directories(${target} SYSTEM PRIVATE
 			"${_tree}/Dependencies/nlohmann"
@@ -394,13 +500,34 @@ if(NAMBENCH_BUILD_BENCHMARK)
 		list(APPEND NB_ENGINE_LIBRARIES nam_engine_slim nam_engine_full)
 	endif()
 
-	add_executable(nam_benchmark "${NB_ROOT}/Tools/nam_benchmark.cpp")
+	# The a32 lab is only worth *measuring* on ARMv7 — on AArch64 its compat
+	# shims forward to the native instructions, so its timings would just be a
+	# worse-tiled slim lab. It is still built for conformance on both (above);
+	# this is the benchmark half, and it is ARMv7-only on purpose.
+	if(NB_BUILD_LABS_A32 AND NB_ARMV7)
+		nb_add_engine_library(nam_engine_a32
+			VENDOR upstream PREFIX nb_a32 NAME a32
+			DEFINES NB_ENABLE_A32_LAB=1
+			SOURCES ${_a32_sources})
+
+		list(APPEND NB_ENGINE_LIBRARIES nam_engine_a32)
+	endif()
+
+	# nb_counters.cpp is part of the driver, not of any engine: it must not be
+	# linked into a shared engine library, where its perf_event_open would end up
+	# inside the thing being measured.
+	add_executable(nam_benchmark
+		"${NB_ROOT}/Tools/nam_benchmark.cpp"
+		"${NB_ROOT}/Tools/nb_counters.cpp")
 
 	target_include_directories(nam_benchmark PRIVATE "${NB_ROOT}/Sources/Shim")
 	target_link_libraries(nam_benchmark PRIVATE nb_conformance_flags ${NB_ENGINE_LIBRARIES})
 
 	if(NB_BUILD_LABS)
 		target_compile_definitions(nam_benchmark PRIVATE NAMBENCH_HAVE_LABS=1)
+	endif()
+	if(NB_BUILD_LABS_A32 AND NB_ARMV7)
+		target_compile_definitions(nam_benchmark PRIVATE NAMBENCH_HAVE_A32_LAB=1)
 	endif()
 	if(NAMBENCH_ALL_VARIANTS)
 		target_compile_definitions(nam_benchmark PRIVATE NAMBENCH_HAVE_FUSED=1)
@@ -442,6 +569,9 @@ if(NAMBENCH_ALL_VARIANTS)
 endif()
 if(NB_BUILD_LABS)
 	list(APPEND NB_RUN_TARGETS nam_conformance_slim nam_conformance_full)
+endif()
+if(NB_BUILD_LABS_A32)
+	list(APPEND NB_RUN_TARGETS nam_conformance_a32)
 endif()
 
 foreach(_target ${NB_RUN_TARGETS})

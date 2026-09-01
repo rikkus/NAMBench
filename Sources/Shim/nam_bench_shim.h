@@ -67,6 +67,14 @@ typedef enum NbEngine {
   /// inferred: a "planar" number that was quietly `a2_fast` would read as the
   /// kernels having achieved nothing.
   NbEnginePlanar = 6,
+  /// One of the in-project experimental kernels for 32-bit ARM (ARMv7-A with
+  /// NEON and VFPv4). Unlike the other two labs this one covers *both* A2
+  /// submodels, so the same rule is enforced one step further: it is reported
+  /// only once a kernel has been selected AND that kernel's channel count
+  /// matches the submodel actually loaded. Selecting a 3-channel kernel and
+  /// running the 8-channel submodel surfaces as a routing failure rather than
+  /// as a silent a2_fast measurement.
+  NbEngineA32 = 7,
 } NbEngine;
 
 /// Which submodel of a SlimmableContainer to run.
@@ -151,10 +159,33 @@ typedef struct NbModel NbModel;
    *                                                                                              \
    * Returns 0 on success. Until a kernel has been selected the build routes and                  \
    * reports as the shipping engine it was built alongside — a2_fast for the slim                 \
-   * lab, fused for the full lab — so a run that forgot to select one is caught                   \
-   * by the engine assertion rather than quietly measuring the wrong thing.                       \
+   * and a32 labs, fused for the full lab — so a run that forgot to select one is                 \
+   * caught by the engine assertion rather than quietly measuring the wrong thing.                \
    */                                                                                             \
-  NB_EXPORT int P##_select_kernel(int index);
+  NB_EXPORT int P##_select_kernel(int index);                                                     \
+                                                                                                  \
+  /**                                                                                             \
+   * Channel count kernel `index` is written for: 3 (A2 nano) or 8 (A2 standard).                 \
+   * -1 if the index is out of range.                                                             \
+   *                                                                                              \
+   * The single-submodel labs answer with their one value. It is asked rather                     \
+   * than assumed so that the driver and the conformance runner can pair a kernel                 \
+   * with its submodel mechanically, which is what lets one lab carry both.                       \
+   */                                                                                             \
+  NB_EXPORT int P##_kernel_channels(int index);                                                   \
+                                                                                                  \
+  /**                                                                                             \
+   * Whether kernel `index` claims to be bit-identical to its reference engine on                 \
+   * this target. 1 = claims exactness, 0 = deliberately reassociates, -1 = out of                \
+   * range.                                                                                       \
+   *                                                                                              \
+   * The claim lives here, next to the kernel that makes it, rather than in a name                \
+   * convention the comparator has to decode. On AArch64 only the verbatim ports                  \
+   * claimed exactness and a suffix rule sufficed; in the a32 lab almost every                    \
+   * kernel claims it and a couple deliberately do not, which a suffix rule would                 \
+   * not carry.                                                                                   \
+   */                                                                                             \
+  NB_EXPORT int P##_kernel_exact(int index);
 
 #ifdef __cplusplus
 } // extern "C"

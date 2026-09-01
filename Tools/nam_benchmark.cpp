@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "nam_bench_shim.h"
+#include "nb_counters.h"
 
 #if defined(__APPLE__)
   #include <pthread.h>
@@ -52,6 +53,10 @@ NB_DECLARE_VARIANT(nb_slim)
 NB_DECLARE_KERNEL_LAB(nb_slim)
 NB_DECLARE_VARIANT(nb_full)
 NB_DECLARE_KERNEL_LAB(nb_full)
+#endif
+#if defined(NAMBENCH_HAVE_A32_LAB)
+NB_DECLARE_VARIANT(nb_a32)
+NB_DECLARE_KERNEL_LAB(nb_a32)
 #endif
 }
 
@@ -88,6 +93,11 @@ struct EngineApi
   int (*kernel_count)() = nullptr;
   const char* (*kernel_name)(int) = nullptr;
   int (*select_kernel)(int) = nullptr;
+  /// Channel count a kernel is written for. Asked rather than assumed, so one
+  /// lab can carry kernels for both A2 submodels.
+  int (*kernel_channels)(int) = nullptr;
+  /// Whether a kernel claims bit-identity with its reference on this target.
+  int (*kernel_exact)(int) = nullptr;
 };
 
 #define NB_FILL_BASE(api, P)                                                                       \
@@ -109,6 +119,8 @@ struct EngineApi
     (api).kernel_count = &P##_kernel_count;                                                        \
     (api).kernel_name = &P##_kernel_name;                                                          \
     (api).select_kernel = &P##_select_kernel;                                                      \
+    (api).kernel_channels = &P##_kernel_channels;                                                  \
+    (api).kernel_exact = &P##_kernel_exact;                                                        \
   } while (0)
 
 /// One thing to measure: an engine, and for a lab, which kernel of it.
@@ -456,6 +468,14 @@ struct Environment
   std::string cpu = "unknown";
   std::string platform = "unknown";
   std::string architecture = "unknown";
+  /// The floating-point unit the binary was compiled for.
+  ///
+  /// On 32-bit ARM this is part of the arithmetic's identity, not a tuning note:
+  /// -mfpu=neon gives NEON without fused multiply-add, and Eigen then computes
+  /// a2_fast's 8-channel path with non-fused vmlaq_f32 instead of vfmaq_f32.
+  /// Two runs that disagree here are not comparable, so it is reported rather
+  /// than assumed from the architecture.
+  std::string fpu = "unknown";
   std::string osVersion = "unknown";
   int totalCores = 0;
 };
@@ -468,6 +488,18 @@ Environment capture_environment()
   env.architecture = "arm64";
 #elif defined(__x86_64__)
   env.architecture = "x86_64";
+#elif defined(__arm__) || defined(__ARM_EABI__)
+  env.architecture = "armv7";
+#endif
+
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+  #if defined(__ARM_FEATURE_FMA)
+  env.fpu = "neon+fma";
+  #else
+  env.fpu = "neon";
+  #endif
+#elif defined(__aarch64__)
+  env.fpu = "asimd";
 #endif
 
   env.totalCores = static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
@@ -509,6 +541,19 @@ Environment capture_environment()
 
   env.cpu = field("model name");
 
+  // 32-bit ARM Linux DOES put a "model name" in /proc/cpuinfo, but it is useless
+  // — "ARMv7 Processor rev 1 (v7l)", the same string for every ARMv7 part ever
+  // made. Taking it would hide the MIDR lookup below and label every RK3288
+  // result with something that says nothing about which core produced it, which
+  // on a testbed that exists to characterise one specific core is worse than no
+  // answer at all.
+  //
+  // Matched on the shape rather than one spelling: an AArch64 kernel running a
+  // 32-bit process reports "ARMv8 Processor rev 0 (v8l)" by the same convention,
+  // and that is just as uninformative.
+  if (env.cpu.rfind("ARMv", 0) == 0 && env.cpu.find(" Processor") != std::string::npos)
+    env.cpu.clear();
+
   // AArch64 Linux does not put a "model name" in /proc/cpuinfo — it reports the
   // MIDR fields instead, and it is lscpu that turns those into "Cortex-A76".
   // Doing the same here matters more than it looks: the whole reason to run on
@@ -530,6 +575,14 @@ Environment capture_environment()
       {"0xd46", "Cortex-A510"}, {"0xd47", "Cortex-A710"}, {"0xd48", "Cortex-X2"},
       {"0xd49", "Neoverse-N2"}, {"0xd0c", "Neoverse-N1"}, {"0xd40", "Neoverse-V1"},
       {"0xd4f", "Neoverse-V2"},
+      // 32-bit ARMv7 parts. 0xc0d is the one that matters here: ARM shipped the
+      // core as Cortex-A12 and later rebranded it Cortex-A17, and the RK3288 in
+      // the HeadRush Core and Prime reports 0xc0d. Naming only one of the two
+      // would make every result from that board look like it came from the wrong
+      // chip.
+      {"0xc05", "Cortex-A5"},   {"0xc07", "Cortex-A7"},  {"0xc08", "Cortex-A8"},
+      {"0xc09", "Cortex-A9"},   {"0xc0d", "Cortex-A12/A17"}, {"0xc0e", "Cortex-A17"},
+      {"0xc0f", "Cortex-A15"},
     };
     for (const auto& entry : kParts)
     {
@@ -540,7 +593,7 @@ Environment capture_environment()
       }
     }
     if (env.cpu.empty() && !part.empty())
-      env.cpu = "AArch64 part " + part;
+      env.cpu = std::string(env.architecture == "armv7" ? "ARM part " : "AArch64 part ") + part;
   }
 
   if (env.cpu.empty())
@@ -581,6 +634,13 @@ std::string cpu_governor()
 // Results
 // ---------------------------------------------------------------------------
 
+/// Fewest samples a spread may be computed from.
+///
+/// Below this the "tightest 70%" statistic is not measuring dispersion at all —
+/// at one sample it reports exactly zero — so an attempt with fewer is rejected
+/// rather than accepted on a number that was never tested.
+constexpr int kMinSamplesForWindow = 3;
+
 struct Attempt
 {
   int attempt = 0;
@@ -588,7 +648,15 @@ struct Attempt
   std::vector<double> samplesMs;
   bool accepted = false;
   double spread = 0.0;
+  /// The timing loop stopped on the deadline rather than on having both a full
+  /// window and minSamples. Recorded so a truncated run is visible downstream
+  /// instead of being indistinguishable from a clean one.
+  bool hitHardDeadline = false;
   std::string rejectionReason;
+  /// One entry per timed pass, in the same order as samplesMs, when counters
+  /// were requested. Kept per-pass rather than as a running total so a pass the
+  /// window discards can be discarded from the counters too.
+  std::vector<nb::CounterSample> counterSamples;
 };
 
 struct Result
@@ -613,6 +681,9 @@ struct Result
   double corePercent = 0.0;
   double checksum = 0.0;
   std::vector<Attempt> attempts;
+  /// Reduced from the accepted attempt's passes. Empty unless --counters asked
+  /// for them and the machine could provide them.
+  std::vector<nb::CounterSummary> counters;
 };
 
 struct Parity
@@ -673,6 +744,10 @@ struct Config
   bool checkParity = true;
   double parityWarnRelativeRMS = 1e-4;
   bool quiet = false;
+  /// PMU events to bracket each timed pass with. Empty means none, which is the
+  /// default: opening counters costs two syscalls per event per pass and, more
+  /// importantly, the numbers are only meaningful to someone who asked for them.
+  std::vector<std::string> counterEvents;
 };
 
 const char* engine_name(NbEngine engine)
@@ -685,6 +760,7 @@ const char* engine_name(NbEngine engine)
     case NbEngineSlim: return "slim";
     case NbEngineFull: return "full";
     case NbEnginePlanar: return "a2_planar";
+    case NbEngineA32: return "a32";
     case NbEngineUnknown: break;
   }
   return "unknown";
@@ -714,7 +790,7 @@ int main(int argc, char** argv)
   Config config;
   std::string modelPath, audioPath;
   fs::path outputPath = "benchmark.json";
-  std::string slimSpec, fullSpec;
+  std::string slimSpec, fullSpec, a32Spec;
   std::string testbedNote;
   bool includeFused = false;
 
@@ -729,7 +805,9 @@ int main(int argc, char** argv)
       "  --submodel <which>       widest (default) | narrowest\n"
       "  --slim <list>            slim-lab kernels: all, none, names or indices\n"
       "  --full <list>            full-lab kernels, same format\n"
+      "  --a32 <list>             a32-lab kernels (ARMv7), same format\n"
       "  --list-slim/--list-full  print a kernel table and exit\n"
+      "  --list-a32               print the a32 kernel table and exit\n"
       "\n"
       "  --block-size <n>         frames per process() call (default 64)\n"
       "  --warmup-seconds <s>     discarded warm-up (default 5)\n"
@@ -741,7 +819,12 @@ int main(int argc, char** argv)
       "  --with-fused             also measure the superseded fused engine\n"
       "  --no-parity              skip the output comparison\n"
       "  --note <text>            free text recorded in the report\n"
-      "  --quiet, -q              only print the summary\n");
+      "  --quiet, -q              only print the summary\n"
+      "\n"
+      "  --counters <list>        PMU events around each timed pass: a\n"
+      "                           comma-separated list of event names, or\n"
+      "                           'default' for a sensible set for this machine\n"
+      "  --list-counters          print this machine's PMU events and exit\n");
   };
 
   // --- Assemble the engine table -------------------------------------------
@@ -785,13 +868,28 @@ int main(int argc, char** argv)
   NB_FILL_LAB(fullApi, nb_full);
 #endif
 
+#if defined(NAMBENCH_HAVE_A32_LAB)
+  EngineApi a32Api;
+  a32Api.name = "a32";
+  a32Api.repository = "this repository";
+  a32Api.codePath = "Sources/A32Engines";
+  NB_FILL_BASE(a32Api, nb_a32);
+  NB_FILL_LAB(a32Api, nb_a32);
+#endif
+
   auto list_kernels = [](const EngineApi& api) {
     if (api.kernel_count == nullptr)
       return;
     const int count = api.kernel_count();
     std::printf("%s lab kernels (%d):\n", api.name, count);
     for (int i = 0; i < count; i++)
-      std::printf("  %2d  %s\n", i, api.kernel_name(i));
+    {
+      // Channel count and the exactness claim are printed because in a lab that
+      // carries both submodels they are the two things that decide whether a
+      // given kernel is applicable to this run and what it will be held to.
+      std::printf("  %2d  %-24s %dch%s\n", i, api.kernel_name(i), api.kernel_channels(i),
+                  api.kernel_exact(i) ? "" : "  (not bit-exact)");
+    }
   };
 
   // --- Parse ----------------------------------------------------------------
@@ -817,6 +915,8 @@ int main(int argc, char** argv)
       slimSpec = argv[++i];
     else if (arg == "--full" && has)
       fullSpec = argv[++i];
+    else if (arg == "--a32" && has)
+      a32Spec = argv[++i];
     else if (arg == "--block-size" && has)
       config.blockSize = static_cast<int>(std::strtol(argv[++i], nullptr, 10));
     else if (arg == "--warmup-seconds" && has)
@@ -839,6 +939,56 @@ int main(int argc, char** argv)
       config.checkParity = false;
     else if (arg == "--quiet" || arg == "-q")
       config.quiet = true;
+    else if (arg == "--counters" && has)
+    {
+      const std::string value = argv[++i];
+      config.counterEvents.clear();
+      if (value == "default")
+        config.counterEvents = nb::Counters::default_events();
+      else if (value != "none")
+      {
+        size_t pos = 0;
+        while (pos <= value.size())
+        {
+          const size_t comma = value.find(',', pos);
+          const std::string name = value.substr(pos, comma - pos);
+          if (!name.empty())
+            config.counterEvents.push_back(name);
+          if (comma == std::string::npos)
+            break;
+          pos = comma + 1;
+        }
+      }
+    }
+    else if (arg == "--list-counters")
+    {
+      const std::vector<nb::CounterEvent> events = nb::Counters::available_events();
+      if (events.empty())
+      {
+        std::printf("no PMU events available on this machine\n");
+        return 0;
+      }
+      const int budget = nb::Counters::counter_budget();
+      std::printf("PMU events (%zu):\n", events.size());
+      for (const nb::CounterEvent& event : events)
+        std::printf("  %-28s config=0x%llx\n", event.name.c_str(),
+                    static_cast<unsigned long long>(event.config));
+      // The budget is the number that decides whether a chosen set is measured
+      // or extrapolated, and it is the one number no other tool will tell you.
+      if (budget > 0)
+        std::printf("\n%d can be counted at once; more than that and the kernel multiplexes,\n"
+                    "which makes every value an estimate rather than a count.\n",
+                    budget);
+      const std::vector<std::string> chosen = nb::Counters::default_events();
+      if (!chosen.empty())
+      {
+        std::printf("\n--counters default would select:\n ");
+        for (const std::string& name : chosen)
+          std::printf(" %s", name.c_str());
+        std::printf("\n");
+      }
+      return 0;
+    }
     else if (arg == "--list-slim")
     {
 #if defined(NAMBENCH_HAVE_LABS)
@@ -854,6 +1004,15 @@ int main(int argc, char** argv)
       list_kernels(fullApi);
 #else
       std::printf("this build has no kernel labs\n");
+#endif
+      return 0;
+    }
+    else if (arg == "--list-a32")
+    {
+#if defined(NAMBENCH_HAVE_A32_LAB)
+      list_kernels(a32Api);
+#else
+      std::printf("this build has no a32 lab\n");
 #endif
       return 0;
     }
@@ -947,7 +1106,29 @@ int main(int argc, char** argv)
   // they are actually present: off AArch64 the checkout compiles to plain
   // a2_fast, and measuring that against upstream would produce two identical
   // numbers and the false impression that the kernels achieve nothing.
-  if (probe.channels == 3 || probe.channels == 8)
+  //
+  // The second condition mirrors a2_planar.h's own gate. Where it cannot open —
+  // 32-bit ARM, x86, MSVC/ARM64 — the planar checkout compiles to plain a2_fast,
+  // and lining it up would measure the reference against itself. That case is
+  // caught below with a hard error, but the error exists for a *regression* on a
+  // target where the gate should have opened. On a target where it was never
+  // going to, the right answer is to say so and carry on with the rest of the
+  // line-up, so that e.g. an a32 lab sweep on a Cortex-A17 can still produce a
+  // report.
+  constexpr bool kPlanarBuildable =
+#if defined(__aarch64__)
+    true;
+#else
+    false;
+#endif
+
+  if (!kPlanarBuildable)
+  {
+    if (!config.quiet)
+      std::printf("planar excluded: a2_planar.h enables the kernels where __aarch64__ is defined, "
+                  "so this build is plain a2_fast\n");
+  }
+  else if (probe.channels == 3 || probe.channels == 8)
   {
     subjects.push_back({"a2_planar", &planarApi, -1});
   }
@@ -977,19 +1158,27 @@ int main(int argc, char** argv)
 #endif
   }
 
-#if defined(NAMBENCH_HAVE_LABS)
-  auto add_lab = [&](const EngineApi& api, const std::string& spec, int wantChannels) {
+#if defined(NAMBENCH_HAVE_LABS) || defined(NAMBENCH_HAVE_A32_LAB)
+  // Which submodel a kernel serves is asked of the kernel, not of the lab. The
+  // slim and full labs answer with their one channel count, so this behaves
+  // exactly as the old lab-wide check did for them; the a32 lab carries kernels
+  // for both submodels and answers per kernel, which is what lets one lab cover
+  // both.
+  auto add_lab = [&](const EngineApi& api, const std::string& spec) {
     if (spec.empty() || spec == "none")
       return;
-    if (probe.channels != wantChannels)
+    const int count = api.kernel_count();
+    int servingThisSubmodel = 0;
+    for (int i = 0; i < count; i++)
+      if (api.kernel_channels(i) == probe.channels)
+        servingThisSubmodel++;
+    if (servingThisSubmodel == 0)
     {
       if (!config.quiet)
-        std::printf("%s lab excluded: its kernels are specialised for %d channels and this "
-                    "submodel has %d\n",
-                    api.name, wantChannels, probe.channels);
+        std::printf("%s lab excluded: none of its kernels are written for %d channels\n", api.name,
+                    probe.channels);
       return;
     }
-    const int count = api.kernel_count();
     std::vector<int> chosen;
     if (spec == "all")
     {
@@ -1033,14 +1222,37 @@ int main(int argc, char** argv)
       }
     }
     for (const int k : chosen)
+    {
+      // Silently skipping a kernel meant for the other submodel would be wrong —
+      // "--a32 all" should measure everything applicable and say what it left
+      // out — but naming one explicitly and getting nothing back would be worse.
+      if (api.kernel_channels(k) != probe.channels)
+      {
+        if (spec != "all" && !config.quiet)
+          std::printf("%s:%s skipped: written for %d channels, this submodel has %d\n", api.name,
+                      api.kernel_name(k), api.kernel_channels(k), probe.channels);
+        continue;
+      }
       subjects.push_back({std::string(api.name) + ":" + api.kernel_name(k), &api, k});
+    }
   };
 
-  add_lab(slimApi, slimSpec, 3);
-  add_lab(fullApi, fullSpec, 8);
-#else
+  #if defined(NAMBENCH_HAVE_LABS)
+  add_lab(slimApi, slimSpec);
+  add_lab(fullApi, fullSpec);
+  #endif
+  #if defined(NAMBENCH_HAVE_A32_LAB)
+  add_lab(a32Api, a32Spec);
+  #endif
+#endif // NAMBENCH_HAVE_LABS || NAMBENCH_HAVE_A32_LAB
+
+#if !defined(NAMBENCH_HAVE_LABS)
   if (!slimSpec.empty() || !fullSpec.empty())
     std::fprintf(stderr, "warning: this build has no kernel labs; --slim/--full ignored\n");
+#endif
+#if !defined(NAMBENCH_HAVE_A32_LAB)
+  if (!a32Spec.empty())
+    std::fprintf(stderr, "warning: this build has no a32 lab; --a32 ignored\n");
 #endif
 
   // --- Build every model up front -------------------------------------------
@@ -1135,6 +1347,37 @@ int main(int argc, char** argv)
     }
   }
 
+  // --- Counters ---------------------------------------------------------------
+  //
+  // Opened once for the whole run rather than per subject, so every engine is
+  // counted through the same file descriptors on the same events. A failure
+  // here is reported and stepped over: an unreadable PMU is a reason to lose
+  // the attribution, not the measurement.
+
+  nb::Counters counters;
+  if (!config.counterEvents.empty())
+  {
+    if (!counters.open(config.counterEvents))
+    {
+      std::fprintf(stderr, "warning: counters unavailable, continuing without them: %s\n",
+                   counters.reason().c_str());
+    }
+    else if (!config.quiet)
+    {
+      const int budget = nb::Counters::counter_budget();
+      std::printf("counters:");
+      for (const std::string& name : counters.names())
+        std::printf(" %s", name.c_str());
+      std::printf("\n");
+      if (budget > 0 && static_cast<int>(counters.names().size()) > budget)
+        std::fprintf(stderr,
+                     "warning: %zu events but only %d counters; the kernel will multiplex, so "
+                     "every value will be scaled up from a sample of each pass rather than "
+                     "counted. Ask for %d or fewer to get counts.\n",
+                     counters.names().size(), budget, budget);
+    }
+  }
+
   // --- Measure ---------------------------------------------------------------
 
   std::vector<Result> results;
@@ -1169,24 +1412,79 @@ int main(int argc, char** argv)
       }
 
       // 2. Time for the configured window.
+      //
+      // The hard deadline stops a machine so slow that minSamples would never be
+      // reached from running forever. It is sized from the work rather than from
+      // the window alone: a fixed 3x multiple of a window an operator shortened
+      // to make a long sweep tractable defeats minSamples by construction, which
+      // is exactly the regime a Cortex-A17 on the 8-channel submodel sits in.
       {
         const double start = monotonic_seconds();
-        const double hardDeadline = start + config.timingWindowSeconds * 3.0;
+        double hardDeadline = start + config.timingWindowSeconds * 3.0;
+        bool deadlineSized = false;
         while (true)
         {
           if (config.resetBetweenPasses)
             subject.api->reset(model, audio.sampleRate, config.blockSize);
+          // Counting starts after the reset and stops before the clock is read,
+          // so the counters cover the same work the timing does. reset() clears
+          // the rings, which is real work with real cache traffic, and charging
+          // it to the kernel would make a bigger ring look like a worse kernel.
+          if (counters.is_open())
+            counters.begin();
           const uint64_t elapsed = subject.api->process(model, audio.samples.data(),
                                                         audio.samples.size(), nullptr, nullptr);
+          if (counters.is_open())
+          {
+            nb::CounterSample sample;
+            counters.end(sample);
+            record.counterSamples.push_back(std::move(sample));
+          }
           record.samplesMs.push_back(static_cast<double>(elapsed) / 1.0e6);
 
           const double now = monotonic_seconds();
+
+          if (!deadlineSized)
+          {
+            // One pass is now measured, so allow enough time for minSamples of
+            // them plus half again, if that is longer than the flat multiple.
+            const double onePass = now - start;
+            const double needed = onePass * config.minSamples * 1.5;
+            if (needed > (hardDeadline - start))
+              hardDeadline = start + needed;
+            deadlineSized = true;
+          }
+
           const bool windowDone = (now - start) >= config.timingWindowSeconds;
           const bool enoughSamples =
             static_cast<int>(record.samplesMs.size()) >= config.minSamples;
           if ((windowDone && enoughSamples) || now >= hardDeadline)
+          {
+            record.hitHardDeadline = (now >= hardDeadline) && !(windowDone && enoughSamples);
             break;
+          }
         }
+      }
+
+      // A window needs samples to be a window. tightest_window takes
+      // max(1, ceil(fraction * n)) values, so a single sample yields a width of
+      // one, a spread of (x - x) / x = 0, and an attempt that passes the
+      // agreement test without ever having been tested. Reject that here, before
+      // the spread is consulted, rather than reporting a number no dispersion was
+      // ever measured on.
+      if (record.samplesMs.size() < kMinSamplesForWindow)
+      {
+        char reason[256];
+        std::snprintf(reason, sizeof(reason),
+                      "only %zu sample(s) before the hard deadline; a spread cannot be measured "
+                      "from fewer than %d",
+                      record.samplesMs.size(), kMinSamplesForWindow);
+        record.rejectionReason = reason;
+        result.attempts.push_back(record);
+        if (!config.quiet)
+          std::printf("%s: attempt %d rejected — %s\n", subject.name.c_str(), attempt,
+                      record.rejectionReason.c_str());
+        continue;
       }
 
       // 3. Does the required fraction agree?
@@ -1217,6 +1515,24 @@ int main(int argc, char** argv)
         if (!config.quiet)
           std::printf("%s: attempt %d rejected — %s\n", subject.name.c_str(), attempt, reason);
         continue;
+      }
+
+      // Reduce the counters over the passes the window kept, not over every
+      // pass taken. A pass the window threw away was thrown away because
+      // something else happened during it, and whatever that was did work the
+      // counters faithfully recorded. Selecting by duration rather than by
+      // index is exact up to ties, and a pass tied on time with an accepted one
+      // is an equally good pass.
+      if (!record.counterSamples.empty())
+      {
+        std::vector<nb::CounterSample> kept;
+        kept.reserve(selection.accepted.size());
+        for (size_t s = 0; s < record.counterSamples.size() && s < record.samplesMs.size(); s++)
+        {
+          if (record.samplesMs[s] >= selection.min && record.samplesMs[s] <= selection.max)
+            kept.push_back(record.counterSamples[s]);
+        }
+        result.counters = nb::summarise(counters.names(), counters.events(), kept);
       }
 
       result.attempts.push_back(record);
@@ -1254,6 +1570,17 @@ int main(int argc, char** argv)
                     result.acceptedMs.size(), result.discardedMs.size());
       else
         std::printf("%s: FAILED — %s\n", result.variant.c_str(), result.failureReason.c_str());
+
+      for (const nb::CounterSummary& counter : result.counters)
+      {
+        std::printf("    %-20s %14.0f", counter.name.c_str(), counter.median);
+        if (counter.alwaysZero)
+          std::printf("   (read zero on every pass — this core probably does not implement it)");
+        else if (counter.worstScaling < 0.999)
+          std::printf("   (multiplexed: scaled up from %.0f%% of the pass, so an estimate)",
+                      counter.worstScaling * 100.0);
+        std::printf("\n");
+      }
     }
 
     results.push_back(std::move(result));
@@ -1283,6 +1610,40 @@ int main(int argc, char** argv)
     if (baselineMs > 0.0 && result.meanMs > 0.0 && &result != &results[0])
       std::printf("  %6.3fx vs %s", baselineMs / result.meanMs, results[0].variant.c_str());
     std::printf("\n");
+
+    // Cycles and instructions get a derived line of their own because IPC is
+    // what separates the two explanations for a slow kernel that this campaign
+    // most needs to tell apart: one that issues too many instructions, and one
+    // that issues the right number and stalls on them.
+    if (!result.counters.empty())
+    {
+      double cycles = 0.0, instructions = 0.0;
+      for (const nb::CounterSummary& counter : result.counters)
+      {
+        if (counter.name == "cpu_cycles" || counter.name == "cycles")
+          cycles = counter.median;
+        else if (counter.name == "inst_retired" || counter.name == "instructions")
+          instructions = counter.median;
+      }
+      if (cycles > 0.0 && instructions > 0.0)
+        std::printf("  %-24s %.0f cycles, %.0f instructions, IPC %.3f\n", "",
+                    cycles, instructions, instructions / cycles);
+      for (const nb::CounterSummary& counter : result.counters)
+      {
+        if (counter.name == "cpu_cycles" || counter.name == "cycles"
+            || counter.name == "inst_retired" || counter.name == "instructions")
+          continue;
+        std::printf("  %-24s %-20s %14.0f", "", counter.name.c_str(), counter.median);
+        if (cycles > 0.0)
+          std::printf("  (%.2f per 1k cycles)", counter.median * 1000.0 / cycles);
+        if (counter.alwaysZero)
+          std::printf("  [not implemented on this core]");
+        else if (counter.worstScaling < 0.999)
+          std::printf("  [estimated: counted for %.0f%% of the pass]",
+                      counter.worstScaling * 100.0);
+        std::printf("\n");
+      }
+    }
   }
   if (temperatureStart >= 0.0 && temperatureEnd >= 0.0)
     std::printf("\n  SoC %.1f C -> %.1f C\n", temperatureStart, temperatureEnd);
@@ -1319,11 +1680,11 @@ int main(int argc, char** argv)
   json += "{\n";
   append("  \"schemaVersion\": 1,\n  \"producer\": \"nam_benchmark\",\n");
   append("  \"environment\": {\"deviceModel\": \"%s\", \"cpu\": \"%s\", \"platform\": \"%s\", "
-         "\"architecture\": \"%s\", \"osVersion\": \"%s\", \"totalCores\": %d, "
+         "\"architecture\": \"%s\", \"fpu\": \"%s\", \"osVersion\": \"%s\", \"totalCores\": %d, "
          "\"cpuGovernor\": \"%s\"},\n",
          environment.deviceModel.c_str(), environment.cpu.c_str(), environment.platform.c_str(),
-         environment.architecture.c_str(), environment.osVersion.c_str(), environment.totalCores,
-         governor.c_str());
+         environment.architecture.c_str(), environment.fpu.c_str(), environment.osVersion.c_str(),
+         environment.totalCores, governor.c_str());
   append("  \"note\": \"%s\",\n", testbedNote.c_str());
   append("  \"socTemperatureStartC\": %.1f,\n  \"socTemperatureEndC\": %.1f,\n", temperatureStart,
          temperatureEnd);
@@ -1333,6 +1694,24 @@ int main(int argc, char** argv)
          config.blockSize, config.submodel == NbSubmodelNarrowest ? "narrowest" : "widest",
          config.warmupSeconds, config.timingWindowSeconds, config.acceptFraction,
          config.acceptTolerance, config.minSamples, config.maxAttempts);
+  // Which events were counted, and how many the hardware could hold, belong
+  // with the run rather than with each result: a report read months later has
+  // to be able to say whether its counter values were counts or extrapolations.
+  {
+    json += "  \"counters\": {\"requested\": ";
+    json += "[";
+    for (size_t i = 0; i < config.counterEvents.size(); i++)
+      append("%s\"%s\"", i ? "," : "", config.counterEvents[i].c_str());
+    json += "], \"opened\": [";
+    for (size_t i = 0; i < counters.names().size(); i++)
+      append("%s\"%s\"", i ? "," : "", counters.names()[i].c_str());
+    append("], \"counterBudget\": %d", config.counterEvents.empty()
+                                        ? 0
+                                        : nb::Counters::counter_budget());
+    if (!config.counterEvents.empty() && !counters.is_open())
+      append(", \"unavailableReason\": \"%s\"", counters.reason().c_str());
+    json += "},\n";
+  }
   append("  \"model\": {\"fileName\": \"%s\", \"channels\": %d, \"sampleRate\": %.1f},\n",
          fs::path(modelPath).filename().string().c_str(), probe.channels, probe.sampleRate);
   append("  \"audio\": {\"fileName\": \"%s\", \"frameCount\": %zu, \"sampleRate\": %.1f, "
@@ -1353,6 +1732,38 @@ int main(int argc, char** argv)
            r.realTimeFactor, r.corePercent, r.checksum);
     if (!r.failureReason.empty())
       append("\"failureReason\": \"%s\", ", r.failureReason.c_str());
+    // A run that stopped on the deadline rather than on a full window is a
+    // weaker measurement than one that did not, and on a slow device it is the
+    // common case. Recording it makes that visible downstream instead of
+    // indistinguishable from a clean run.
+    {
+      size_t sampleCount = 0;
+      bool truncated = false;
+      for (const Attempt& a : r.attempts)
+      {
+        sampleCount += a.samplesMs.size();
+        truncated = truncated || a.hitHardDeadline;
+      }
+      append("\"sampleCount\": %zu, \"hitHardDeadline\": %s, ", sampleCount,
+             truncated ? "true" : "false");
+    }
+    if (!r.counters.empty())
+    {
+      json += "\"counters\": {";
+      for (size_t c = 0; c < r.counters.size(); c++)
+      {
+        const nb::CounterSummary& counter = r.counters[c];
+        // Median per pass, with the range beside it, and the two caveats that
+        // decide whether the median means anything: whether the event was
+        // multiplexed, and whether it ever moved at all.
+        append("%s\"%s\": {\"median\": %.0f, \"min\": %.0f, \"max\": %.0f, "
+               "\"config\": %llu, \"worstScaling\": %.4f, \"alwaysZero\": %s}",
+               c ? ", " : "", counter.name.c_str(), counter.median, counter.min, counter.max,
+               static_cast<unsigned long long>(counter.config), counter.worstScaling,
+               counter.alwaysZero ? "true" : "false");
+      }
+      json += "}, ";
+    }
     json += "\"acceptedMs\": ";
     append_array(r.acceptedMs);
     json += ", \"discardedMs\": ";

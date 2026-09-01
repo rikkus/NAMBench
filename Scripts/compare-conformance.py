@@ -56,12 +56,16 @@ DEFAULT_MIN_DB = 100.0
 class Record:
     variant: str
     arch: str
+    fpu: str
     platform: str
     compiler: str
     label: str
     submodel: str
     kernel: str | None
     kernel_index: int
+    # Whether the kernel itself claims bit-identity. None for records written
+    # before the field existed, in which case the name rules still apply.
+    exact: bool | None
     engine: str
     channels: int
     sample_rate: float
@@ -82,6 +86,7 @@ def load(directory: Path) -> list[Record]:
         report = json.loads(report_path.read_text())
         variant = report["variant"]
         arch = report.get("arch", "unknown")
+        fpu = report.get("fpu", "unknown")
         platform_name = report.get("platform", "unknown")
         compiler = report.get("compiler", "unknown")
 
@@ -102,12 +107,14 @@ def load(directory: Path) -> list[Record]:
                 Record(
                     variant=variant,
                     arch=arch,
+                    fpu=fpu,
                     platform=platform_name,
                     compiler=compiler,
                     label=entry["label"],
                     submodel=entry["submodel"],
                     kernel=entry["kernel"],
                     kernel_index=entry["kernel_index"],
+                    exact=entry.get("exact"),
                     engine=entry["engine"],
                     channels=entry["channels"],
                     sample_rate=entry["sample_rate"],
@@ -219,6 +226,15 @@ def expected_engine(record: Record, aarch64: bool) -> str | tuple[str, ...]:
     if variant == "full":
         return "full"
 
+    if variant == "a32":
+        # The a32 lab carries kernels for both submodels and selects one per
+        # case, so its routing check is stricter than the other labs': the shim
+        # reports "a32" only when a kernel was selected AND that kernel's channel
+        # count matched the submodel loaded. A mismatch shows up here as
+        # "a2_fast", which is the failure we want rather than a silent
+        # measurement of the reference under the lab's name.
+        return "a32"
+
     return "unknown"
 
 
@@ -254,6 +270,13 @@ def reference_for(record: Record) -> tuple[str, str] | None:
             return ("fused", "widest")
         return ("a2_fast", "widest")
 
+    if record.variant == "a32":
+        # One reference at both widths: `fused` is AArch64-only, so on this
+        # target a2_fast is the only thing to reproduce. The submodel comes off
+        # the record rather than the kernel name, because the runner already
+        # chose it from the kernel's declared channel count.
+        return ("a2_fast", record.submodel)
+
     return None
 
 
@@ -274,12 +297,69 @@ def expect_bit_identical(record: Record) -> bool:
     if record.variant == "a2_planar":
         return True
 
+    # Newer records carry the claim itself, set by the kernel table rather than
+    # spelled in the kernel's name. Believe it when it is there: the a32 lab is
+    # a bit-exactness campaign, so nearly all of its kernels claim exactness and
+    # a couple (the vmla variants, which trade a rounding for an instruction, and
+    # anything that deliberately reassociates) do not. A name-suffix rule cannot
+    # express that, and getting it wrong in either direction is silent.
+    if record.exact is not None:
+        return record.exact
+
     return record.kernel is not None and record.kernel.endswith("baseline")
 
 
 # --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
+
+
+def cross_arch_report(records: list[Record], arches: list[str]) -> int:
+    """Measure how far the same code drifts between two architectures.
+
+    This is a measurement, not a check, and it never fails. The question it
+    answers is the one the a32 campaign has to be honest about: a2_fast compiled
+    for ARMv7 does not necessarily compute the same bits as a2_fast compiled for
+    AArch64, because AArch32 Advanced SIMD is unconditionally flush-to-zero for
+    single precision while AArch64 ASIMD honours FPCR, and because the compiler
+    contracts a*b+c differently on the two targets.
+
+    Within-target bit-identity is what the kernels must deliver, and that is what
+    the normal mode checks. This one just puts a number on the other axis, so a
+    report can say what it is rather than implying it is zero.
+    """
+    if len(arches) < 2:
+        print(f"\nnothing to compare: every record is {arches[0] if arches else 'missing'}")
+        return 0
+
+    by_arch: dict[str, dict[tuple[str, str], Record]] = {}
+    for r in records:
+        by_arch.setdefault(r.arch, {})[(r.variant, r.label)] = r
+
+    base_arch = arches[0]
+    print(f"\ncross-architecture difference, against {base_arch}")
+
+    for other in arches[1:]:
+        shared = sorted(set(by_arch[base_arch]) & set(by_arch[other]))
+        if not shared:
+            print(f"  {other}: no (variant, label) in common with {base_arch}")
+            continue
+        for key in shared:
+            a, b = by_arch[base_arch][key], by_arch[other][key]
+            parity = compare(a.samples, b.samples)
+            fpu = f"  fpu {a.fpu} vs {b.fpu}" if a.fpu != b.fpu else ""
+            verdict = (
+                "bit-identical"
+                if parity.exact
+                else f"{parity.db_below_signal:.1f} dB below signal"
+            )
+            print(
+                f"  {a.variant}/{a.label:<38} {base_arch} vs {other}"
+                f"   max|diff| {parity.max_abs_diff:.3e}  {verdict}{fpu}"
+            )
+
+    print("\nreported, not checked: a cross-ISA difference is expected here.")
+    return 0
 
 
 def main() -> int:
@@ -298,6 +378,16 @@ def main() -> int:
         help="which routing to expect; 'record' believes each binary's own "
         "compiled-for architecture (default, and the right answer under a "
         "cross-build or Rosetta, where the host disagrees)",
+    )
+    parser.add_argument(
+        "--cross-arch",
+        action="store_true",
+        help="report the difference between architectures instead of refusing to "
+        "mix them: for each (variant, label) present under more than one arch, "
+        "print max|diff| and dB below signal. Measures the cross-ISA delta rather "
+        "than requiring it to be zero — on 32-bit ARM it is not expected to be, "
+        "because AArch32 Advanced SIMD is unconditionally flush-to-zero and the "
+        "compiler contracts differently.",
     )
     args = parser.parse_args()
 
@@ -319,13 +409,17 @@ def main() -> int:
     print(f"built for {', '.join(arches)}")
     print(f"compiler  {', '.join(compilers)}")
 
-    if len(arches) > 1:
+    if len(arches) > 1 and not args.cross_arch:
         # Parity between two architectures is a different question from parity
         # between two engines, and mixing them in one directory would silently
         # turn one into the other.
         failures.append(
             f"records from more than one architecture in one directory: {', '.join(arches)}"
+            " (pass --cross-arch to measure the difference instead)"
         )
+
+    if args.cross_arch:
+        return cross_arch_report(records, arches)
 
     # --- routing and finiteness -------------------------------------------
     print("\nrouting")

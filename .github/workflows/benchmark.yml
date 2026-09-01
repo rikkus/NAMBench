@@ -85,6 +85,12 @@ jobs:
                "runner": ["self-hosted", "macOS", "ARM64", "nambench-m1air"]},
               {"testbed": "pi500", "driver": "portable", "cpu-set": "0-3",
                "runner": ["self-hosted", "Linux", "ARM64", "nambench-pi500"]},
+              # ASUS Tinker Board, Rockchip RK3288: quad Cortex-A17, 32-bit
+              # ARMv7-A. The SoC in the HeadRush Core and Prime, and the only
+              # 32-bit testbed here — its line-up is a2_fast against the a32
+              # lab, because a2_planar's gate does not open off AArch64.
+              {"testbed": "tinker", "driver": "portable", "cpu-set": "0-3",
+               "runner": ["self-hosted", "Linux", "ARM", "nambench-tinker"]},
           ]
           known = {m["testbed"] for m in machines}
 

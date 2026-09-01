@@ -203,6 +203,7 @@ project.yml               XcodeGen spec — all build flags live here
 Sources/Shim/             one C shim, compiled once per variant
 Sources/SlimEngines/      experimental kernels for the 3-channel submodel
 Sources/FullEngines/      experimental kernels for the 8-channel submodel
+Sources/A32Engines/       experimental kernels for 32-bit ARMv7 (Cortex-A17)
 Sources/BenchCore/        the protocol, shared by app and CLI
 Sources/App/              SwiftUI, macOS + iOS
 Sources/CLI/              headless macOS runner
@@ -249,3 +250,32 @@ verbatim port of `fused`'s C=8 path and has to land on `fused`'s. Because a
 candidate can be derived from either engine, the runner compares every full-lab
 kernel against **both**, and the reports carry two parity columns — "bit-identical"
 only means something once it says to what.
+
+## The ARMv7 kernel lab
+
+`Sources/A32Engines/` asks the same question on a part none of the above can
+reach: the **Rockchip RK3288** — four Cortex-A17 cores, ARMv7-A, 32-bit only —
+which is the SoC in the HeadRush Core and Prime.
+[A32-PATH.md](A32-PATH.md) has the analysis.
+
+It is not a port of the other two labs' answers, because those answers do not
+survive the trip. ARMv7 has 16 Q registers against AArch64's 32, no by-element
+FMA, and a NEON datapath narrower than its own register width — so the tile
+width that won on an M2 is roughly four times too wide here, and the switch that
+mattered most there matters least. Both winners are nonetheless **bit-identical**
+to `a2_fast` over a full render, which takes A2 standard from 78.5% to 57.8% of
+one core at a pedal's 32-frame block size.
+
+Two structural differences from the other labs, both forced by the target:
+
+- **Measurement happens on real hardware over ssh.** There is no ARMv7 machine
+  in the hosted CI fleet and no toolchain on the board, so `Scripts/a32-deploy.sh`
+  cross-builds here and rsyncs the binaries, and `Scripts/run-benchmark.sh` runs
+  on the board where it can own the governor and the thermal guard. Every
+  measured run is clock-pinned to 1416 MHz, which is a soak-measured number, not
+  a round one — see A32-PATH.md.
+- **Compiler flags are a correctness setting.** On this target `-mfpu` decides
+  the *arithmetic*: without `neon-vfpv4`, Eigen silently picks non-fused
+  `vmlaq_f32` and `a2_fast`'s own C=8 output changes. The armhf CI entry exists
+  for that regression specifically, and `Scripts/a32-codegen-check.sh` fails any
+  build where a kernel claiming exactness emits `vmla`.

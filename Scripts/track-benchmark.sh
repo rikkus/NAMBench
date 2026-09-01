@@ -200,6 +200,11 @@ detect_testbed() {
 				*"Raspberry Pi 500"*) echo "pi500" ;;
 				*"Raspberry Pi 5"*) echo "pi5" ;;
 				*"Raspberry Pi 4"*) echo "pi4" ;;
+				# RK3288: quad Cortex-A17, 32-bit ARMv7-A. The SoC in the
+				# HeadRush Core and Prime, and the only testbed here whose
+				# builds are 32-bit, so its history is not comparable with
+				# any of the others' even on the same submodel.
+				*"Tinker"*|*"tinker"*|*"RK3288"*|*"rk3288"*) echo "tinker" ;;
 				*) echo "" ;;
 			esac
 			;;

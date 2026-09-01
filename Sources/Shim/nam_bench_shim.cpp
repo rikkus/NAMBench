@@ -47,6 +47,10 @@
   #include "full_common.h"
 #endif
 
+#if defined(NB_ENABLE_A32_LAB)
+  #include "a32_common.h"
+#endif
+
 #include "nam_bench_shim.h"
 
 #if !defined(NB_PREFIX)
@@ -106,6 +110,46 @@ inline uint64_t denormals_disable()
 inline void denormals_restore(uint64_t previous)
 {
   fpcr_write(previous);
+}
+#elif defined(__arm__) || defined(__ARM_EABI__)
+// AArch32. FPSCR.FZ is the same idea as AArch64's FPCR.FZ and sits in the same
+// bit, but it is reached through the coprocessor move instructions instead.
+//
+// This branch is not cosmetic, and it is not merely about speed the way the
+// AArch64 one is. On AArch32 the two floating-point units disagree by default:
+// Advanced SIMD is *unconditionally* flush-to-zero for single precision, while
+// VFP scalar honours this bit. a2_fast's Channels == 3 branch is scalar VFP and
+// the lab's kernels are NEON, so without setting FZ the reference and the
+// candidate treat a decaying tail's denormals differently — and bit-identity
+// then fails for a reason that has nothing to do with the kernel.
+//
+// FZ only. Not DN (bit 25): the AArch64 branch above sets FZ alone, and the two
+// must agree about what they are changing or the platforms stop being
+// comparable.
+constexpr uint32_t kFpscrFlushToZero = 1u << 24; // FPSCR.FZ
+
+inline uint32_t fpscr_read()
+{
+  uint32_t value;
+  __asm__ __volatile__("vmrs %0, fpscr" : "=r"(value));
+  return value;
+}
+
+inline void fpscr_write(uint32_t value)
+{
+  __asm__ __volatile__("vmsr fpscr, %0" : : "r"(value));
+}
+
+inline uint64_t denormals_disable()
+{
+  const uint32_t previous = fpscr_read();
+  fpscr_write(previous | kFpscrFlushToZero);
+  return previous;
+}
+
+inline void denormals_restore(uint64_t previous)
+{
+  fpscr_write(static_cast<uint32_t>(previous));
 }
 #else
 inline uint64_t denormals_disable()
@@ -262,6 +306,13 @@ int g_slim_kernel = -1;
 int g_full_kernel = -1;
 #endif
 
+#if defined(NB_ENABLE_A32_LAB)
+/// The same, for the 32-bit ARM lab. Negative means "none chosen yet", in which
+/// case this build behaves exactly like `upstream` — a2_fast is this lab's only
+/// reference, at both channel counts.
+int g_a32_kernel = -1;
+#endif
+
 /// Report which engine this build will actually route `modelConfig` to.
 ///
 /// This mirrors wavenet::create_config rather than trusting the build flags.
@@ -312,6 +363,15 @@ NbEngine detect_engine(const nlohmann::json& modelConfig, int32_t* channels)
   // what will actually run rather than what create_config would have picked.
   if (g_slim_kernel >= 0 && isA2 && a2Channels == slimlab::kChannels)
     return NbEngineSlim;
+  return isA2 ? NbEngineA2Fast : NbEngineGeneric;
+#elif defined(NB_ENABLE_A32_LAB)
+  // Same rule as the slim lab, with one extra condition. This lab carries
+  // kernels for both channel counts, so the selected kernel's own channel count
+  // is what has to match — not a lab-wide constant. Asking a 3-channel kernel to
+  // run the 8-channel submodel then reports a2_fast, which the driver's engine
+  // assertion rejects, rather than silently building something else.
+  if (g_a32_kernel >= 0 && isA2 && a2Channels == a32lab::kernel_channels(g_a32_kernel))
+    return NbEngineA32;
   return isA2 ? NbEngineA2Fast : NbEngineGeneric;
 #else
   return isA2 ? NbEngineA2Fast : NbEngineGeneric;
@@ -432,7 +492,7 @@ NB_EXPORT NbModel* NB_FN(_create)(const uint8_t* namBytes, size_t len, NbSubmode
     int32_t channels = 0;
     const NbEngine engine = detect_engine(*configIt, &channels);
 
-#if defined(NB_ENABLE_SLIM_LAB) || defined(NB_ENABLE_FULL_LAB)
+#if defined(NB_ENABLE_SLIM_LAB) || defined(NB_ENABLE_FULL_LAB) || defined(NB_ENABLE_A32_LAB)
     // Lab kernels are not reachable through create_config — that is the point of
     // a lab — so one is built directly from the same weight stream get_dsp would
     // have handed to the engine it stands in for.
@@ -471,6 +531,18 @@ NB_EXPORT NbModel* NB_FN(_create)(const uint8_t* namBytes, size_t len, NbSubmode
         return nullptr;
       dsp = slimlab::create(g_slim_kernel, *configIt, std::move(lab_w),
                             nam::get_sample_rate_from_nam_file(model));
+      built = true;
+    }
+#endif
+
+#if defined(NB_ENABLE_A32_LAB)
+    if (!built && engine == NbEngineA32)
+    {
+      std::vector<float> lab_w;
+      if (!lab_weights(lab_w))
+        return nullptr;
+      dsp = a32lab::create(g_a32_kernel, *configIt, std::move(lab_w),
+                           nam::get_sample_rate_from_nam_file(model));
       built = true;
     }
 #endif
@@ -619,6 +691,26 @@ NB_EXPORT int NB_FN(_select_kernel)(int index)
   return 0;
 }
 
+NB_EXPORT int NB_FN(_kernel_channels)(int index)
+{
+  if (index < 0 || index >= slimlab::kernel_count())
+    return -1;
+  return slimlab::kChannels;
+}
+
+NB_EXPORT int NB_FN(_kernel_exact)(int index)
+{
+  // Only the verbatim port claims exactness here; every other slim candidate
+  // reassociates deliberately and is held to the dB floor. This restates the
+  // rule Scripts/compare-conformance.py has always applied by name, so that the
+  // two labs answer the same question the same way.
+  const char* name = slimlab::kernel_name(index);
+  if (name == nullptr)
+    return -1;
+  const std::string n(name);
+  return (n.size() >= 8 && n.compare(n.size() - 8, 8, "baseline") == 0) ? 1 : 0;
+}
+
 #endif // NB_ENABLE_SLIM_LAB
 
 #if defined(NB_ENABLE_FULL_LAB)
@@ -641,6 +733,56 @@ NB_EXPORT int NB_FN(_select_kernel)(int index)
   return 0;
 }
 
+NB_EXPORT int NB_FN(_kernel_channels)(int index)
+{
+  if (index < 0 || index >= fulllab::kernel_count())
+    return -1;
+  return fulllab::kChannels;
+}
+
+NB_EXPORT int NB_FN(_kernel_exact)(int index)
+{
+  // As in the slim lab: the two verbatim ports (a2_baseline, fu_baseline) claim
+  // exactness, everything else is held to the dB floor.
+  const char* name = fulllab::kernel_name(index);
+  if (name == nullptr)
+    return -1;
+  const std::string n(name);
+  return (n.size() >= 8 && n.compare(n.size() - 8, 8, "baseline") == 0) ? 1 : 0;
+}
+
 #endif // NB_ENABLE_FULL_LAB
+
+#if defined(NB_ENABLE_A32_LAB)
+
+NB_EXPORT int NB_FN(_kernel_count)(void)
+{
+  return a32lab::kernel_count();
+}
+
+NB_EXPORT const char* NB_FN(_kernel_name)(int index)
+{
+  return a32lab::kernel_name(index);
+}
+
+NB_EXPORT int NB_FN(_select_kernel)(int index)
+{
+  if (index < 0 || index >= a32lab::kernel_count())
+    return 1;
+  g_a32_kernel = index;
+  return 0;
+}
+
+NB_EXPORT int NB_FN(_kernel_channels)(int index)
+{
+  return a32lab::kernel_channels(index);
+}
+
+NB_EXPORT int NB_FN(_kernel_exact)(int index)
+{
+  return a32lab::kernel_exact(index);
+}
+
+#endif // NB_ENABLE_A32_LAB
 
 } // extern "C"

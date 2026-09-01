@@ -155,6 +155,36 @@ jobs:
             apt: clang-18
             cmake-args: -DCMAKE_CXX_COMPILER=clang++-18
 
+          # --- Linux ARMv7 (armhf), cross-built and run under qemu -----------
+          #
+          # The only 32-bit ARM entry, and the only one that is emulated. It is
+          # here for one specific regression, described in the NB_ARMV7 block of
+          # CMakeLists.txt: on this target -mfpu decides the *arithmetic*, not
+          # just the scheduling. -mfpu=neon without vfpv4 leaves
+          # __ARM_FEATURE_FMA undefined, Eigen then selects non-fused vmlaq_f32
+          # for every pmadd, and a2_fast's own C=8 output changes — silently,
+          # and in the reference that every ARMv7 kernel is measured against.
+          # The configure-time NB_ARMV7_HAS_NEON_FMA check catches the flag
+          # going missing; this job catches the arithmetic going wrong.
+          #
+          # qemu-arm-static is wired in by the toolchain file as
+          # CMAKE_CROSSCOMPILING_EMULATOR, so ctest runs the conformance
+          # binaries without binfmt registration. It is a filter, not a verdict:
+          # AArch32 Advanced SIMD is unconditionally flush-to-zero for single
+          # precision while VFP scalar honours FPSCR.FZ, and no bit-identity
+          # claim should rest on qemu's modelling of that. The pinned Cortex-A17
+          # board decides those — see A32-PATH.md. What CI is good for here is
+          # the far more likely failure: a build or an arithmetic change nobody
+          # meant to make.
+          #
+          # On a push this builds `upstream` and `planar` only (~20 s of tests);
+          # NAMBENCH_ALL_VARIANTS on the weekly run pulls in the 39-kernel a32
+          # lab, which is about three minutes under emulation.
+          - name: linux armv7 · gcc-13 cross (qemu)
+            runs-on: ubuntu-24.04
+            apt: g++-arm-linux-gnueabihf qemu-user-static
+            cmake-args: -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-armv7-linux-gnueabihf.cmake
+
           # --- macOS --------------------------------------------------------
           #
           # macos-15 is M2, macos-26 is M4. Both are virtualised and both are

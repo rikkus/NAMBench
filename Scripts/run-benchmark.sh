@@ -33,6 +33,10 @@
 #   --output-dir DIR   where reports go (default: benchmark-results)
 #   --bmf PATH         merge every submodel into one Bencher Metric Format file
 #   --cpu-set LIST     taskset list, e.g. 0-3 (default: no pinning)
+#   --max-freq KHZ     cap scaling_max_freq for the run and restore it after.
+#                      Use the frequency a thermal soak showed this board holds
+#                      indefinitely (Scripts/a32-thermal-soak.sh). "none" (the
+#                      default) measures the machine as configured.
 #   --no-governor      leave the CPU governor alone
 #   --keep-governor    set performance and do NOT restore it on exit
 
@@ -48,6 +52,7 @@ OUTPUT_DIR="${REPO_ROOT}/benchmark-results"
 BMF=""
 CPU_SET=""
 TOUCH_GOVERNOR=1
+MAX_FREQ="none"
 RESTORE_GOVERNOR=1
 
 # Expanded below as ${arr[@]+"${arr[@]}"}: macOS ships bash 3.2, where under
@@ -67,6 +72,7 @@ while [ $# -gt 0 ]; do
 		--output-dir) OUTPUT_DIR="$2"; shift 2 ;;
 		--bmf) BMF="$2"; shift 2 ;;
 		--cpu-set) CPU_SET="$2"; shift 2 ;;
+		--max-freq) MAX_FREQ="$2"; shift 2 ;;
 		--no-governor) TOUCH_GOVERNOR=0; shift ;;
 		--keep-governor) RESTORE_GOVERNOR=0; shift ;;
 		--) shift; EXTRA=("$@"); break ;;
@@ -103,6 +109,45 @@ HOST="$(hostname -s 2>/dev/null || hostname)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "${OUTPUT_DIR}"
 
+# --- Frequency cap ----------------------------------------------------------
+#
+# A governor set to `performance` asks for the highest frequency the policy
+# allows; it does not stop the thermal governor taking that away again. On a
+# passively cooled board the two interact badly: `performance` pins the request
+# at the top, the part heats past its passive trip, and cpufreq spends the run
+# hunting between steps. The residency check below then correctly voids the run
+# — after the full measurement has been spent.
+#
+# Capping scaling_max_freq to a frequency a soak has shown the board sustains
+# turns that after-the-fact void into a run that simply does not throttle. This
+# is set before the residency snapshot is taken, so intended_freq() measures
+# against the cap rather than against cpuinfo_max_freq.
+
+MAXFREQ_FILES=(/sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq)
+SAVED_MAX_FREQ=""
+
+write_max_freq() {
+	local value="$1" f
+	for f in "${MAXFREQ_FILES[@]}"; do
+		[ -e "$f" ] || continue
+		if [ -w "$f" ]; then
+			printf '%s\n' "${value}" > "$f" || return 1
+		elif command -v sudo >/dev/null 2>&1; then
+			printf '%s\n' "${value}" | sudo tee "$f" >/dev/null || return 1
+		else
+			return 1
+		fi
+	done
+	[ "$(cat "${MAXFREQ_FILES[0]}")" = "${value}" ]
+}
+
+restore_max_freq() {
+	if [ -n "${SAVED_MAX_FREQ}" ]; then
+		log "restoring scaling_max_freq to ${SAVED_MAX_FREQ}"
+		write_max_freq "${SAVED_MAX_FREQ}" || warn "could not restore scaling_max_freq"
+	fi
+}
+
 # --- Governor ---------------------------------------------------------------
 
 GOVERNOR_FILES=(/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor)
@@ -129,13 +174,43 @@ write_governor() {
 	[ "$(cat "${GOVERNOR_FILES[0]}")" = "${value}" ]
 }
 
+restore_machine() {
+	restore_governor
+	restore_max_freq
+}
+
 restore_governor() {
 	if [ -n "${SAVED_GOVERNOR}" ] && [ "${RESTORE_GOVERNOR}" -eq 1 ]; then
 		log "restoring governor to ${SAVED_GOVERNOR}"
 		write_governor "${SAVED_GOVERNOR}" || warn "could not restore the governor"
 	fi
 }
-trap restore_governor EXIT INT TERM
+trap restore_machine EXIT INT TERM
+
+if [ "${MAX_FREQ}" != "none" ]; then
+	[ -r "${MAXFREQ_FILES[0]}" ] || die "--max-freq given but this machine has no cpufreq scaling_max_freq"
+	CURRENT_MAX="$(cat "${MAXFREQ_FILES[0]}")"
+	if [ "${CURRENT_MAX}" != "${MAX_FREQ}" ]; then
+		log "capping scaling_max_freq ${CURRENT_MAX} -> ${MAX_FREQ}"
+		# Recorded before the write, not after: a write that succeeds for some
+		# cores and fails for others must still leave the trap something to put
+		# back, or the machine stays capped after this script exits.
+		SAVED_MAX_FREQ="${CURRENT_MAX}"
+		if write_max_freq "${MAX_FREQ}"; then
+			:
+		else
+			die "could not cap scaling_max_freq to ${MAX_FREQ}.
+
+  This is refused rather than warned about, for the same reason a wrong governor
+  is: the cap was asked for because this machine throttles without it, and a run
+  that silently measured at ${CURRENT_MAX} kHz instead would be void.
+
+  Give this user passwordless sudo for the cpufreq sysfs files, or run under sudo."
+		fi
+	else
+		log "scaling_max_freq already ${MAX_FREQ}"
+	fi
+fi
 
 if [ "${TOUCH_GOVERNOR}" -eq 1 ] && [ -r "${GOVERNOR_FILES[0]}" ] 2>/dev/null; then
 	CURRENT_GOVERNOR="$(cat "${GOVERNOR_FILES[0]}")"
@@ -162,17 +237,106 @@ if [ "${TOUCH_GOVERNOR}" -eq 1 ] && [ -r "${GOVERNOR_FILES[0]}" ] 2>/dev/null; t
 fi
 
 # --- Thermal ----------------------------------------------------------------
+#
+# Three sources, because no one of them exists everywhere and they answer
+# different questions.
+#
+#   vcgencmd            Pi only. The most direct statement of intent there.
+#   time_in_state       the load-bearing one. cpufreq records how many jiffies
+#                       were spent at each frequency, so diffing it across the
+#                       run says exactly whether the machine changed speed while
+#                       it was being measured. Exact, free, and needs no sampler
+#                       running alongside the thing being timed.
+#   cooling_device      which thermal governor engaged, when one did. Names the
+#                       cause that time_in_state only shows the effect of.
+#
+# The RK3288 board has no vcgencmd and no throttled-bits register, so before
+# this it reported nothing at all and the "treat these numbers as void" warning
+# below could never fire. That matters more there than on a Pi: the Tinker Board
+# is passively cooled, trips passive at 70 C, and drives ALL FOUR cores from one
+# cpufreq policy — so --cpu-set is no defence, and a run that quietly dropped a
+# frequency step looks like a slightly slow engine rather than a void result.
 
 throttle_state() {
 	command -v vcgencmd >/dev/null 2>&1 && vcgencmd get_throttled 2>/dev/null || true
 }
 
+# Jiffies per frequency, as "<kHz> <jiffies>" lines, for the policy that owns
+# cpu0. Empty when the kernel does not export cpufreq stats.
+freq_residency() {
+	local f
+	for f in /sys/devices/system/cpu/cpu0/cpufreq/stats/time_in_state \
+		/sys/devices/system/cpu/cpufreq/policy0/stats/time_in_state; do
+		[ -r "$f" ] && cat "$f" 2>/dev/null && return 0
+	done
+	return 0
+}
+
+# Highest frequency (kHz) the run is allowed to sit at. Not cpuinfo_max_freq:
+# scaling_max_freq is what a deliberate cap sets, and measuring against a cap
+# the operator chose is the point.
+intended_freq() {
+	local f
+	for f in /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq \
+		/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq; do
+		[ -r "$f" ] && cat "$f" 2>/dev/null && return 0
+	done
+	return 0
+}
+
+# Which frequencies below `intended` gained jiffies between the two snapshots.
+# Prints one "<kHz> +<jiffies>" line per offender, nothing when the clock held.
+freq_drops() {
+	local before="$1" after="$2" intended="$3"
+	[ -n "${before}" ] && [ -n "${after}" ] && [ -n "${intended}" ] || return 0
+	awk -v intended="${intended}" '
+		NR == FNR { was[$1] = $2; next }
+		$1 + 0 < intended + 0 && $2 - (($1 in was) ? was[$1] : 0) > 0 {
+			printf "    %d kHz  +%d jiffies\n", $1, $2 - (($1 in was) ? was[$1] : 0)
+		}
+	' <(printf '%s\n' "${before}") <(printf '%s\n' "${after}")
+}
+
+cooling_state() {
+	local d out=""
+	for d in /sys/class/thermal/cooling_device*; do
+		[ -r "$d/cur_state" ] || continue
+		out="${out}${out:+, }$(cat "$d/type" 2>/dev/null || basename "$d")=$(cat "$d/cur_state")"
+	done
+	printf '%s' "${out}"
+}
+
+cpu_temp() {
+	local z out=""
+	for z in /sys/class/thermal/thermal_zone*; do
+		[ -r "$z/temp" ] || continue
+		out="${out}${out:+, }$(cat "$z/type" 2>/dev/null || basename "$z")=$(awk '{printf "%.1fC", $1 / 1000}' "$z/temp")"
+	done
+	printf '%s' "${out}"
+}
+
 BEFORE_THROTTLED="$(throttle_state)"
+BEFORE_RESIDENCY="$(freq_residency)"
+BEFORE_COOLING="$(cooling_state)"
+INTENDED_FREQ="$(intended_freq)"
+
 if [ -n "${BEFORE_THROTTLED}" ] && [ "${BEFORE_THROTTLED}" != "throttled=0x0" ]; then
 	warn "this machine is ALREADY reporting ${BEFORE_THROTTLED} before the run started.
   Bits 0-3 mean it is throttling now; bits 16-19 mean it has since boot.
   Let it cool, or fit a fan, before trusting anything measured here."
 fi
+if [ -n "${BEFORE_COOLING}" ]; then
+	log "cooling state before: ${BEFORE_COOLING}"
+	case "${BEFORE_COOLING}" in
+		*=0*) ;;
+	esac
+	if printf '%s' "${BEFORE_COOLING}" | grep -qE '=[1-9]'; then
+		warn "a thermal governor is ALREADY capping this machine (${BEFORE_COOLING}).
+  Let it cool before measuring: everything below starts from a throttled clock."
+	fi
+fi
+[ -n "$(cpu_temp)" ] && log "temperature before: $(cpu_temp)"
+[ -n "${INTENDED_FREQ}" ] && log "intended clock: ${INTENDED_FREQ} kHz"
 
 # --- Run --------------------------------------------------------------------
 
@@ -186,6 +350,14 @@ fi
 
 log "model $(basename "${MODEL}")"
 log "audio $(basename "${AUDIO}")"
+
+# The clock the run was held at goes in the report, not just in this terminal.
+# A report read months later has to be able to say which frequency it describes:
+# on a board that is deliberately capped below its own ceiling, the same engine
+# is a different number at 1416 MHz than at 1800, and nothing else in the JSON
+# records the cap.
+NOTE="${HOST}${CPU_SET:+ cpus=${CPU_SET}}"
+[ "${MAX_FREQ}" != "none" ] && NOTE="${NOTE} maxfreq=${MAX_FREQ}kHz"
 
 # Every submodel runs inside the one governor window and between the one pair of
 # thermal readings, so A2 standard and A2 nano describe the same machine in the
@@ -208,7 +380,7 @@ for SUBMODEL in ${SUBMODELS}; do
 		--audio "${AUDIO}" \
 		--submodel "${SUBMODEL}" \
 		--output "${REPORT}" \
-		--note "${HOST}${CPU_SET:+ cpus=${CPU_SET}}" \
+		--note "${NOTE}" \
 		${EXTRA[@]+"${EXTRA[@]}"}
 	ONE_STATUS=$?
 	set -e
@@ -228,6 +400,32 @@ if [ -n "${AFTER_THROTTLED}" ]; then
   Everything measured here describes a machine that changed speed while it was
   being measured. Treat these numbers as void."
 	fi
+fi
+
+AFTER_COOLING="$(cooling_state)"
+[ -n "${AFTER_COOLING}" ] && log "cooling state: ${BEFORE_COOLING:-unknown} -> ${AFTER_COOLING}"
+[ -n "$(cpu_temp)" ] && log "temperature after: $(cpu_temp)"
+
+# The verdict. A frequency below the cap gaining jiffies during the run means
+# the clock moved while the benchmark was timing, which biases the ratio between
+# engines rather than merely adding noise the tightest-70% analysis can reject:
+# whichever engine happened to be running while the clock was low is charged for
+# it. So this is stated as void, not as a caveat.
+DROPS="$(freq_drops "${BEFORE_RESIDENCY}" "$(freq_residency)" "${INTENDED_FREQ}")"
+if [ -n "${DROPS}" ]; then
+	warn "the clock DROPPED below ${INTENDED_FREQ} kHz during this run:
+${DROPS}
+  The machine changed speed while it was being measured, so the ratio between
+  variants is biased towards whichever ran at the lower clock. Treat these
+  numbers as void.
+
+  Fix the cause rather than re-running until it passes: fit a fan, or cap
+  scaling_max_freq to a frequency this machine can hold indefinitely. A stable
+  clock matters far more here than a high one, because what is being reported is
+  a ratio."
+	STATUS=1
+elif [ -n "${BEFORE_RESIDENCY}" ] && [ -n "${INTENDED_FREQ}" ]; then
+	log "clock held at ${INTENDED_FREQ} kHz throughout"
 fi
 
 for r in ${REPORTS[@]+"${REPORTS[@]}"}; do

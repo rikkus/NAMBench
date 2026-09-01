@@ -52,9 +52,31 @@ optional on Linux:
   systematic bias, not noise the tightest-70% analysis can reject. If the
   governor cannot be set, the script **refuses to run** rather than quietly
   producing a biased number. `--no-governor` overrides that, deliberately.
-- **Thermal.** `vcgencmd get_throttled` is read either side of the run. A
-  machine that started throttling partway through did not measure one machine,
-  and the script says so.
+- **Thermal.** Three sources are read either side of the run, because no one of
+  them exists everywhere. The load-bearing one is **frequency residency**:
+  cpufreq records how many jiffies were spent at each frequency, so diffing
+  `time_in_state` across the run catches every excursion regardless of how brief
+  it was. **Cooling state** names which thermal governor engaged, and
+  **temperature** is logged for context. `vcgencmd get_throttled` is used in
+  addition where it exists — it does not on the RK3288 board, which is why the
+  residency diff replaced it as the primary check.
+
+  Sampling `scaling_cur_freq` on a timer is *not* good enough, and this is
+  measured rather than assumed: in a 25-minute soak on the Tinker Board a
+  15-second sampler reported a floor of 1416 MHz while residency recorded 302
+  jiffies at 1200 MHz — two frequency steps the sampler never once observed.
+- **Frequency cap.** `--max-freq KHZ` caps `scaling_max_freq` for the run and
+  restores it afterwards. `performance` asks for the top frequency; it does not
+  stop the *thermal* governor taking it away again, and on a passively cooled
+  board the two interact badly — the part heats past its passive trip and
+  cpufreq spends the run hunting between steps. The residency check then
+  correctly voids the run, after the whole measurement has been spent. Capping
+  to a frequency a soak has shown the board sustains turns that into a run that
+  simply does not throttle. Use `Scripts/a32-thermal-soak.sh` to find the
+  frequency, and record it in the report note so the history stays
+  interpretable. A stable clock matters far more than a high one here: the
+  benchmark reports a *ratio* between engines, so absolute frequency barely
+  affects the result while a clock that moves mid-run biases it.
 - **Pinning.** `--cpu-set` hands the run a fixed set of cores so the scheduler
   cannot migrate it mid-pass onto a cold cache.
 
@@ -67,6 +89,18 @@ Add `--bmf out.json` to also write Bencher Metric Format.
 | `m2-air` | M2 MacBook Air 15" | xcode | on macOS 27 beta |
 | `m1-air` | M1 MacBook Air | xcode | |
 | `pi500` | Raspberry Pi 500, Cortex-A76 | portable | Ubuntu 24.04 aarch64 |
+| `tinker` | ASUS Tinker Board, RK3288, Cortex-A17 | portable | 32-bit ARMv7-A, cross-built |
+
+**The Tinker Board is the odd one out, in three ways that all matter.** It is
+32-bit ARMv7-A, so `a2_planar`'s `__aarch64__` gate never opens and its line-up
+is `a2_fast` against the `a32` lab rather than against the planar kernels. Its
+arithmetic depends on build flags in a way no other testbed's does — at
+`-mfpu=neon` Eigen silently computes `a2_fast`'s 8-channel path with non-fused
+`vmlaq_f32`, so the reported `fpu` field must read `neon+fma` for a run to mean
+anything. And it is cross-built on the Pi rather than compiled in place, because
+an RK3288 with 2 GB of RAM building Eigen at `-O3` is not a sensible use of an
+afternoon. Its numbers are not comparable with any other testbed's, only with
+its own history.
 
 **The Pi is a Pi 500, not a Pi 5.** Same BCM2712 and the same Cortex-A76, so as
 a *core* it is the Pi 5 datapoint — but the 500 is passively cooled inside a
@@ -207,6 +241,28 @@ the test file, and a real-time factor that is exactly `100 / core_percent`. Both
 were also being fed in the wrong units: Bencher's built-in `latency` is
 nanoseconds and its `throughput` is operations per second, so the dashboard was
 labelling milliseconds as nanoseconds.
+
+### Hardware counters
+
+`--counters default` brackets **each timed pass** with PMU counters and puts the
+results in the report next to the timings; `--list-counters` prints what this
+machine's PMU offers. This is not `perf stat`, and not only because Ubuntu ships
+no perf binary for 32-bit ARM: `perf stat` counts a whole process, and most of
+this process is model loading, wav decoding, parity rendering and warm-up. The
+counters are reduced over the passes the tightest-70% window accepted, using the
+same median, so they describe the same work `core_percent` does.
+
+Two caveats the tool reports rather than hides. A PMU has a fixed number of
+programmable counters — six on the Cortex-A17, and `--list-counters` probes for
+the number — and asking for more makes the kernel time-slice them, so every
+value becomes an estimate scaled up from part of each pass. And sysfs advertises
+the generic architectural event set rather than what the core implements: on
+Cortex-A17, `ld_retired` and `st_retired` open successfully and count nothing,
+so `mem_access` is the substitute. An event that reads zero on every pass is
+flagged as such.
+
+Counters need `kernel.perf_event_paranoid` at 1 or lower. Where it is higher the
+run continues without them and says why.
 
 A variant that failed its agreement threshold is **omitted entirely**, never
 reported as zero. `Scripts/bencher-report.py` refuses to emit an empty run for

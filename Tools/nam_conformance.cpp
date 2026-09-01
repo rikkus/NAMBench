@@ -40,7 +40,7 @@
 
 extern "C" {
 NB_DECLARE_VARIANT_(NB_PREFIX)
-#if defined(NB_ENABLE_SLIM_LAB) || defined(NB_ENABLE_FULL_LAB)
+#if defined(NB_ENABLE_SLIM_LAB) || defined(NB_ENABLE_FULL_LAB) || defined(NB_ENABLE_A32_LAB)
 NB_DECLARE_KERNEL_LAB_(NB_PREFIX)
 #endif
 }
@@ -49,7 +49,7 @@ NB_DECLARE_KERNEL_LAB_(NB_PREFIX)
 #define NB_CAT(a, b) NB_CAT_(a, b)
 #define NB_FN(suffix) NB_CAT(NB_PREFIX, suffix)
 
-#if defined(NB_ENABLE_SLIM_LAB) || defined(NB_ENABLE_FULL_LAB)
+#if defined(NB_ENABLE_SLIM_LAB) || defined(NB_ENABLE_FULL_LAB) || defined(NB_ENABLE_A32_LAB)
   #define NB_IS_LAB 1
 #else
   #define NB_IS_LAB 0
@@ -67,9 +67,28 @@ NB_DECLARE_KERNEL_LAB_(NB_PREFIX)
 #elif defined(__i386__) || defined(_M_IX86)
   #define NB_ARCH "x86"
 #elif defined(__arm__) || defined(_M_ARM)
-  #define NB_ARCH "arm"
+  #define NB_ARCH "armv7"
 #else
   #define NB_ARCH "unknown"
+#endif
+
+// On 32-bit ARM the FPU selection is part of the arithmetic's identity, not a
+// tuning note: -mfpu=neon gives NEON without fused multiply-add, and Eigen then
+// computes a2_fast's C=8 path with non-fused vmlaq_f32 instead of vfmaq_f32.
+// Two records that disagree here are not comparable, so it is recorded next to
+// the architecture rather than assumed from it.
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+  #if defined(__ARM_FEATURE_FMA)
+    #define NB_FPU "neon+fma"
+  #else
+    #define NB_FPU "neon"
+  #endif
+#elif defined(__ARM_FEATURE_FMA)
+  #define NB_FPU "vfp+fma"
+#elif defined(__aarch64__) || defined(_M_ARM64)
+  #define NB_FPU "asimd"
+#else
+  #define NB_FPU "none"
 #endif
 
 // Recorded for the report rather than for any decision. The planar kernels now
@@ -166,6 +185,7 @@ const char* engine_name(NbEngine engine)
     case NbEngineSlim: return "slim";
     case NbEngineFull: return "full";
     case NbEnginePlanar: return "a2_planar";
+    case NbEngineA32: return "a32";
     case NbEngineUnknown: break;
   }
   return "unknown";
@@ -178,6 +198,14 @@ struct Record
   std::string submodel; // "widest" | "narrowest"
   std::string kernel;   // lab kernel name, or empty
   int kernelIndex = -1;
+  /// Whether this kernel claims bit-identity with its reference on this target:
+  /// 1 yes, 0 no, -1 not a lab kernel (the comparator then falls back to its
+  /// name rules, so older records still read correctly).
+  ///
+  /// Recorded so the comparator can test the claim instead of inferring it. The
+  /// a32 lab needs this: nearly all of its kernels claim exactness and a couple
+  /// deliberately do not, which the "*baseline" suffix rule cannot express.
+  int exact = -1;
   std::string engine;
   int32_t channels = 0;
   double sampleRate = 0.0;
@@ -226,7 +254,8 @@ bool write_report(const fs::path& path, const std::string& variant, int hasFused
 
   out += "{\n  \"variant\": \"";
   json_escape(out, variant);
-  out += "\",\n  \"arch\": \"" NB_ARCH "\",\n  \"platform\": \"" NB_PLATFORM "\",\n  \"compiler\": \"";
+  out += "\",\n  \"arch\": \"" NB_ARCH "\",\n  \"fpu\": \"" NB_FPU
+         "\",\n  \"platform\": \"" NB_PLATFORM "\",\n  \"compiler\": \"";
   json_escape(out, NB_COMPILER);
   out += "\",\n";
 
@@ -255,6 +284,8 @@ bool write_report(const fs::path& path, const std::string& variant, int hasFused
       json_escape(out, r.kernel);
       out += '"';
     }
+    out += ", \"exact\": ";
+    out += (r.exact < 0) ? "null" : (r.exact ? "true" : "false");
     std::snprintf(scratch, sizeof(scratch),
                   ", \"kernel_index\": %d, \"engine\": \"%s\", \"channels\": %d, "
                   "\"sample_rate\": %.10g, \"checksum\": %.17g, \"non_finite\": %llu, "
@@ -350,6 +381,10 @@ bool run_case(const std::vector<uint8_t>& nam, NbSubmodel mode, const char* subm
   record.kernelIndex = kernelIndex;
   if (kernelName != nullptr)
     record.kernel = kernelName;
+#if NB_IS_LAB
+  if (kernelIndex >= 0)
+    record.exact = NB_FN(_kernel_exact)(kernelIndex);
+#endif
 
   record.label = submodelName;
   if (kernelIndex >= 0)
@@ -492,7 +527,21 @@ int main(int argc, char** argv)
   //                      that matters.
   //   slim lab           the 3-channel submodel only, every kernel.
   //   full lab           the 8-channel submodel only, every kernel.
-#if defined(NB_ENABLE_SLIM_LAB)
+  //   a32 lab            both submodels — it carries kernels for each, so the
+  //                      submodel is chosen per kernel from the kernel's own
+  //                      declared channel count rather than from a lab-wide
+  //                      constant.
+#if defined(NB_ENABLE_A32_LAB)
+  const int kernels = NB_FN(_kernel_count)();
+  for (int k = 0; k < kernels; k++)
+  {
+    const int channels = NB_FN(_kernel_channels)(k);
+    const bool narrow = (channels == 3);
+    ok &= run_case(nam, narrow ? NbSubmodelNarrowest : NbSubmodelWidest,
+                   narrow ? "narrowest" : "widest", k, NB_FN(_kernel_name)(k), input, blockSize,
+                   outDir, variant, records);
+  }
+#elif defined(NB_ENABLE_SLIM_LAB)
   const int kernels = NB_FN(_kernel_count)();
   for (int k = 0; k < kernels; k++)
     ok &= run_case(nam, NbSubmodelNarrowest, "narrowest", k, NB_FN(_kernel_name)(k), input,

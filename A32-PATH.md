@@ -190,6 +190,71 @@ switches *and* a transposed `layer1x1` weight block that the lab kernels do not.
 Getting there was not a matter of copying the winner across; see
 [What the port cost](#what-the-port-cost).
 
+### The option that is left on the table
+
+Bit-identity is the promotion criterion, not a law of nature. If it is ever
+traded away deliberately, this is the whole of what is on offer — everything
+below measured in **one session**, on the same board, at the same pinned clock,
+at 32-frame blocks, so the rows are directly comparable to each other. (The
+`a2_planar` rows sit ~0.3% off the headline table above because that was a
+different session; it is the run-to-run spread described under the control, and
+it is exactly why the comparison worth trusting is *within* a table rather than
+across two.)
+
+| Submodel | Kernel | core % | vs `a2_fast` | vs promoted | Parity |
+|---|---|---:|---:|---:|---|
+| A2 standard | `a2_fast` | 78.53% | — | — | — |
+| | **`a2_planar`** — promoted | **55.48%** | 1.416× | — | **bit-identical** |
+| | `a32:s_stacked8_linear` | 57.28% | 1.371× | 0.968× | **bit-identical** |
+| | `a32:s_chanmajor` | **51.24%** | **1.533×** | **1.083×** | 136.6 dB |
+| A2 nano | `a2_fast` | 12.32% | — | — | — |
+| | **`a2_planar`** — promoted | **8.33%** | 1.480× | — | **bit-identical** |
+| | `a32:n_stacked8_linear` | 8.88% | 1.387× | 0.937× | **bit-identical** |
+| | `a32:n_framemajor` | 15.34% | 0.803× | 0.543× | 133.3 dB |
+| | `a32:n_vmla` | 19.76% | 0.623× | 0.421× | 133.7 dB |
+
+Three things this table settles.
+
+**At C=3 there is no option at all.** Both inexact kernels are slower than
+`a2_fast` itself, never mind the promoted one — `n_vmla` by a factor of 1.6.
+Giving up exactness at the narrow model buys nothing, and there is nothing
+further to investigate there unless a new candidate appears.
+
+**At C=8 the option is real but has shrunk.** `s_chanmajor` is worth **4.2
+points of one core** over the promoted kernel, 55.48% against 51.24%, a further
+1.083×. Against the *lab* winner it looked like 6.0 points; improving the exact
+kernel took a third of the inexact one's margin with it. Anyone re-opening this
+question should re-measure rather than quote the older figure.
+
+**"Not bit-identical" here does not mean "less accurate".** `s_chanmajor` does
+at C=8 what the reference already does at C=3 — one bias-seeded chain, one
+rounding per MAC — instead of Eigen's per-tap partial from zero with the mixin
+rounded twice — and it is faster for the same reason it rounds less: a shorter
+dependency structure. Fewer roundings over the same reduction means it is very
+likely the *more* accurate of the two, though nothing measured here says so
+directly: every parity figure in this document is against `a2_fast`, not against
+a higher-precision evaluation, so the 136.6 dB is a statement about how far it
+sits from Eigen and not about which of the two is nearer the truth. Settling
+that would need a double-precision reference render, which no measurement here
+has done. See
+[The fastest kernel here, and why it is not the winner](#the-fastest-kernel-here-and-why-it-is-not-the-winner).
+
+That last point is what makes this a genuine option rather than a
+quality-for-speed trade, and it is also why the better fix is upstream: changing
+the C=8 reference's own reduction order would make the accurate arithmetic the
+thing everyone gets, on every architecture, and would hand this 4.2 points to
+the exact kernel for free.
+
+Taking it would be a promotion, not a flag. `s_chanmajor` lives in the A32 lab
+(`Sources/A32Engines/a32_std_chanmajor.cpp`); it is not in the vendored planar
+checkout, and nothing in the shipping path can select it today. Reproduce the
+row above with:
+
+```sh
+Scripts/a32-deploy.sh -- --max-freq 1416000 -- --block-size 32 \
+    --a32 s_chanmajor,s_stacked8_linear,n_vmla,n_framemajor,n_stacked8_linear
+```
+
 ## What each candidate did
 
 ### The control

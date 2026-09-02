@@ -27,16 +27,19 @@ FUSED_SHA="4596b54ce102d3ceef9fd2b4a158978ea794fe9a"
 # draft PR, not a summary of it. This is the code the benchmark now measures, so
 # the number and the proposal cannot drift apart.
 #
-# Same fork as FUSED, different branch (apple-silicon-a2-planar). That branch is
-# cut from upstream main and carries no fused engine at all: a2_fast, plus
-# a2_planar, plus a two-line change in A2FastConfig::create that prefers the
-# planar model where one exists.
+# Same fork as FUSED, different branch (armv7-a2-planar, which continues
+# apple-silicon-a2-planar). That branch is cut from upstream main and carries no
+# fused engine at all: a2_fast, plus a2_planar, plus a two-line change in
+# A2FastConfig::create that prefers the planar model where one exists.
 #
-# The gate is __aarch64__, not __APPLE__ && __aarch64__: the kernels are selected
-# on every AArch64 target that defines it. Off AArch64 the translation unit has
-# no symbols in it and the A2 path is byte for byte what upstream ships.
+# The gate is __aarch64__, or 32-bit ARM with NEON and FMA -- not
+# __APPLE__ && __aarch64__. Where it cannot open the translation unit has no
+# symbols in it and the A2 path is byte for byte what upstream ships. The ARMv7
+# arm of the gate needs -mfpu=neon-vfpv4: with plain -mfpu=neon,
+# __ARM_FEATURE_FMA is undefined, Eigen picks non-fused vmlaq_f32, and the
+# reference the kernels are compared against computes different bits.
 PLANAR_URL="${FUSED_URL}"
-PLANAR_SHA="ca349f6cfe07200aea9e6767cd29025d7152b33a"
+PLANAR_SHA="536a371baac35c72054e50aa1f208d4b3a576d65"
 
 EIGEN_URL="https://gitlab.com/libeigen/eigen.git"
 

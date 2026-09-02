@@ -177,6 +177,19 @@ Taking A2 standard from 78.5% to 57.8% of a core, bit-identically, is the
 headline. It is the difference between one instance per core with nothing left
 over and one instance per core with room for the rest of a signal chain.
 
+The promoted kernels do slightly better than the lab ones, measured through
+`a2_planar` itself on the same board at the same pinned clock:
+
+| Submodel | `a2_fast` | `a2_planar` | | |
+|---|---:|---:|---:|---|
+| A2 standard | 78.79% of one core | **55.63%** | 1.416× | bit-identical |
+| A2 nano | 12.29% of one core | **8.36%** | 1.470× | bit-identical |
+
+They are ahead of the lab winners because the promoted kernels carry the
+switches *and* a transposed `layer1x1` weight block that the lab kernels do not.
+Getting there was not a matter of copying the winner across; see
+[What the port cost](#what-the-port-cost).
+
 ## What each candidate did
 
 ### The control
@@ -527,6 +540,61 @@ targets static-link libstdc++ and libgcc so the board needs only libc and libm.
   for both architectures, which is the property that makes a promotion argument
   possible at all.
 
+## What the port cost
+
+The promotion was not "widen the gate, re-sweep the tiles". That is what it
+looked like from here, it is what the section below originally said, and it was
+wrong by about eleven points of one core.
+
+`a2_planar`'s C=8 conv unrolls the input and output channel loops with a fold
+over generic lambdas, because AArch64 needs each index as a compile-time value
+for the by-lane FMA encoding (`vfmaq_laneq_f32`). ARMv7 has no by-lane FMA at
+all, so the fold buys it nothing — and costs it a great deal. The first ARMv7
+build of the promoted file was bit-identical, passed every conformance check,
+and ran at **68.8% of one core against the lab kernel's 57.4%**: behind even
+`s_planar8`, which is a plain tile-8 kernel with none of the ring switches.
+
+Nothing but a measurement on the part said so. The tell, once the board was
+asked, was in the counters:
+
+| | cycles | instructions | mem_access | core % |
+|---|---:|---:|---:|---:|
+| `a2_fast` | 12.12 G | 13.54 G | 6.71 G | 78.6% |
+| `a2_planar`, fold form | 10.58 G | 12.12 G | 8.33 G | 68.7% |
+| `a32:s_planar8` | 9.26 G | 10.13 G | 6.34 G | 60.1% |
+| `a32:s_stacked8_linear` | 8.83 G | 9.71 G | 6.13 G | 57.3% |
+| `a2_planar`, loop form | 8.53 G | 9.79 G | 6.34 G | 55.4% |
+
+Not stalls — the fold form had the *highest* IPC of the four. It simply executed
+20% more instructions and a third more memory accesses. With 16 Q registers the
+accumulators cannot stay resident at any useful tile width, so what decides this
+kernel is not whether it spills but how well the compiler schedules the traffic
+it cannot avoid, and GCC does that far better for a loop nest it can see the
+shape of than for a fold of lambdas it must first decide to inline.
+
+Replacing the fold with the lab's plain loop nest, on ARMv7 only, is the whole
+fix. The AArch64 object is byte-identical before and after.
+
+Two things that looked like the answer and were not, both recorded because they
+cost a measurement each:
+
+* **Forcing the fold lambdas inline** (`always_inline`). GCC had outlined three
+  of them into `.isra` clones. Fixing that moved nothing: the outlined ones were
+  the 4-frame remainder path, not the main tile.
+
+* **Unrolling the tap loop** so every subscript of `z` and `t` is constant. This
+  is what the lab kernel does, and it made ARMv7 *worse* — 92.5% of a core,
+  slower than `a2_fast` — and AArch64 catastrophically worse, 2.32× down to
+  1.04×. Register pressure does not respond to the intuition that more
+  compile-time structure is better; on this kernel it responds to almost nothing
+  else.
+
+The general form, for the next architecture: a kernel that is bit-identical and
+passes conformance can still have lost most of its speed, and the only thing
+that detects that is measuring it against the reference on the target. A figure
+carried over from a lab kernel of the same shape is not evidence about the
+promoted code.
+
 ## Promotion
 
 The winner is **a new gated branch in `a2_fast`, not a new engine**.
@@ -550,6 +618,11 @@ Concretely:
    `a2_planar` already notes that its tile widths are M2 measurements; this
    campaign shows the error is not a small mistuning but an inversion. Tile 8
    for ARMv7 against tile 32 for AArch64 at C=3.
+
+4. **Re-measure the promoted code on the part, against the reference, before
+   claiming any of the figures above for it.** The tile widths are not the only
+   thing that does not travel; see [What the port cost](#what-the-port-cost) for
+   the one that was found the expensive way.
 
 Three caveats have to be stated in the promotion, not buried:
 

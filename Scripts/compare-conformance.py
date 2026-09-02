@@ -183,13 +183,15 @@ def db_text(parity: Parity) -> str:
 # --------------------------------------------------------------------------
 
 
-def expected_engine(record: Record, aarch64: bool) -> str | tuple[str, ...]:
+def expected_engine(record: Record, arch: str) -> str | tuple[str, ...]:
     """Which engine this case is supposed to have been routed to.
 
     Mirrors detect_engine in the shim rather than restating the build flags,
     which is the whole reason the driver reports what it actually got.
     """
     variant, submodel = record.variant, record.submodel
+    aarch64 = arch == "aarch64"
+    armv7 = arch.startswith("armv7") or arch == "arm"
 
     if variant == "a2_fast":
         # a2_fast is compiled into every variant and matches the A2 shape on
@@ -197,18 +199,26 @@ def expected_engine(record: Record, aarch64: bool) -> str | tuple[str, ...]:
         return "a2_fast"
 
     if variant == "a2_planar":
-        # a2_planar.h defines NAM_A2_PLANAR for any target that defines
-        # __aarch64__, so on AArch64 the kernels MUST be there — if they quietly
-        # stopped being selected, every "planar" number would become an a2_fast
-        # number wearing its name, which is the one thing worth failing a build
-        # over. Off AArch64 the same checkout is plain a2_fast.
+        # a2_planar.h defines NAM_A2_PLANAR on AArch64, and on 32-bit ARM that
+        # also has NEON and VFPv4 fused multiply-add. On both the kernels MUST be
+        # there — if they quietly stopped being selected, every "planar" number
+        # would become an a2_fast number wearing its name, which is the one thing
+        # worth failing a build over. Everywhere else the same checkout is plain
+        # a2_fast.
+        #
+        # The ARMv7 arm of the gate also requires __ARM_NEON and
+        # __ARM_FEATURE_FMA. This repository's CMakeLists refuses to configure an
+        # ARMv7 build without them (see the NB_ARMV7_HAS_NEON_FMA check), so
+        # inside this project an ARMv7 record always means the gate was open;
+        # a build elsewhere with -mfpu=neon alone would legitimately route to
+        # a2_fast and is out of scope here.
         #
         # MSVC is the exception, and deliberately: it spells the architecture
         # _M_ARM64 and never defines __aarch64__, so the gate does not open. That
         # is the one part of the old Apple-only gate worth keeping — MSVC at
         # /fp:precise does not contract a*b+c into an FMA, so the reference
         # branch would compute something else and bit-identity would not hold.
-        if aarch64 and not record.compiler.startswith("msvc"):
+        if (aarch64 or armv7) and not record.compiler.startswith("msvc"):
             return "a2_planar"
         return "a2_fast"
 
@@ -373,7 +383,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--arch",
-        choices=("record", "aarch64", "other"),
+        choices=("record", "aarch64", "armv7", "other"),
         default="record",
         help="which routing to expect; 'record' believes each binary's own "
         "compiled-for architecture (default, and the right answer under a "
@@ -424,8 +434,8 @@ def main() -> int:
     # --- routing and finiteness -------------------------------------------
     print("\nrouting")
     for record in sorted(records, key=lambda r: r.name):
-        aarch64 = record.arch == "aarch64" if args.arch == "record" else args.arch == "aarch64"
-        want = expected_engine(record, aarch64)
+        arch = record.arch if args.arch == "record" else args.arch
+        want = expected_engine(record, arch)
         allowed = want if isinstance(want, tuple) else (want,)
         ok = record.engine in allowed
         if not ok:

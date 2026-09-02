@@ -1107,16 +1107,24 @@ int main(int argc, char** argv)
   // a2_fast, and measuring that against upstream would produce two identical
   // numbers and the false impression that the kernels achieve nothing.
   //
-  // The second condition mirrors a2_planar.h's own gate. Where it cannot open —
-  // 32-bit ARM, x86, MSVC/ARM64 — the planar checkout compiles to plain a2_fast,
-  // and lining it up would measure the reference against itself. That case is
-  // caught below with a hard error, but the error exists for a *regression* on a
-  // target where the gate should have opened. On a target where it was never
-  // going to, the right answer is to say so and carry on with the rest of the
-  // line-up, so that e.g. an a32 lab sweep on a Cortex-A17 can still produce a
-  // report.
+  // The second condition mirrors a2_planar.h's own gate, and has to be kept in
+  // step with it: it opens on AArch64, and on 32-bit ARM with NEON and FMA.
+  // Where it cannot open — x86, MSVC/ARM64, ARMv7 built without neon-vfpv4 —
+  // the planar checkout compiles to plain a2_fast, and lining it up would
+  // measure the reference against itself. That case is caught below with a hard
+  // error, but the error exists for a *regression* on a target where the gate
+  // should have opened. On a target where it was never going to, the right
+  // answer is to say so and carry on with the rest of the line-up, so that e.g.
+  // an a32 lab sweep on a Cortex-A17 can still produce a report.
+  //
+  // Mirroring a gate is a duplicate by construction, and this one has already
+  // drifted once: it stayed at __aarch64__ for a release after the header
+  // widened, and the effect was not an error but a silently shorter line-up.
+  // The runtime check below is what makes the duplicate safe — if these flags
+  // and the ones the planar library was built with ever disagree, the run
+  // stops rather than reporting a2_fast twice.
   constexpr bool kPlanarBuildable =
-#if defined(__aarch64__)
+#if defined(__aarch64__) || (defined(__arm__) && defined(__ARM_NEON) && defined(__ARM_FEATURE_FMA))
     true;
 #else
     false;
@@ -1125,8 +1133,8 @@ int main(int argc, char** argv)
   if (!kPlanarBuildable)
   {
     if (!config.quiet)
-      std::printf("planar excluded: a2_planar.h enables the kernels where __aarch64__ is defined, "
-                  "so this build is plain a2_fast\n");
+      std::printf("planar excluded: a2_planar.h enables the kernels on AArch64 and on 32-bit ARM "
+                  "with FMA, so this build is plain a2_fast\n");
   }
   else if (probe.channels == 3 || probe.channels == 8)
   {
@@ -1285,20 +1293,24 @@ int main(int argc, char** argv)
                   engine_name(subject.api->engine(models[i])), subject.api->channels(models[i]));
 
     // The one failure this driver cannot let pass quietly. a2_planar.h defines
-    // NAM_A2_PLANAR only where __aarch64__ is defined, so anywhere else the
-    // planar checkout builds to plain a2_fast. It would then measure the same
-    // code as `upstream`, land within noise of it, and read as "the kernels are
-    // worth nothing" rather than "the kernels are not in this build".
+    // NAM_A2_PLANAR only on AArch64 and on 32-bit ARM with NEON and FMA, so
+    // anywhere else the planar checkout builds to plain a2_fast. It would then
+    // measure the same code as `upstream`, land within noise of it, and read as
+    // "the kernels are worth nothing" rather than "the kernels are not in this
+    // build".
     if (subject.name == "a2_planar" && subject.api->engine(models[i]) != NbEnginePlanar)
     {
       std::fprintf(stderr,
                    "\nerror: the planar variant routed to %s, not to the planar kernels.\n"
-                   "  a2_planar.h enables them where __aarch64__ is defined, so this build is\n"
-                   "  measuring a2_fast twice. Refusing to report that as a comparison.\n"
+                   "  a2_planar.h enables them on AArch64, and on 32-bit ARM with NEON and\n"
+                   "  FMA, so this build is measuring a2_fast twice. Refusing to report that\n"
+                   "  as a comparison.\n"
                    "\n"
                    "  Expected on x86, and on MSVC/ARM64, which spells the architecture\n"
-                   "  _M_ARM64 and never defines __aarch64__. Unexpected anywhere else — and\n"
-                   "  on AArch64 it would mean the gate has regressed.\n",
+                   "  _M_ARM64 and never defines __aarch64__. Unexpected anywhere else. On\n"
+                   "  AArch64 it means the gate has regressed; on ARMv7 the likeliest cause\n"
+                   "  is -mfpu=neon rather than -mfpu=neon-vfpv4, which leaves\n"
+                   "  __ARM_FEATURE_FMA undefined.\n",
                    engine_name(subject.api->engine(models[i])));
       return 1;
     }

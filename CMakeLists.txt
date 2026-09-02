@@ -307,16 +307,19 @@ nb_add_variant(nam_conformance_upstream
 # thing proposed there cannot drift apart.
 #
 # NAM_A2_PLANAR — the switch that decides whether the kernels exist at all — is
-# defined inside a2_planar.h for any target that defines __aarch64__. Off
-# AArch64 the translation unit compiles to an object with no symbols and this
+# defined inside a2_planar.h for any target that defines __aarch64__, and for
+# 32-bit ARM that also defines __ARM_NEON and __ARM_FEATURE_FMA. The ARMv7 arm
+# of that gate is why the -mfpu block above is a correctness setting: at
+# -mfpu=neon the gate stays shut, and this variant silently becomes a2_fast.
+# Elsewhere the translation unit compiles to an object with no symbols and this
 # variant is plain a2_fast. That is not a build failure and must not be treated
 # as one: the driver asks which engine it actually got, and reports a2_fast
 # honestly.
 #
 # Nothing needs forcing. The gate used to be __APPLE__ && __aarch64__, and this
 # file used to carry a NAMBENCH_FORCE_A2_PLANAR option to open it; the gate has
-# since been widened upstream on the evidence that option was added to collect,
-# so both are gone.
+# since been widened upstream twice — to AArch64, then to ARMv7 — each time on
+# the evidence that option was added to collect, so both are gone.
 # ---------------------------------------------------------------------------
 nb_add_variant(nam_conformance_planar
 	VENDOR planar

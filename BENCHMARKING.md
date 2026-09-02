@@ -92,9 +92,10 @@ Add `--bmf out.json` to also write Bencher Metric Format.
 | `tinker` | ASUS Tinker Board, RK3288, Cortex-A17 | portable | 32-bit ARMv7-A, cross-built |
 
 **The Tinker Board is the odd one out, in three ways that all matter.** It is
-32-bit ARMv7-A, so `a2_planar`'s `__aarch64__` gate never opens and its line-up
-is `a2_fast` against the `a32` lab rather than against the planar kernels. Its
-arithmetic depends on build flags in a way no other testbed's does — at
+the only 32-bit testbed, and until the planar gate was widened to ARMv7 its
+line-up was `a2_fast` against the `a32` lab alone, because `a2_planar` compiled
+to nothing there; it now measures all three. Its arithmetic depends on build
+flags in a way no other testbed's does — at
 `-mfpu=neon` Eigen silently computes `a2_fast`'s 8-channel path with non-fused
 `vmlaq_f32`, so the reported `fpu` field must read `neon+fma` for a run to mean
 anything. And it is cross-built on the Pi rather than compiled in place, because
@@ -166,9 +167,15 @@ running is worth more than a fast one.
 
 ## The planar gate
 
-`a2_planar.h` defines `NAM_A2_PLANAR` wherever `__aarch64__` is defined. Off
-AArch64 the translation unit compiles to an object with no symbols and the
-variant is plain `a2_fast` — which the driver reports honestly, and then
+`a2_planar.h` defines `NAM_A2_PLANAR` wherever `__aarch64__` is defined, and on
+32-bit ARM that also has `__ARM_NEON` and `__ARM_FEATURE_FMA`. The FMA half is
+not belt-and-braces: without it Eigen computes `a2_fast`'s own 8-channel path
+with non-fused `vmlaq_f32`, so the reference the kernels are compared against is
+no longer the reference — which is the same trap the `-mfpu` note above
+describes, reached from the other side.
+
+Everywhere else the translation unit compiles to an object with no symbols and
+the variant is plain `a2_fast` — which the driver reports honestly, and then
 **refuses to run**, because measuring the reference against itself would land
 within noise and read as the kernels achieving nothing:
 

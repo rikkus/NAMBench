@@ -39,7 +39,7 @@ FUSED_SHA="4596b54ce102d3ceef9fd2b4a158978ea794fe9a"
 # __ARM_FEATURE_FMA is undefined, Eigen picks non-fused vmlaq_f32, and the
 # reference the kernels are compared against computes different bits.
 PLANAR_URL="${FUSED_URL}"
-PLANAR_SHA="536a371baac35c72054e50aa1f208d4b3a576d65"
+PLANAR_SHA="80d75c19b08c11701bfe6f081b02769ab4489bfb"
 
 EIGEN_URL="https://gitlab.com/libeigen/eigen.git"
 

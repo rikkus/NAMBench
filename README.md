@@ -98,6 +98,14 @@ The default line-up is `a2_fast` against `a2_planar`, on both A2 submodels:
 Bit-identical to `a2_fast` in every case. Results are tracked over time with
 Bencher, one testbed per machine. See [BENCHMARKING.md](BENCHMARKING.md).
 
+The same line-up now runs on 32-bit ARMv7 as well, on the RK3288 in the HeadRush
+Core: **1.416x** at A2 standard and **1.470x** at A2 nano, bit-identical, at a
+pedal's 32-frame blocks and a clock capped to 1416 MHz. Those are not a third
+column of the table above, because that table is at 64-frame blocks and this
+part gains most at 32 — putting them side by side would flatter the ARMv7 one by
+a difference in the measurement rather than in the code.
+[A32-PATH.md](A32-PATH.md) has the campaign behind them.
+
 ## What it measures, and why it is built this way
 
 **Which submodel, chosen by shape not by position.** The `.nam` is a

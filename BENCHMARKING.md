@@ -37,6 +37,12 @@ by 1.4% in opposite directions.
 
 Each testbed uses one driver for life, so no history ever contains a mixture.
 
+The `driver:` field in `.github/workflows/benchmark.yml` names one of these two
+*and* where it runs, which is why it has three values rather than two: `xcode`
+is `nambench`; `portable` is `nam_benchmark`, built and measured on one machine;
+and `cross` is the same `nam_benchmark`, built on one machine and measured on
+another over ssh, which is the only way to reach a board that cannot compile it.
+
 ## Running one by hand
 
 ```bash
@@ -93,7 +99,7 @@ Add `--bmf out.json` to also write Bencher Metric Format.
 | `m2-air` | M2 MacBook Air 15" | xcode | on macOS 27 beta |
 | `m1-air` | M1 MacBook Air | xcode | |
 | `pi500` | Raspberry Pi 500, Cortex-A76 | portable | Ubuntu 24.04 aarch64 |
-| `tinker` | ASUS Tinker Board, RK3288, Cortex-A17 | portable | 32-bit ARMv7-A, cross-built |
+| `tinker` | ASUS Tinker Board, RK3288, Cortex-A17 | cross | 32-bit ARMv7-A, built on the Pi |
 
 **The Tinker Board is the odd one out, in three ways that all matter.** It is
 the only 32-bit testbed, and until the planar gate was widened to ARMv7 its
@@ -106,6 +112,53 @@ anything. And it is cross-built on the Pi rather than compiled in place, because
 an RK3288 with 2 GB of RAM building Eigen at `-O3` is not a sensible use of an
 afternoon. Its numbers are not comparable with any other testbed's, only with
 its own history.
+
+### How the Tinker Board reaches Bencher
+
+The `cross` driver, which is the `portable` one split across two machines.
+`Scripts/a32-deploy.sh` cross-builds on the Pi, rsyncs the static binaries to
+the board over ssh, and runs the same `Scripts/run-benchmark.sh` there — so the
+governor, the frequency cap and the residency check are the ones every Linux
+testbed uses, not a second description of them. The reports come back, and the
+conversion and the upload happen on the build host.
+
+That split is deliberate. The board cannot build the thing that measures it, and
+it should not hold a Bencher API key or be asked what commit it is on; the build
+host owns the compiler, the git history and the credential, and the board owns
+nothing but the timing. `--bmf` on `a32-deploy.sh` is that seam — it converts
+exactly the reports rsync says it transferred, so an earlier run's results
+cannot be uploaded twice as a new one.
+
+By hand:
+
+```bash
+./Scripts/track-benchmark.sh --board tib
+```
+
+which cross-builds, deploys, measures, converts, uploads as testbed `tinker`,
+and syncs the thresholds and plots — the same steps the workflow takes, in the
+same order, so runs made either way form one history. `--check` first verifies
+the board answers ssh without a prompt as well as that Bencher is reachable.
+
+**Every tinker run is clock-capped to 1416 MHz**, and `track-benchmark.sh`
+defaults to it rather than leaving it to the caller. All four A17 cores share
+one cpufreq policy, so `--cpu-set` pins the work but not the clock: a thermal
+excursion charges whichever engine was running for it, which biases the ratio
+the benchmark reports rather than adding noise the tightest-70% analysis can
+reject. `run-benchmark.sh` correctly refuses to write BMF for such a run — after
+the whole measurement has been spent. `--max-freq none` measures the board as
+configured, deliberately. The number itself is soak-measured; see
+[A32-PATH.md](A32-PATH.md).
+
+**The tracked series is at 64-frame blocks**, like every other testbed's, so the
+four `tinker` series line up structurally with the four on `m2-air`.
+[A32-PATH.md](A32-PATH.md)'s headline for this board is at 32 frames instead,
+because that is what a pedal runs and because this part gains most there —
+which is exactly why the two must not share a series. Block size is not part of
+a benchmark name, so a run made with `-- --block-size 32` would land on top of
+the 64-frame history as though it were comparable. `bencher-report.py` says so
+and names the fix; take it, and convert that run by hand with
+`--prefix 'block32/'`.
 
 **The Pi is a Pi 500, not a Pi 5.** Same BCM2712 and the same Cortex-A76, so as
 a *core* it is the Pi 5 datapoint — but the 500 is passively cooled inside a
@@ -347,7 +400,9 @@ branch, so a run on one is still checked.
 `Scripts/track-benchmark.sh` does everything the workflow does except the
 runner: it picks the same driver and the same testbed name, so runs made this
 way and runs made later by a self-hosted runner form **one continuous history**
-rather than two forked ones.
+rather than two forked ones. It measures this machine, unless `--board HOST`
+tells it to cross-build for an ARMv7 board and measure that one instead — see
+[How the Tinker Board reaches Bencher](#how-the-tinker-board-reaches-bencher).
 
 ```bash
 export BENCHER_API_KEY="$(op read 'op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential')"
@@ -545,6 +600,11 @@ in the repository, following GitHub's generated commands. When it asks for
 labels, add the one this workflow expects — `nambench-m2air`, `nambench-m1air`
 or `nambench-pi500` — alongside the defaults it fills in for you.
 
+**There is no runner on the Tinker Board**, and there is not going to be: the
+`tinker` job runs on `nambench-pi500` and reaches the board over ssh. So the Pi
+carries both testbeds, and the workflow's `max-parallel: 1` is what keeps a
+cross-build from landing in the middle of the Pi measuring itself.
+
 The Pi wants two more things:
 
 ```bash
@@ -553,6 +613,20 @@ sudo apt-get install -y cmake util-linux
 
 and passwordless sudo for the governor, which it already has. Without it,
 `run-benchmark.sh` refuses to run rather than producing a biased number.
+
+For the `tinker` job it wants two more again — the armhf cross toolchain, and
+key-based ssh to the board under the runner's own user:
+
+```bash
+sudo apt-get install -y g++-arm-linux-gnueabihf rsync
+ssh-copy-id tib
+```
+
+`tib` is the host name the matrix passes as `board`; give it a `Host` entry in
+the runner user's `~/.ssh/config` if it needs a user, a port or an address. The
+measurement is driven over one non-interactive session, so a board that prompts
+for a password fails the run — `track-benchmark.sh --board tib --check` says so
+in ten seconds rather than after a cross build.
 
 Install the runner as a service so it survives a reboot:
 

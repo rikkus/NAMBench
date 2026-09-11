@@ -87,10 +87,24 @@ jobs:
                "runner": ["self-hosted", "Linux", "ARM64", "nambench-pi500"]},
               # ASUS Tinker Board, Rockchip RK3288: quad Cortex-A17, 32-bit
               # ARMv7-A. The SoC in the HeadRush Core and Prime, and the only
-              # 32-bit testbed here — its line-up is a2_fast against the a32
-              # lab, because a2_planar's gate does not open off AArch64.
-              {"testbed": "tinker", "driver": "portable", "cpu-set": "0-3",
-               "runner": ["self-hosted", "Linux", "ARM", "nambench-tinker"]},
+              # 32-bit testbed here. Its line-up is the same a2_fast against
+              # a2_planar as everywhere else, since the planar gate widened to
+              # 32-bit ARM with NEON and FMA.
+              #
+              # `cross` rather than `portable`, and it runs on the *Pi's*
+              # runner. The board has no toolchain, no cmake and 2 GB of RAM, so
+              # it cannot build the thing that measures it and there is no
+              # runner on it; the Pi cross-builds, rsyncs the static binaries
+              # over ssh and brings the reports back. `board` is the ssh host —
+              # give it a Host entry in the runner user's ~/.ssh/config.
+              #
+              # max-freq is a soak-measured number, not a round one: at 1416 MHz
+              # the RK3288 sits 8.8 °C under its passive trip and holds, and all
+              # four cores share one cpufreq policy, so a run whose clock moved
+              # is void rather than noisy. See A32-PATH.md.
+              {"testbed": "tinker", "driver": "cross", "cpu-set": "0-3",
+               "board": "tib", "max-freq": "1416000",
+               "runner": ["self-hosted", "Linux", "ARM64", "nambench-pi500"]},
           ]
           known = {m["testbed"] for m in machines}
 
@@ -174,6 +188,40 @@ jobs:
             --output-dir "$PWD/benchmark-results" \
             --bmf bmf.json \
             ${{ matrix.cpu-set && format('--cpu-set {0}', matrix.cpu-set) || '' }} \
+            -- \
+            --timing-seconds "${{ inputs.timing-seconds }}"
+
+      # --- The cross driver: build here, measure on a board over ssh -----
+      #
+      # No build step of its own, because a32-deploy.sh configures, builds and
+      # runs the codegen check as one thing — a kernel claiming bit-identity
+      # that emitted a non-fused vmla should fail before the binaries are
+      # copied, not after half an hour of measuring.
+      #
+      # The measurement itself happens on the board, under the copy of
+      # run-benchmark.sh that a32-deploy.sh puts there, so the governor, the
+      # frequency cap and the residency check are the same ones the portable
+      # driver uses. The BMF comes back here: the board has no checkout to
+      # convert with and no business holding an API key.
+      - name: Build and measure (cross)
+        if: matrix.driver == 'cross'
+        run: |
+          # Both matrix values are conditional in the same way the portable
+          # driver's --cpu-set is: a board entry that omitted one must drop the
+          # flag, not pass it empty. `--max-freq ""` would reach the point of
+          # writing an empty string into scaling_max_freq.
+          #
+          # The two `--` are not a typo: the first hands the rest to
+          # run-benchmark.sh on the board, the second hands the rest of that to
+          # nam_benchmark.
+          ./Scripts/a32-deploy.sh \
+            --host "${{ matrix.board }}" \
+            --step bench \
+            ${{ matrix.cpu-set && format('--cpu-set {0}', matrix.cpu-set) || '' }} \
+            --bmf bmf.json \
+            -- \
+            --submodels "${{ inputs.submodels }}" \
+            ${{ matrix.max-freq && format('--max-freq {0}', matrix.max-freq) || '' }} \
             -- \
             --timing-seconds "${{ inputs.timing-seconds }}"
 

@@ -36,7 +36,7 @@ UPSTREAM_SHA="2563c0fd4cb1f9ce457d89a761738ea15097e1f3"
 # __ARM_FEATURE_FMA is undefined, Eigen picks non-fused vmlaq_f32, and the
 # reference the kernels are compared against computes different bits.
 PLANAR_URL="https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore.git"
-PLANAR_SHA="d3814adb2f6e327b71a8df1e36c5515a772d2db4"
+PLANAR_SHA="552c5ab54cb8c2027ba9567c3ae974884e5b68c5"
 
 EIGEN_URL="https://gitlab.com/libeigen/eigen.git"
 

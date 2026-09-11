@@ -388,7 +388,12 @@ project exists to make. Machines stay apart because the faster one would flatten
 the other against the baseline, and `a2_standard` stays away from `a2_nano`
 because they differ by roughly seven times. Each plot draws the error bars — the
 min and max of the accepted set, so you can see how noisy the machine was before
-believing a step in the line — and the boundary limits.
+believing a step in the line. It does not draw the boundary limits: Bencher marks
+those with a warning triangle at every point, which reads as a problem when it
+is only where the threshold sits.
+
+A plot is recognised by its testbed and model, not its title, so one renamed on
+the dashboard keeps its name and is still updated in place.
 
 Plots follow `main` only. They are project-wide and capped at 64, so a set per
 branch would fill the dashboard with charts nobody asked for and nobody deletes;

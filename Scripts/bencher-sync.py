@@ -41,7 +41,9 @@ without a `/` is left out of the plots — it is not one of ours, and guessing
 which axis it belongs on would be worse than omitting it.
 
 Nothing here deletes anything. A plot this script does not recognise is left
-alone, and so is a testbed or benchmark that has been archived.
+alone, and so is a testbed or benchmark that has been archived. A plot is
+recognised by its testbed and model, not its title, so renaming one on the
+dashboard is safe.
 
 Usage:
     BENCHER_PROJECT=nambench BENCHER_API_KEY=bencher_user_... \\
@@ -91,10 +93,11 @@ PLOT_STYLE = {
     # a step in the line.
     "lower_value": True,
     "upper_value": True,
-    # And the boundary limits, so a point can be read against the threshold that
-    # would have alerted on it.
-    "lower_boundary": True,
-    "upper_boundary": True,
+    # Not the boundary limits. Bencher draws them as warning triangles at every
+    # point, which reads as a problem when it is only where the threshold sits,
+    # and the alert itself is what matters.
+    "lower_boundary": False,
+    "upper_boundary": False,
 }
 
 
@@ -293,14 +296,39 @@ def sync_plots(
     # every later run would call the pair up to date while the dashboard stayed
     # in whatever order the collision happened to resolve to.
     plots = listing(project, "plot", "--sort", "index", "--direction", "asc")
-    existing = {plot["title"]: plot for plot in plots if plot.get("title")}
+
+    # A plot is recognised by what it draws, not by its title, so one renamed on
+    # the dashboard keeps its name and is still updated in place rather than
+    # joined by a duplicate under the name this script would have picked.
+    slug_of = {t["uuid"]: t["slug"] for t in testbeds}
+    name_of = {b["uuid"]: b["name"] for b in benchmarks}
+
+    def key_of(plot: dict[str, Any]) -> tuple[str, str] | None:
+        """(testbed slug, model) for a plot of one testbed and one model's
+        kernels in core_percent, or None for any other plot."""
+        if plot.get("measures") != [measure_uuid] or len(plot.get("testbeds", [])) != 1:
+            return None
+        slug = slug_of.get(plot["testbeds"][0])
+        models = {
+            (split_name(name_of[uuid]) or (None,))[0] if uuid in name_of else None
+            for uuid in plot.get("benchmarks", [])
+        }
+        if slug is None or len(models) != 1 or None in models:
+            return None
+        return (slug, models.pop())
+
+    existing: dict[tuple[str, str], dict[str, Any]] = {}
+    for plot in plots:
+        key = key_of(plot)
+        if key is not None:
+            existing.setdefault(key, plot)
 
     # Where the plots this script manages sit relative to each other. Plots it
     # does not manage are left out rather than counted, so somebody's own chart
     # pinned in the middle does not make every managed plot look misplaced and
     # get rewritten on every run.
-    titles = {f"{testbed} : {model}" for testbed, model in wanted}
-    placed = [plot["title"] for plot in plots if plot.get("title") in titles]
+    managed = {plot["uuid"] for plot in existing.values()}
+    placed = [key_of(plot) for plot in plots if plot["uuid"] in managed]
 
     # Bencher indexes plots 0..64. Reaching that would mean roughly thirty
     # machines, but a run that silently stopped charting the newest one is the
@@ -310,9 +338,11 @@ def sync_plots(
 
     for index, (testbed_slug, model) in enumerate(sorted(wanted)):
         series = wanted[(testbed_slug, model)]
+        current = existing.get((testbed_slug, model))
         # Testbed first, so the list sorts into one block per machine — which is
-        # how anyone reads it, having usually come to look at one machine.
-        title = f"{testbed_slug} : {model}"
+        # how anyone reads it, having usually come to look at one machine. Only
+        # for a new plot: an existing one keeps whatever it has been renamed to.
+        title = current["title"] if current and current.get("title") else f"{testbed_slug} : {model}"
         if len(title) > 64:
             print(f"skipping plot {title!r}: Bencher titles are limited to 64 characters")
             continue
@@ -329,8 +359,7 @@ def sync_plots(
             **PLOT_STYLE,
         }
 
-        current = existing.get(title)
-        if current and index < len(placed) and placed[index] == title and all(
+        if current and index < len(placed) and placed[index] == (testbed_slug, model) and all(
             sorted(current.get(key, [])) == sorted(value) if isinstance(value, list)
             else current.get(key) == value
             for key, value in desired.items()
@@ -350,7 +379,10 @@ def sync_plots(
             # `create` takes these as bare switches, `update` as explicit
             # booleans, because update has to be able to turn one back off.
             flag = "--" + key.replace("_", "-")
-            flags += [flag, "true"] if current else [flag]
+            if current:
+                flags += [flag, "true" if PLOT_STYLE[key] else "false"]
+            elif PLOT_STYLE[key]:
+                flags += [flag]
         flags += ["--branches", branch["uuid"], "--testbeds", testbed_uuid, "--measures", measure_uuid]
         for benchmark in series:
             flags += ["--benchmarks", benchmark["uuid"]]

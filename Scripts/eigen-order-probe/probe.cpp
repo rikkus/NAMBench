@@ -198,7 +198,8 @@ void cand_per_tap_nofma(const LayerInputs& in, std::vector<float>& z, int N)
 }
 
 // C: one chain across every tap and channel, no per-tap partial. This is what
-//    `fused` does (modulo seeding with bias), and is expected NOT to match.
+//    the (now-retired) `fused` engine did (modulo seeding with bias), and is
+//    expected NOT to match.
 void cand_single_chain(const LayerInputs& in, std::vector<float>& z, int N)
 {
   for (int f = 0; f < N; f++)
@@ -398,7 +399,7 @@ struct Candidate
 const Candidate kCandidates[] = {
   {"A  per-tap partial, increasing j, FMA", &cand_per_tap_fma},
   {"B  per-tap partial, increasing j, mul+add", &cand_per_tap_nofma},
-  {"C  single chain across taps, FMA (fused's shape)", &cand_single_chain},
+  {"C  single chain across taps, FMA (the retired fused engine's shape)", &cand_single_chain},
   {"D  per-tap partial split into two halves", &cand_per_tap_split2},
   {"E  per-tap partial, decreasing j", &cand_per_tap_reverse},
 };

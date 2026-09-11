@@ -32,16 +32,20 @@ Apple M2, macOS 27, Release, 48 kHz, 64-frame blocks, one pass over 10.9 s of
 guitar DI (523,808 frames). Both submodels come from the same
 `Ampeg SVT - Gain 10 Ultra Lo and Hi MD 421.nam`.
 
-The A2 full number is the work already in <!-- FILL: Core PR link -->. **The A2
-nano number is new** and is not in any PR yet — I wanted the measurements in
-front of you before proposing code.
+The A2 full number above is from an earlier NEON engine (`fused`, from a
+prior fork PR) that has since been retired and superseded by the planar
+kernels — which is exactly what this draft goes on to propose for A2 nano, and
+what eventually shipped for *both* submodels as Core PR #313. Treat the A2
+full row as the historical baseline this draft is arguing past, not the
+current comparison.
 
 ## Why A2 nano is worth doing separately
 
-The fused engine's shape check rejects the nano submodel on one line:
+The (now-retired) fused engine's shape check rejected the nano submodel on one
+line:
 
 ```cpp
-if (as.channels % 4 != 0 || as.channels > kMaxChannels) return false;   // fused.cpp
+if (as.channels % 4 != 0 || as.channels > kMaxChannels) return false;   // fused.cpp, retired
 ```
 
 Every other requirement is met — nano is `channels == bottleneck == 3`, the same
@@ -56,8 +60,9 @@ scalar code** — 0.83× — because a quarter of every lane is multiplied by ze
 the ring buffers grow from 172 KB to 230 KB, further past the M2's 128 KB L1D
 than they already were.
 
-What works instead is changing which axis is vectorised. `a2_fast` and `fused`
-both vectorise across *channels*, which at C=3 wastes a lane before it starts.
+What works instead is changing which axis is vectorised. `a2_fast` and the
+retired `fused` engine both vectorised across *channels*, which at C=3 wastes
+a lane before it starts.
 The planar kernel keeps three separate channel planes and vectorises across
 *frames* — a NEON register holds four consecutive frames of one channel, every
 lane does real work, and the weight becomes the scalar operand of the FMA:
@@ -128,8 +133,15 @@ could be fixed independently.
 
 ## What I would propose changing
 
-Confined to `fused.cpp` — no change to `a2_fast`, so it stays byte-identical
-between the two checkouts:
+(This section reflects the original draft's plan, written before the actual
+direction was settled. What ended up shipping — as Core PR #313 — is a
+standalone `a2_planar.cpp`, not a patch to `fused.cpp`: a new kernel family
+covering *both* A2 nano and A2 full, with `fused` retired entirely rather than
+extended. The plan below is kept for the reasoning it walks through, not as a
+description of what happened.)
+
+Originally scoped as confined to `fused.cpp` — no change to `a2_fast`, so it
+stays byte-identical between the two checkouts:
 
 1. Relax `parse_spec`'s `channels % 4` check to "is this shape handled by *some*
    kernel family", keeping the existing `Q`-templated family for multiples of
@@ -139,15 +151,11 @@ between the two checkouts:
    (roughly `channels × tile / 4 ≤ 24`). C=3 lands on tile 32.
 3. Carry the three switches that paid: the wide frame tile, writing each layer's
    residual straight into the next layer's ring instead of through a scratch
-   buffer, and skipping the final `layer1x1` (which `fused` already does via
-   `skip_l1x1_output`; `a2_fast` does not).
+   buffer, and skipping the final `layer1x1` (which the retired `fused` engine
+   already did via `skip_l1x1_output`; `a2_fast` does not).
 
 Separately and independently: `a2_fast`'s `NAM_A2_RING_MODE` default is worth
 revisiting on its own merits.
-
-I have not opened a PR for any of this yet — happy to, in whatever shape suits
-you, or to leave it as a measurement if you would rather the nano path stayed
-simple.
 
 ## How these were measured
 
@@ -157,9 +165,11 @@ Not a micro-benchmark. Every number above comes from the same harness
 - builds each variant from its own pinned checkout into its own dynamic
   framework, with identical flags against one shared Eigen tree;
 - **asserts which engine the model actually routed to** before measuring, and
-  refuses to run on a mismatch — the fork silently falls back to the *generic*
-  engine for shapes fused rejects, and reporting that as "fused" would look like
-  a catastrophic regression rather than a harness bug;
+  refuses to run on a mismatch — a build silently falls back to the *generic*
+  engine (or, off AArch64, the planar checkout silently falls back to
+  `a2_fast`) for a shape it does not accept, and reporting that under the
+  expected engine's name would look like a catastrophic regression rather than
+  a harness bug;
 - runs 5 s of warm-up passes (discarded), then 30 s of full-file passes, and
   accepts a result only when the fastest 70% of samples agree within 3%;
 - flushes denormals, resets model state outside the timed region, and runs on a

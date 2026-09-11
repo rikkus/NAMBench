@@ -107,9 +107,10 @@ public final class BenchmarkRunner {
       }
 
       // Throws if the model did not route to the engine this variant exists to
-      // measure. Deliberately fatal: the fork silently falls back to the
-      // generic engine on a shape mismatch, and reporting that as "fused" would
-      // look like a catastrophic regression rather than a harness bug.
+      // measure. Deliberately fatal: a build silently falls back to the
+      // generic engine on a shape mismatch, and reporting that as the expected
+      // engine would look like a catastrophic regression rather than a harness
+      // bug.
       models[variant.name] = try variant.makeModel(
         namBytes: namBytes, config: config, expectedChannels: expectedChannels
       )
@@ -134,11 +135,10 @@ public final class BenchmarkRunner {
     // kernel is 30% faster" and "this kernel reassociated something and is 30%
     // faster at computing different audio".
     //
-    // A second reference is kept as well, because the full lab has two of them.
-    // Its a2* candidates reproduce a2_fast's arithmetic and its fu* candidates
-    // reproduce fused's, so "bit-identical" is only a meaningful claim once it
-    // says *to what*. Any variant that is neither the primary nor the secondary
-    // reference is therefore compared against both.
+    // A second reference mechanism exists (secondaryReferenceName below) for a
+    // line-up whose lab candidates reproduce more than one engine's arithmetic.
+    // Currently unused: the full lab's only family (a2*) reproduces a2_fast's
+    // arithmetic, the same reference as the primary comparison above.
 
     var parities: [ParityResult] = []
     var checksums: [String: Double] = [:]
@@ -424,16 +424,21 @@ public final class BenchmarkRunner {
 
   // MARK: - Helpers
 
-  /// The second engine every non-reference variant is also compared against.
+  /// The second engine every non-reference variant is also compared against,
+  /// if the line-up has one.
   ///
-  /// It is whichever shipping engine appears in the line-up after the baseline —
-  /// in practice `fused`, since that is what an 8-channel line-up carries. It is
-  /// deliberately chosen by expected engine rather than by name, so a renamed
-  /// variant cannot silently turn the second parity column into a comparison
-  /// against a lab kernel. Returns nil when there is no such variant, in which
-  /// case only the primary comparison is reported.
+  /// This existed for the full lab's now-retired `fu*` family, which
+  /// reproduced the arithmetic of the (also retired) `fused` engine and so
+  /// needed its own reference distinct from `a2_fast`. With `fused` gone, the
+  /// full lab holds only the `a2*` family, which validates against `a2_fast`
+  /// — the same engine `variants[0]` (the primary baseline) already is. So
+  /// there is currently no shipping engine that plays this role, and this
+  /// always returns nil, leaving only the primary comparison reported.
+  /// Kept as a named hook rather than deleted outright, in case a future
+  /// second engine family needs it again.
   static func secondaryReferenceName(in variants: [Variant]) -> String? {
-    variants.dropFirst().first { $0.expectedEngine == .fused }?.name
+    _ = variants
+    return nil
   }
 
   static func compareOutputs(

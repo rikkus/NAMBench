@@ -1,15 +1,15 @@
 // Umbrella header for the planar variant framework.
 //
 // Built from rikkus/OptimisationWorkOnNeuralAmpModelerCore at the head of the
-// apple-silicon-a2-planar branch — the code proposed to Core in PR #313, not a
-// restatement of it, so a number measured here belongs to that proposal.
+// armv7-a2-planar branch (which continues apple-silicon-a2-planar) — the code
+// proposed to Core in PR #313, not a restatement of it, so a number measured
+// here belongs to that proposal.
 //
-// That branch is cut from upstream main and carries no fused engine: it is
-// a2_fast, plus a2_planar, plus two lines in A2FastConfig::create that prefer
-// the planar model where one exists. So this framework is built exactly as
-// NAMEngineUpstream is, with no NAM_ENABLE_FUSED and no ScopedEnginePrefer —
-// only NB_VENDOR_HAS_PLANAR, which lets the shim see a2_planar.h and report
-// which of the two it actually got.
+// That branch is cut from upstream main and carries no other engine variants:
+// it is a2_fast, plus a2_planar, plus two lines in A2FastConfig::create that
+// prefer the planar model where one exists. So this framework is built
+// exactly as NAMEngineUpstream is, plus NB_VENDOR_HAS_PLANAR, which lets the
+// shim see a2_planar.h and report which of the two it actually got.
 //
 // It reports `planar` only where the kernels exist. NAM_A2_PLANAR follows
 // __aarch64__, so an x86 build of this framework honestly reports a2_fast and

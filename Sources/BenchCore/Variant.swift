@@ -1,6 +1,5 @@
 import Foundation
 import NAMEngineFull
-import NAMEngineFused
 import NAMEnginePlanar
 import NAMEngineSlim
 import NAMEngineUpstream
@@ -10,7 +9,6 @@ public enum Engine: String, Sendable, Codable {
   case unknown
   case generic
   case a2Fast = "a2_fast"
-  case fused
   case planar = "a2_planar"
   case slim
   case full
@@ -19,7 +17,6 @@ public enum Engine: String, Sendable, Codable {
     switch raw.rawValue {
     case NbEngineGeneric.rawValue: self = .generic
     case NbEngineA2Fast.rawValue: self = .a2Fast
-    case NbEngineFused.rawValue: self = .fused
     case NbEnginePlanar.rawValue: self = .planar
     case NbEngineSlim.rawValue: self = .slim
     case NbEngineFull.rawValue: self = .full
@@ -32,7 +29,6 @@ public enum Engine: String, Sendable, Codable {
     case .unknown: return "unknown"
     case .generic: return "generic (Eigen WaveNet)"
     case .a2Fast: return "a2_fast (Eigen GEMM)"
-    case .fused: return "fused (NEON)"
     case .planar: return "a2_planar (planar NEON, Core PR #313)"
     case .slim: return "slim lab kernel"
     case .full: return "full lab kernel"
@@ -69,8 +65,9 @@ public enum VariantError: LocalizedError {
       return """
         \(variant): expected the \(expected.displayName) engine but the model routed to \
         \(actual.displayName). Refusing to run — a benchmark of the wrong engine is worse \
-        than no benchmark. The fused build falls through to the generic engine when a shape \
-        is not accepted, which is exactly what this check exists to catch.
+        than no benchmark. A build falls through to the generic engine (or, for a lab build \
+        with no kernel selected, to a2_fast) when a shape is not accepted, which is exactly \
+        what this check exists to catch.
         """
     case let .wrongChannels(variant, expected, actual):
       return "\(variant): expected \(expected) channels (A2 full) but got \(actual)"
@@ -106,18 +103,6 @@ struct VariantAPI {
     sampleRate: nb_upstream_sample_rate,
     reset: nb_upstream_reset,
     process: nb_upstream_process
-  )
-
-  static let fused = VariantAPI(
-    hasFused: nb_fused_has_fused,
-    probe: nb_fused_probe,
-    create: nb_fused_create,
-    destroy: nb_fused_destroy,
-    engine: nb_fused_engine,
-    channels: nb_fused_channels,
-    sampleRate: nb_fused_sample_rate,
-    reset: nb_fused_reset,
-    process: nb_fused_process
   )
 
   static let planar = VariantAPI(
@@ -272,9 +257,9 @@ public final class Variant {
   /// The planar NEON kernels, as proposed to Core in PR #313.
   ///
   /// Built from the head of that draft PR rather than from a copy of it, so a
-  /// number measured here belongs to the proposal being discussed. Unlike
-  /// `fused` these cover both A2 submodels — 3 channels and 8 — which is why
-  /// they replaced it in the line-up rather than joining it.
+  /// number measured here belongs to the proposal being discussed. These cover
+  /// both A2 submodels — 3 channels and 8 — superseding the earlier, now
+  /// retired `fused` engine that this variant used to be compared against.
   ///
   /// `expectedEngine` is `.planar`, and `makeModel` refuses to run when the
   /// model routes anywhere else. That check earns its keep here more than
@@ -284,24 +269,10 @@ public final class Variant {
   /// than absent.
   public static let planar = Variant(
     name: "a2_planar",
-    repository: "rikkus/OptimisationWorkOnNeuralAmpModelerCore@apple-silicon-a2-planar",
+    repository: "rikkus/OptimisationWorkOnNeuralAmpModelerCore@armv7-a2-planar",
     codePath: "a2_planar",
     expectedEngine: .planar,
     api: .planar
-  )
-
-  /// The optimisation fork, built with `NAM_ENABLE_FUSED` and constructed
-  /// under `ScopedEnginePrefer(FusedNeon)`.
-  ///
-  /// Superseded by `planar` and no longer in the default line-up. Kept because
-  /// the full lab's `fu*` candidates are validated against it, and because a
-  /// result that has been published should stay reproducible.
-  public static let fused = Variant(
-    name: "fused",
-    repository: "rikkus/OptimisationWorkOnNeuralAmpModelerCore",
-    codePath: "fused",
-    expectedEngine: .fused,
-    api: .fused
   )
 
   /// One experimental kernel from the slim lab, presented as a variant so it
@@ -320,9 +291,8 @@ public final class Variant {
   }
 
   /// One experimental kernel from the full lab. Kernel 0 is `a2_baseline`, the
-  /// verbatim port of a2_fast's Channels==8 branch, and kernel 1 is
-  /// `fu_baseline`, the verbatim port of fused's C=8 path — the two controls the
-  /// lab is validated against.
+  /// verbatim port of a2_fast's Channels==8 branch — the control the lab is
+  /// validated against.
   public static func full(kernel: Int) -> Variant {
     Variant(
       name: "full:\(FullKernels.name(kernel))",
@@ -336,9 +306,9 @@ public final class Variant {
 
   /// The default line-up: the reference, and the kernels proposed to replace it.
   ///
-  /// `fused` was here until the planar kernels superseded it. It is still
-  /// buildable and still selectable by name; it is simply no longer the thing
-  /// being proposed, and a line-up is a claim about what is worth measuring.
+  /// An earlier `fused` engine was here until the planar kernels superseded
+  /// it; `fused` has since been retired from this repo entirely, so a line-up
+  /// is now just these two.
   public static let all: [Variant] = [.upstream, .planar]
 
   public var hasFusedEngine: Bool { api.hasFused() != 0 }
@@ -386,11 +356,11 @@ public final class Variant {
 
   /// Build the model and verify it routed where we expect.
   ///
-  /// The engine assertion is the reason this is not just `create`: the fork
-  /// silently falls back to the generic engine for shapes it does not accept,
-  /// and a "fused" number that was secretly generic would read as a massive
-  /// regression rather than a bug in the harness. The same check catches a slim
-  /// variant whose kernel selection did not take.
+  /// The engine assertion is the reason this is not just `create`: a build can
+  /// silently fall back to the generic engine for a shape it does not accept,
+  /// and a number that was secretly generic would read as a massive regression
+  /// rather than a bug in the harness. The same check catches a slim variant
+  /// whose kernel selection did not take.
   public func makeModel(namBytes: Data, config: BenchmarkConfig, expectedChannels: Int) throws -> VariantModel {
     try selectKernel()
 

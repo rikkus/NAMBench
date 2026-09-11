@@ -6,7 +6,6 @@ Compares NAM A2 WaveNet processing code, macOS and iOS.
 |---|---|---|
 | `a2_fast` | [sdatkinson/NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) | `a2_fast` (Eigen GEMM) — the reference |
 | `a2_planar` | [Core PR #313](https://github.com/sdatkinson/NeuralAmpModelerCore/pull/313) | `a2_planar` (planar NEON, both submodels) |
-| `fused` | [rikkus/OptimisationWorkOnNeuralAmpModelerCore](https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore) | `fused` — superseded by `a2_planar`, `--with-fused` to include |
 | `slim:*` | this repo, `Sources/SlimEngines` | experimental kernels for the 3-channel submodel |
 | `full:*` | this repo, `Sources/FullEngines` | experimental kernels for the 8-channel submodel |
 
@@ -107,22 +106,15 @@ Bencher, one testbed per machine. See [BENCHMARKING.md](BENCHMARKING.md).
 `--submodel narrowest` — rather than by a fixed index, so a reordering in the
 trainer cannot silently change which one is measured.
 
-On the slimmed submodel the `fused` variant is dropped from the line-up
-automatically. Its detector rejects any channel count that is not a multiple of
-four, and under `ScopedEnginePrefer(FusedNeon)` a rejected shape falls through
-to the *generic* engine rather than to `a2_fast` — so including it would either
-abort on the engine assertion or measure the wrong thing. The channel count is
-read from the file, not inferred from the flag. The full-path lab is dropped
-there by the same rule, and the slim lab is dropped on the full submodel: each
-lab's kernels are specialised for one channel count and refuse the other.
+The full-path lab is dropped on the slimmed submodel, and the slim lab is
+dropped on the full submodel: each lab's kernels are specialised for one
+channel count and refuse the other. The channel count is read from the file,
+not inferred from a flag.
 
-**Four frameworks, not one binary.** The fork is a superset of upstream and
-even has an `EnginePrefer` switch, but it has no value that selects `a2_fast`:
-fused is tested first, so for an 8-channel model `Auto` and `FusedNeon` both
-give fused and `Generic` gives neither. So each variant is built from its own
-pinned checkout into its own dynamic framework with `-fvisibility=hidden`,
-exporting only a handful of prefixed C symbols. Apple's two-level namespace
-keeps each framework bound to its own `nam::` internals.
+**Each variant its own framework, not one binary.** Every variant is built
+from its own pinned checkout into its own dynamic framework with
+`-fvisibility=hidden`, exporting only a handful of prefixed C symbols. Apple's
+two-level namespace keeps each framework bound to its own `nam::` internals.
 
 **The slim lab is built from the same `vendor/upstream` tree as `a2_fast`,**
 through the same target template with the same flags — the only differences are
@@ -133,16 +125,16 @@ in time, so anything a later kernel gains is the kernel and not the lab.
 
 **The engine is asserted, never assumed.** Before anything is measured, the app
 asks each build's own public shape detectors which engine the config will route
-to, and refuses to run on a mismatch. This matters because the fork falls
-through to the *generic* engine for shapes fused does not accept — a "fused"
-number that was quietly generic would read as a catastrophic regression rather
-than a harness bug.
+to, and refuses to run on a mismatch. This matters because a build falls
+through to the *generic* engine for a shape it does not accept — a number that
+was quietly generic would read as a catastrophic regression rather than a
+harness bug.
 
-**One shared Eigen.** `a2_fast` uses Eigen for its GEMM; `fused` is pure NEON.
-Building the two against different Eigen versions would put a dependency
+**One shared Eigen.** `a2_fast` uses Eigen for its GEMM. Building `upstream`
+and `planar` against different Eigen versions would put a dependency
 difference straight into the measured result, so both compile against a single
-`vendor/eigen` tree. The fetch script also asserts both repos pin the same Eigen
-commit, and that their `a2_fast` sources are byte-identical.
+`vendor/eigen` tree. The fetch script also asserts both repos pin the same
+Eigen commit.
 
 **Optimisation is forced on in Debug too.** A Debug build of the app still
 compiles the engines at `-O3`, because a `-O0` benchmark is wrong in a way that
@@ -216,10 +208,9 @@ nam-files/                where you put a capture — see its README
 ## The slimmed-path kernel lab
 
 `a2_fast` runs the 3-channel submodel through a fully-unrolled *scalar* 3×3
-GEMV, and `fused` cannot take over because `parse_spec` rejects any channel
-count that is not a multiple of four. `Sources/SlimEngines/` holds candidate
-replacements, each measured by the protocol above rather than by a throwaway
-harness. `benchmark-results/` has the numbers and
+GEMV. `Sources/SlimEngines/` holds candidate replacements, each measured by the
+protocol above rather than by a throwaway harness. `benchmark-results/` has the
+numbers and
 [SLIMMED-PATH.md](SLIMMED-PATH.md) has the analysis: what won, what lost, and
 why the ones that lost were worth writing.
 
@@ -233,23 +224,23 @@ each candidate file reads as a diff against the lab's own `planar` kernel
 ## The full-path kernel lab
 
 `Sources/FullEngines/` does the same job for the 8-channel submodel, where the
-thing to beat is `fused` rather than `a2_fast`. [FULL-PATH.md](FULL-PATH.md) has
-the analysis; the short version is that there are **two** references here, so
-there are two families and two controls:
-
-- **`a2*`** reproduce `a2_fast`'s arithmetic and are **bit-identical to it**.
-  That is possible because `a2_fast`'s C=8 path, though it is Eigen, has a
-  reduction order that is knowable and reproducible —
-  `Scripts/eigen-order-probe/` establishes exactly which order, bit-for-bit,
-  before any kernel was written.
-- **`fu*`** reproduce `fused`'s arithmetic and are **bit-identical to it**.
+thing to beat is `a2_fast` itself. [FULL-PATH.md](FULL-PATH.md) has the
+analysis: one question — can `a2_fast` at C=8 be beaten while staying
+bit-identical to it — answered by the `a2*` family, which reproduces
+`a2_fast`'s arithmetic and is **bit-identical to it**. That is possible because
+`a2_fast`'s C=8 path, though it is Eigen, has a reduction order that is
+knowable and reproducible — `Scripts/eigen-order-probe/` establishes exactly
+which order, bit-for-bit, before any kernel was written.
 
 Kernel 0 (`a2_baseline`) is a verbatim port of `a2_fast`'s `Channels == 8`
-branch and has to land on `a2_fast`'s number; kernel 1 (`fu_baseline`) is a
-verbatim port of `fused`'s C=8 path and has to land on `fused`'s. Because a
-candidate can be derived from either engine, the runner compares every full-lab
-kernel against **both**, and the reports carry two parity columns — "bit-identical"
-only means something once it says to what.
+branch and has to land on `a2_fast`'s number — the control every other
+full-lab kernel is validated against.
+
+(An earlier phase of this lab also carried an `fu*` family reproducing the
+arithmetic of a since-retired `fused` engine from a fork. That family, and
+`fused` itself, have been removed from this repo — superseded by the planar
+kernels now vendored as `vendor/planar` — so the full lab is scoped to the
+`a2*` question alone. FULL-PATH.md keeps the historical numbers.)
 
 ## The ARMv7 kernel lab
 

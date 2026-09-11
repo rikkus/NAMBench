@@ -1,20 +1,26 @@
 # Optimising the A2 full (8-channel) path
 
-`fused` beats `a2_fast` by 1.9× on this submodel, and the slimmed-path work
-([SLIMMED-PATH.md](SLIMMED-PATH.md)) beat `a2_fast` by 2.1× on the 3-channel one
-while staying **bit-identical** to it. This is the third round: taking what the
-nano lab learned and pointing it at the 8-channel path, where the thing to beat
-is `fused` rather than `a2_fast`.
+The slimmed-path work ([SLIMMED-PATH.md](SLIMMED-PATH.md)) beat `a2_fast` by
+2.1× on the 3-channel submodel while staying **bit-identical** to it. This is
+the third round: taking what the nano lab learned and pointing it at the
+8-channel path.
 
-Two questions, not one:
+One question: **can `a2_fast` at C=8 be beaten while staying bit-identical to
+it** — the way the nano winner was — so that the result needs no listening
+test at all?
 
-1. Can `fused` be beaten while staying bit-identical **to `fused`**?
-2. Can it be beaten by something bit-identical **to `a2_fast`** — the way the
-   nano winner was — so that the result needs no listening test at all?
-
-The answer to both is yes, and the second one turned out to be the more
-interesting question, because answering it required first establishing something
+The answer is yes, and answering it required first establishing something
 about `a2_fast` that was not obvious.
+
+*(Historical note: this lab originally also carried a second family, `fu*`,
+that reproduced the arithmetic of a NEON engine called `fused` from a fork —
+and a second question, whether `fused` itself could be beaten bit-identically.
+`fused` has since been retired from this repository entirely, superseded by
+the planar kernels that shipped as Core PR #313, and the `fu*` family was
+removed along with it. Where the analysis below explains something about
+`a2_fast` *by contrast* with how `fused` used to behave, that contrast is kept
+— it is real and it explains real numbers — but clearly marked as history, not
+as a currently buildable comparison.)*
 
 *(Result tables follow the analysis.)*
 
@@ -49,7 +55,7 @@ produces at `--block-size 64`, because Eigen's blocking can depend on N.
 |---|---|
 | per tap, inner sum over j from zero in increasing order, **FMA** | **224 / 224** |
 | per tap, increasing j, multiply and add rounded apart | 0 / 224 |
-| one chain across every tap and channel, FMA (*`fused`'s shape*) | 0 / 224 |
+| one chain across every tap and channel, FMA (*the retired `fused` engine's shape*) | 0 / 224 |
 | per tap, depth split into two halves summed at the end | 0 / 224 |
 | per tap, decreasing j | 0 / 224 |
 
@@ -73,60 +79,60 @@ vector preserves the bits, and that its FMA contraction is load-bearing: the
 same order with the multiply and add rounded separately matches only 6 times in
 224.
 
-**This also explains `fused`'s 132.6 dB.** It seeds its accumulator with the
-*bias* and folds every tap and every input channel into a single 48-long chain
-([fused.cpp:508-528](vendor/fused/NAM/wavenet/fused.cpp)); it uses a fused
-multiply-add for the mixin where Eigen rounds twice
-([fused.cpp:534](vendor/fused/NAM/wavenet/fused.cpp)); and it finishes the head
-with a pairwise `vaddvq_f32` ([fused.cpp:663](vendor/fused/NAM/wavenet/fused.cpp)).
-Three specific, identifiable divergences — not accumulated drift.
+**Historical: this also explains why the retired `fused` engine landed 132.6 dB
+away from `a2_fast`.** It seeded its accumulator with the *bias* and folded
+every tap and every input channel into a single 48-long chain
+(`fused.cpp:508-528`); it used a fused multiply-add for the mixin where Eigen
+rounds twice (`fused.cpp:534`); and it finished the head with a pairwise
+`vaddvq_f32` (`fused.cpp:663`). Three specific, identifiable divergences — not
+accumulated drift.
 
-And it has a consequence that runs against intuition: **`a2_fast`'s order is
-friendlier to the machine than `fused`'s.** Per output element it offers K
-independent 8-long chains plus a K-long reduction, where `fused` offers one
+And it had a consequence that runs against intuition: **`a2_fast`'s order is
+friendlier to the machine than `fused`'s was.** Per output element it offers K
+independent 8-long chains plus a K-long reduction, where `fused` offered one
 48-long chain. The bit-identical constraint is not a handicap here.
 
-## Why it is not a FLOP problem
+## Historical: why the old comparison was not a FLOP problem
+
+*(This section is entirely about the retired `fused` engine's performance
+characteristics, kept because it explains real, previously-published numbers —
+not because it describes anything still buildable in this repo.)*
 
 | | |
 |---|---:|
 | Real arithmetic in A2 full | **≈2,928 vector FMA per frame** |
-| `fused` per frame | ≈430 ns ≈ 1,500 cycles on an M2 P-core |
+| `fused` per frame (as measured) | ≈430 ns ≈ 1,500 cycles on an M2 P-core |
 | → sustained | **≈1.95 vector FMA/cycle, against four FP pipes** |
 | Loads+stores per frame per layer | ≈62, against 112 FMAs |
 | µops per frame | ≈4,800, at IPC ≈ 3.2 of a possible 8 |
 | Ring footprint | **≈460 KB** (M2 P-core L1D is 128 KB) |
 | Weight working set | ≈46 KB, stays hot |
 
-`fused` is at about half the FMA issue rate. It is not load-bound and not
-decode-bound; the gap is dependency stalls. And the code says where they are.
+`fused` ran at about half the FMA issue rate. It was not load-bound and not
+decode-bound; the gap was dependency stalls. And the code said where they were.
 
-**`conv_block` picks its frame tile as `(Q <= 4) ? 4 : 2`**
-([fused.cpp:542](vendor/fused/NAM/wavenet/fused.cpp)). At C=8, Q is 2, so the
-tile is 4 frames and `acc[Q][T]` is **8 independent FMA chains** — against four
-pipes at 4-cycle latency, which want about 16. That heuristic is right for C=16
-and under-serves C=8 exactly. **`tail_block` picks `(Q <= 4) ? 2 : 1`**
-([fused.cpp:611](vendor/fused/NAM/wavenet/fused.cpp)), giving *four* chains and
+**`conv_block` picked its frame tile as `(Q <= 4) ? 4 : 2`** (`fused.cpp:542`).
+At C=8, Q is 2, so the tile was 4 frames and `acc[Q][T]` was **8 independent
+FMA chains** — against four pipes at 4-cycle latency, which want about 16. That
+heuristic was right for C=16 and under-served C=8 exactly. **`tail_block`
+picked `(Q <= 4) ? 2 : 1`** (`fused.cpp:611`), giving *four* chains and
 reloading all sixteen `layer1x1` weight vectors every two frames.
 
 That is the same lever the nano lab found dominated everything else, wearing a
-different hat, and it is the single largest effect here too.
+different hat, and it is the single largest effect in this lab too.
 
-## The two families
+## The `a2*` family
 
-`vendor/fused` is a superset of upstream: it carries a byte-identical `a2_fast`
-as well as `fused`. So one lab framework (`NAMEngineFull`, built from that tree
-through the same target template as everything else) can hold both families,
-each with its own verbatim-port control:
+The full lab (`NAMEngineFull`, built from `vendor/upstream` through the same
+target template as everything else) holds one family now: `a2*`, planar
+kernels that vectorise across **frames**, reproduce `a2_fast`'s arithmetic
+exactly, and are validated against `a2_baseline` — a verbatim port of
+`a2_fast`'s `Channels == 8` branch that has to land on `a2_fast`'s own number.
 
-| | Family | Vectorises across | Control | Bit-identical to |
-|---|---|---|---|---|
-| `a2*` | planar | **frames** | `a2_baseline` | `a2_fast` (`upstream`) |
-| `fu*` | channel-major | **channels** | `fu_baseline` | `fused` |
-
-Every full-lab kernel is measured against **both** shipping engines, and the
-reports carry two parity columns, because "bit-identical" only means something
-once it says to what.
+*(Historical: a second family, `fu*`, vectorised across channels and
+reproduced the retired `fused` engine's arithmetic, with its own control
+`fu_baseline`. It has been removed along with `fused`. Where results below
+compare against that family, they are kept as history.)*
 
 ### The planar correction
 
@@ -136,42 +142,33 @@ my first judgement and it was wrong, for two reasons.
 
 **It is what makes bit-identity practical.** A planar register holds four
 consecutive *frames* of one channel, so every lane independently executes
-`a2_fast`'s per-frame scalar chain. Nothing is reassociated. `fused` cannot do
-this: it vectorises across channels, so its reduction runs across lanes and
-lands on a different association by construction.
+`a2_fast`'s per-frame scalar chain. Nothing is reassociated. The retired
+`fused` engine could not do this: it vectorised across channels, so its
+reduction ran across lanes and landed on a different association by
+construction.
 
 **And it costs nothing.** Per tap per frame both layouts are 2 input loads, 4
-weight loads and 16 FMAs. What differs is register pressure, and it differs in
-both directions: the `fu*` conv needs `acc` 2T + `iv` T + weights 2, while the
-`a2*` conv needs `z` 2T + `t` 2T + input T/4 + weights 2 — because `a2_fast`'s
-association requires the running total and the current tap's partial to be live
-at the same time. That is the price of exactness, and it shows up as a lower
-tile ceiling.
+weight loads and 16 FMAs. What differs is register pressure: the `a2*` conv
+needs `z` 2T + `t` 2T + input T/4 + weights 2 — because `a2_fast`'s association
+requires the running total and the current tap's partial to be live at the
+same time. (The channel-major layout used by the retired `fu*` family needed
+`acc` 2T + `iv` T + weights 2 instead — a different trade, in the other
+direction.) That is the price of exactness, and it shows up as a lower tile
+ceiling.
 
 ## What each candidate did
 
 ### The lever that dominated: the frame tile
 
-Both families' tile sweeps are the same story as the nano lab's `widetile`, and
-in the `fu*` family the mechanism is unusually legible, because the register
-budget predicts the shape of the curve in advance:
+The `a2*` family's tile sweep is the same story as the nano lab's `widetile`.
+It peaks at tile 8, needing 36 registers and already spilling there — and
+still wins, because the extra independent chains and the halved weight-load
+count outweigh the spill traffic. It falls off at 16.
 
-| `fu` conv tile | Accumulator chains | Vector registers needed | |
-|---:|---:|---:|---|
-| 4 (*`fused`'s own*) | 8 | 8 + 4 + 2 = 14 | half the chains four 4-cycle pipes want |
-| 6 | 12 | 12 + 6 + 2 = 20 | |
-| **8** | **16** | 16 + 8 + 2 = **26** | the sweet spot: enough chains, still fits |
-| 10 | 20 | 20 + 10 + 2 = 32 | exactly at the limit |
-| 12 | 24 | 24 + 12 + 2 = 38 | spills |
-| 16 | 32 | 32 + 16 + 2 = 50 | spills badly |
-
-The measured curve turns at exactly 8 and collapses at exactly 12, which is
-where the arithmetic says the 32 vector registers run out.
-
-The `a2*` family peaks at tile 8 as well, but for a different reason: at tile 8
-it already needs 36 registers and *is* spilling, and still wins, because the
-extra independent chains and the halved weight-load count outweigh the spill
-traffic. It falls off at 16.
+*(Historical: in the retired `fu*` family the mechanism was unusually legible,
+because the register budget predicted the shape of the curve in advance —
+peaking at tile 8 out of 26 registers needed, and collapsing at tile 12 where
+32 vector registers ran out.)*
 
 ### The switches that paid
 
@@ -185,12 +182,12 @@ wrap; rather than splitting the frame loop, the write runs off the end into the
 mirror region and the overhang is folded back afterwards, so the inner loop
 stays straight-line — the same device the nano lab used.
 
-**The head tile.** `a2_fast` runs 128 sequential FMAs per frame in one chain;
-`fused` runs 32 vector FMAs per frame in one chain. Either way it is latency,
-not throughput: about 1% of the arithmetic on a chain hundreds of cycles deep.
-Running several of those chains at once is free in registers and costs nothing
-in exactness, because each chain still covers its own frames in the reference's
-own order.
+**The head tile.** `a2_fast` runs 128 sequential FMAs per frame in one chain
+(the retired `fused` engine ran 32 vector FMAs per frame in one chain). Either
+way it is latency, not throughput: about 1% of the arithmetic on a chain
+hundreds of cycles deep. Running several of those chains at once is free in
+registers and costs nothing in exactness, because each chain still covers its
+own frames in the reference's own order.
 
 **`l1x1lane`** stores the `layer1x1` weights transposed, so the eight weights
 feeding one output channel are contiguous and reach the FMA as two vector loads
@@ -203,32 +200,31 @@ along.
 
 **`skiplast`** is two pieces of work the model never reads. The final layer's
 `layer1x1` computes a residual that nothing consumes — there is no layer 24, and
-the head reads `head_sum`, not the residual. `fused` already skips it
-(`skip_l1x1_output`); `a2_fast` does not. And the first layer's `head_sum`
-accumulate has nothing to accumulate onto, so the per-block `memset` is
+the head reads `head_sum`, not the residual. (The retired `fused` engine already
+skipped it, via `skip_l1x1_output`; `a2_fast` does not.) And the first layer's
+`head_sum` accumulate has nothing to accumulate onto, so the per-block `memset` is
 unnecessary. Note that the fold is kept as an add against `+0.0` rather than a
 plain store: `0.0f + (-0.0f)` is `+0.0f`, so storing would differ from `a2_fast`
 on a signed zero. It costs one vector add per four frames in one layer, and buys
 provable exactness instead of an argument about whether that case can arise.
 
-### The ring sweep, and where it disagrees with both engines
+### The ring sweep
 
 `NAM_A2_RING_MODE` is a compile-time `#define` inside `a2_fast`; here the
 strategy is a template parameter, so the sweep needs no rebuild and the kernels
-are otherwise identical. Four strategies, not the nano lab's three, because
-`fused` uses a fourth:
+are otherwise identical.
 
 | Strategy | Who ships it | Footprint | Copy traffic |
 |---|---|---:|---|
 | pow2 + eager mirror | `a2_fast` (mode 1) | 460 KB | a mirror memcpy every block |
-| pow2 + lazy mirror | **`fused`** | 460 KB | only on blocks whose read wraps |
+| pow2 + lazy mirror | *the retired `fused` engine* | 460 KB | only on blocks whose read wraps |
 | exact + lazy mirror | — | 295 KB | smallest, but wraps almost every block |
 | linear + rewind | `a2_fast` at mode 0 | 445 KB | occasional large memmove |
 
 The nano lab's finding was that `exact + lazy` — the smallest footprint — was
 the worst, because an exactly-sized ring wraps nearly every block and then the
 lazy mirror fires once per *tap* rather than once per layer. That reproduces at
-C=8: it is the worst of the four in both families.
+C=8: it is the worst of the four.
 
 ### The ones that were meant to lose, and did
 
@@ -246,15 +242,14 @@ reading each input plane twice per tap. It was a clean, falsifiable
 register-pressure hypothesis, and it is false: the extra loads cost more than
 the spills they save, at every tile width tried.
 
-**`fusez`** — running `fused`'s conv, activation and tail as one pass with `z`
-in registers, instead of three passes over the `_z` buffer. This was expected to
-win: it removes 8 vector memory operations per frame per layer across 23 layers,
-and it is exactly what the planar family does by construction. It lost. Holding
-the `layer1x1` accumulators in the same tile as the conv accumulators is 16 more
-registers on top of a conv that already wants 26 at tile 8, and the spills cost
-more than the round-trips they save. The planar family gets the same fusion for
-free only because its `post` stage reloads the residual input rather than
-carrying it.
+*(Historical: the retired `fu*` family also tried `fusez` — running the
+channel-major conv, activation and tail as one pass with `z` in registers,
+instead of three passes over a `_z` buffer. It was expected to win and lost:
+holding the `layer1x1` accumulators in the same tile as the conv accumulators
+added 16 more registers on top of a conv that already wanted 26 at tile 8, and
+the spills cost more than the round-trips they saved. The `a2*` family gets the
+same fusion for free only because its `post` stage reloads the residual input
+rather than carrying it.)*
 
 ## The result
 
@@ -263,87 +258,35 @@ of `Ampeg SVT - Gain 10 Ultra Lo and Hi MD 421.nam` (8 channels, 12,146
 weights), 523,808 frames per pass. Full protocol: 5 s warm-up discarded, 30 s of
 timed passes, mean of the fastest 70% required to agree within 3%.
 
-| Kernel | Mean / pass | Fastest | vs `a2_fast` | vs `fused` | Bit-identical to |
-|---|---:|---:|---:|---:|---|
-| `upstream` (`a2_fast`) | 414.71 ms | 410.76 ms | — | 0.53× | — |
-| `fused` | 219.71 ms | 215.91 ms | 1.888× | — | — *(132.6 dB from `a2_fast`)* |
-| `a2_baseline` — **control** | 415.13 ms | 411.32 ms | 0.999× | — | **`a2_fast`** |
-| `fu_baseline` — **control** | 217.88 ms | 216.86 ms | 1.903× | 1.008× | **`fused`** |
-| **`a2s8_h8_lane`** | **166.56 ms** | 164.49 ms | **2.490×** | **1.319×** | **`a2_fast`** |
-| **`fu_s8_head_lazy`** | **147.50 ms** | 146.22 ms | **2.812×** | **1.489×** | **`fused`** |
+| Kernel | Mean / pass | Fastest | vs `a2_fast` | Bit-identical to |
+|---|---:|---:|---:|---|
+| `upstream` (`a2_fast`) | 414.71 ms | 410.76 ms | — | — |
+| `a2_baseline` — **control** | 415.13 ms | 411.32 ms | 0.999× | **`a2_fast`** |
+| **`a2s8_h8_lane`** | **166.56 ms** | 164.49 ms | **2.490×** | **`a2_fast`** |
 
-Both questions come out yes:
+*(Historical, for context: the retired `fused` engine measured 219.71 ms
+(1.888× over `a2_fast`) in the same run, and its own best composed candidate,
+`fu_s8_head_lazy`, reached 147.50 ms (2.812× over `a2_fast`, 1.489× over
+`fused`) while staying bit-identical to `fused`.)*
 
-- **`fused` can be beaten by 1.489×**, by a kernel that is bit-identical to
-  `fused` — a drop-in replacement with nothing to argue about.
-- **`fused` can also be beaten by 1.319× by a kernel bit-identical to
-  `a2_fast`.** That is the more interesting result even though it is the slower
-  number: it is 2.490× the engine it is exact against, and it needs no listening
-  test, no tolerance, and no argument about audibility.
+**`a2_fast` can be beaten by 2.490× by a kernel bit-identical to it.** That is
+the result this lab now exists to produce: no listening test, no tolerance, and
+no argument about audibility.
 
 Nothing here trades accuracy for speed. Every candidate in this document is
-bit-identical to one of the two shipping engines, and the reports carry both
-comparisons for every row.
+bit-identical to `a2_fast`.
 
-Both controls hold. `a2_baseline` is bit-identical to `upstream` and lands
-within 0.1% of it; `fu_baseline` is bit-identical to `fused` and lands within
-0.8% of it. Run-to-run spread on this machine is around ±2%, so differences
-smaller than that are not differences — which is exactly why the controls are
-there.
-
-**The single sharpest finding is `fu_t8`: 1.37× over `fused` from changing one
-constant.** It is `fused`'s own kernel with `conv_block`'s frame tile changed
-from 4 to 8 and nothing else — same layout, same association, bit-identical
-output. `(Q <= 4) ? 4 : 2` is the right choice at C=16 and leaves C=8 with half
-the accumulator chains the machine wants.
+The control holds. `a2_baseline` is bit-identical to `upstream` and lands
+within 0.1% of it. Run-to-run spread on this machine is around ±2%, so
+differences smaller than that are not differences — which is exactly why the
+control is there.
 
 ## The ablation
 
-Each row is one switch away from its family's control, over 2 s warm-up and 8 s
-of timed passes at 4% agreement — enough to rank, where the headline table above
-is the full protocol. Ratios are against the `upstream` and `fused` numbers
-measured in the same run, so they are not affected by drift between runs.
-
-Each family was measured in two runs, and **ratios are always against the
-`upstream`/`fused` numbers from the same run** — the run boundary is marked, and
-no number below is compared against a base from a different run.
-
-### `fu*` — channel-major, bit-identical to `fused`
-
-*Run 1 — `upstream` 409.31 ms, `fused` 218.66 ms:*
-
-| Kernel | Mean | vs `fused` | |
-|---|---:|---:|---|
-| `fu_t4` — *fused's own settings* | 216.18 ms | 1.01× | lands on `fused`, as it must |
-| `fu_t6` | 200.64 ms | 1.09× | |
-| **`fu_t8`** | **156.56 ms** | **1.40×** | the sweet spot |
-| `fu_t10` | 176.52 ms | 1.24× | at the register limit |
-| `fu_t12` | 237.39 ms | 0.92× | spills |
-| `fu_t16` | 259.39 ms | 0.84× | spills badly |
-| `fu_tail4` | 215.24 ms | 1.02× | inside the noise band |
-| `fu_tail8` | 215.02 ms | 1.02× | inside the noise band |
-| `fu_fusez` | 232.11 ms | 0.94× | **lost** — see above |
-| `fu_ringdirect` | 210.41 ms | 1.04× | |
-| `fu_headtile` | 210.04 ms | 1.04× | |
-| `fu_storehead` | 212.88 ms | 1.03× | |
-
-*Run 2 — `upstream` 408.81 ms, `fused` 214.45 ms:*
-
-| Kernel | Mean | vs `fused` | |
-|---|---:|---:|---|
-| `fu_t4` — *fused's own settings* | 210.38 ms | 1.02× | |
-| `fu_ringeager` | 218.33 ms | 0.98× | |
-| `fu_ringexact` | 220.25 ms | 0.97× | worst of the four, as at C=3 |
-| `fu_ringlinear` | 219.26 ms | 0.98× | |
-| `fu_s6` | 195.20 ms | 1.10× | |
-| `fu_s8` | 148.51 ms | 1.44× | |
-| `fu_s8_eager` | 151.72 ms | 1.41× | |
-| `fu_s8_lazy` | 148.21 ms | 1.45× | |
-| `fu_s8_head` | 145.76 ms | 1.47× | |
-| **`fu_s8_head_lazy`** | **145.35 ms** | **1.48×** | the composition |
-
-The tile is nearly the whole story here: `fu_t8` alone captures 1.40× of the
-1.48× the full composition reaches. Everything else is worth a few percent each.
+Each row is one switch away from `a2_baseline`, over 2 s warm-up and 8 s of
+timed passes at 4% agreement — enough to rank, where the headline table above
+is the full protocol. Ratios are against the `upstream` number measured in the
+same run, so they are not affected by drift between runs.
 
 ### `a2*` — planar, bit-identical to `a2_fast`
 
@@ -383,11 +326,16 @@ The tile is nearly the whole story here: `fu_t8` alone captures 1.40× of the
 | `a2s8_h8_split` | 176.02 ms | 2.32× | the split loses inside the stack too |
 | `a2s16_split` | 207.35 ms | 1.97× | |
 
-The `a2*` family is flatter: no single switch dominates the way the tile does in
-`fu*`, and the composition is worth more than the sum of the parts looks like it
+The `a2*` family is flatter: no single switch dominates the way the tile does,
+and the composition is worth more than the sum of the parts looks like it
 should be. That is consistent with it being closer to the register ceiling
 throughout — every switch that frees a register or removes a buffer pass helps
 the next one.
+
+*(Historical: the retired `fu*` family's own ablation showed the tile as
+nearly the whole story — `fu_t8` alone captured 1.40× of the 1.48× its full
+composition reached, against `fused`'s own 218–220 ms baseline in the same
+runs.)*
 
 ## The two sweeps
 
@@ -395,58 +343,51 @@ the next one.
 
 Frames per `process()` call, 2 s warm-up / 8 s timing:
 
-| Block | `a2_fast` | `fused` | `a2s8_h8_lane` | `fu_s8_head_lazy` | best vs `fused` |
-|---:|---:|---:|---:|---:|---:|
-| 32 | 466.76 ms | 220.40 ms | 173.09 ms | 148.22 ms | **1.487×** |
-| 64 | 410.40 ms | 218.31 ms | 167.75 ms | 144.43 ms | 1.511× |
-| 128 | 387.02 ms | 214.79 ms | 162.04 ms | 142.71 ms | 1.505× |
-| 256 | 372.88 ms | 214.16 ms | 159.30 ms | 142.86 ms | 1.499× |
-| 512 | 361.43 ms | 209.25 ms | 156.41 ms | 143.52 ms | 1.458× |
+| Block | `a2_fast` | `a2s8_h8_lane` | speedup |
+|---:|---:|---:|---:|
+| 32 | 466.76 ms | 173.09 ms | **2.697×** |
+| 64 | 410.40 ms | 167.75 ms | 2.446× |
+| 128 | 387.02 ms | 162.04 ms | 2.388× |
+| 256 | 372.88 ms | 159.30 ms | 2.341× |
+| 512 | 361.43 ms | 156.41 ms | 2.311× |
 
 **The 32-frame column is the one that matters for a plugin**, and the advantage
-is fully intact there — 1.487× over `fused`, and 3.15× over `a2_fast`, which is
-its *best* relative showing of the five because `a2_fast` degrades sharply at
-small blocks (466.76 ms at 32 against 361.43 ms at 512) while the optimised
-kernels barely move. This is not a win that exists only at unrealistic buffer
-sizes.
+is fully intact there — 2.697× over `a2_fast`, its *best* relative showing of
+the five block sizes measured, because `a2_fast` degrades sharply at small
+blocks (466.76 ms at 32 against 361.43 ms at 512) while the optimised kernel
+barely moves. This is not a win that exists only at unrealistic buffer sizes.
 
 ### Ring strategy
 
 Four strategies, measured as a template parameter so no rebuild is needed and
 the arithmetic is identical across them:
 
-| Strategy | `a2*` (run 2) | `fu*` (run 2) |
-|---|---:|---:|
-| pow2 + eager mirror — *`a2_fast`'s default* | **208.85 ms** *(`a2p4`)* | 218.33 ms |
-| pow2 + lazy mirror — *`fused`'s* | 213.91 ms | **210.38 ms** *(`fu_t4`)* |
-| exact + lazy mirror | 224.68 ms | 220.25 ms |
-| linear + rewind — *`a2_fast` at mode 0* | 214.68 ms | 219.26 ms |
+| Strategy | `a2*` (run 2) |
+|---|---:|
+| pow2 + eager mirror — *`a2_fast`'s default* | **208.85 ms** *(`a2p4`)* |
+| pow2 + lazy mirror — *the retired `fused` engine's* | 213.91 ms |
+| exact + lazy mirror | 224.68 ms |
+| linear + rewind — *`a2_fast` at mode 0* | 214.68 ms |
 
-Two things worth recording. First, **`exact + lazy` is the worst of the four in
-both families**, reproducing the nano lab's most counter-intuitive finding: the
-smallest footprint loses, because an exactly-sized ring wraps nearly every block
-and the lazy mirror then fires once per *tap* rather than once per layer.
-Second, **each engine's shipped choice is the best one for its own family and
-not for the other's** — and the spread is only about 5%, where at C=3 the nano
-lab measured 14%. The ring matters less at C=8 because there is far more
-arithmetic per byte moved. Inside the compositions the ranking shifts again
-(`fu_s8_head_lazy` beats `fu_s8_head`, and `a2s8_linear` beats `a2s8`), which is
-why both survivors were carried forward rather than one.
+Two things worth recording. First, **`exact + lazy` is the worst of the four**,
+reproducing the nano lab's most counter-intuitive finding: the smallest
+footprint loses, because an exactly-sized ring wraps nearly every block and
+the lazy mirror then fires once per *tap* rather than once per layer. Second,
+the spread here is only about 5%, where at C=3 the nano lab measured 14% — the
+ring matters less at C=8 because there is far more arithmetic per byte moved.
+Inside the composition the ranking shifts again (`a2s8_linear` beats `a2s8`),
+which is why `a2s8_h8_lane` carries the linear ring forward rather than the
+default one.
 
 ## Verification
 
-1. **The lab is honest, twice over.** `a2_baseline` is bit-identical to
-   `upstream` and times within 0.4% of it; `fu_baseline` is bit-identical to
-   `fused` and times within 1.0% of it. Two controls because there are two
-   references — without both, a gain in one family could not be attributed.
-   `fu_t4`, which instantiates the `fu*` template with exactly `fused`'s own
-   settings, is a third check on the template rather than the lab, and lands in
-   the same place.
+1. **The lab is honest.** `a2_baseline` is bit-identical to `upstream` and
+   times within 0.4% of it.
 
-2. **Parity gates every candidate, against both engines.** Every full-lab kernel
-   is compared over the full 523,808-frame file against `upstream` *and* against
-   `fused`, and both numbers are reported next to the speed rather than in a
-   footnote. Every kernel in this document is bit-identical to one of the two.
+2. **Parity gates every candidate.** Every full-lab kernel is compared over the
+   full 523,808-frame file against `upstream`, and the number is reported next
+   to the speed rather than in a footnote. Every kernel in this document is
+   bit-identical to `a2_fast`.
 
 3. **The reduction order was established, not assumed.**
    `Scripts/eigen-order-probe/` compares Eigen's own output bit-for-bit against
@@ -456,21 +397,22 @@ why both survivors were carried forward rather than one.
 
 4. **The engine is asserted, not assumed.** The full-lab framework reports
    `NbEngineFull` only once a kernel has actually been selected; until then it
-   routes and reports exactly as `fused`, which is the engine it is built
-   alongside. A run that forgot to select one fails the existing engine check
-   rather than quietly measuring `fused` forty-eight times.
+   routes and reports exactly as `upstream` (`a2_fast`), which is the engine it
+   is built alongside. A run that forgot to select one fails the existing
+   engine check rather than quietly measuring `a2_fast` forty-eight times.
 
 5. **The lab is dropped by shape, not by flag.** Its kernels are specialised for
    8 channels and refuse anything else, so a `--full` run on the nano submodel
-   drops them the same way `fused` is dropped there — from the channel count read
-   out of the file. Checked, not assumed:
+   drops them, from the channel count read out of the file. Checked, not
+   assumed:
 
    ```
-   fused excluded: 3 channels is not a multiple of 4, ...
    full lab excluded: its kernels are specialised for 8 channels and this submodel has 3
    ```
 
-6. **Nothing else moved.** Re-run after all the harness changes:
+6. **Nothing else moved.** Re-run after the harness changes described above
+   (measured while `fused` was still part of the line-up, and kept here as the
+   historical check it was):
 
    | | before | after |
    |---|---:|---:|
@@ -484,14 +426,13 @@ why both survivors were carried forward rather than one.
    still bit-identical to `upstream`. (*`stacked32` is `widetile32` in the
    SLIMMED-PATH table; the composed `stacked32` was 1.954× there.)
 
-7. **The winners hold at the block size that matters.** At `--block-size 32`,
-   `fu_s8_head_lazy` is 1.487× `fused` and `a2s8_h8_lane` is 1.273× — see the
-   block sweep above. A win that only existed at large buffers would not be a
-   win for a plugin.
+7. **The winner holds at the block size that matters.** At `--block-size 32`,
+   `a2s8_h8_lane` is 2.697× `a2_fast` — see the block sweep above. A win that
+   only existed at large buffers would not be a win for a plugin.
 
 ## Considered and rejected without coding
 
-- **fp16 / bf16 storage**, which would halve the 460 KB ring footprint. Out of
+- **fp16 / bf16 storage**, which would halve the ring footprint. Out of
   scope under the same fp32-only constraint the nano work held itself to: the
   point of both exercises is a drop-in replacement that needs no listening test,
   and a format change forfeits that by construction.
@@ -503,43 +444,26 @@ why both survivors were carried forward rather than one.
 
 ## Promotion
 
-Two independent changes, and they do not compete — one improves `fused`, the
-other improves `a2_fast`, and each is bit-identical to the thing it replaces.
-
-**To `fused.cpp`, worth about 1.5×:**
-
-1. **Fix the frame tile.** `conv_block`'s `T = (Q <= 4) ? 4 : 2` and
-   `tail_block`'s `T = (Q <= 4) ? 2 : 1` are the whole of the largest effect
-   here. The budget that predicts the curve is
-   `accumulators (Q·T) + inputs (T) + weights (Q) ≲ 30` vector registers, which
-   at Q=2 says T=8, and 8 is exactly where the measured curve turns. This is a
-   one-line change with bit-identical output. **It should be swept per channel
-   count rather than generalised from C=8** — the existing heuristic is right at
-   C=16, and the only claim this document supports is the C=8 one.
-2. **Write residuals straight into the next layer's ring.** Removes 22
-   block-sized copies and a pass over a scratch buffer, about 46 KB of memcpy
-   per 64-frame block at C=8.
-3. **Tile the head across frames.** `head_conv_block` runs one 32-deep FMA chain
-   per frame and reloads all sixteen weight vectors each time; several chains at
-   once is free in registers and exact.
-4. **Re-examine the ring strategy.** `fused` uses pow2 + lazy mirror. That is not
-   the best of the four at C=8, and the nano lab found the shipped choice wrong
-   at C=3 too. This is cheap to make a template parameter, as it is here, and
-   then it is a measurement rather than a guess.
-
 **To `a2_fast`, worth about 2.49× on this submodel, bit-identically:** add the
-planar C=8 kernel as the `Channels == 8` branch. This is the more interesting
-change, because it is exact: the output does not move by one bit over 523,808
-frames, so it needs no listening test and no tolerance argument. The structure
-is the same one the nano lab promoted for `Channels == 3` — vectorise across
-frames, keep `z` in registers, wide tile, residuals into the next ring — so the
-two branches would end up sharing a shape rather than diverging further.
+planar C=8 kernel as the `Channels == 8` branch. This is exact: the output does
+not move by one bit over 523,808 frames, so it needs no listening test and no
+tolerance argument. The structure is the same one the nano lab promoted for
+`Channels == 3` — vectorise across frames, keep `z` in registers, wide tile,
+residuals into the next ring — so the two branches end up sharing a shape
+rather than diverging further. This is the change that shipped as Core PR
+#313.
 
-Independently of either: **the ring strategy is worth choosing per channel
-count.** At C=3 the nano lab measured 14% between `a2_fast`'s shipped mode and
-its other one. Here the spread across four strategies is smaller but real, and
-the ranking is not the same as at C=3. It is a `#define` in `a2_fast` and a
-hardcoded structure in `fused`; in both it deserves to be a parameter.
+Independently: **the ring strategy is worth choosing per channel count.** At
+C=3 the nano lab measured 14% between `a2_fast`'s shipped mode and its other
+one. Here the spread across four strategies is smaller but real, and the
+ranking is not the same as at C=3. It is a `#define` in `a2_fast`; it deserves
+to be a parameter.
+
+*(Historical: a parallel set of changes to `fused.cpp` — fixing its frame tile,
+writing residuals straight into the next ring, tiling its head across frames,
+and reconsidering its ring strategy — was worth about 1.5× on the engine as it
+existed at the time. `fused` has since been retired rather than carried
+forward, so this promotion path no longer applies to anything buildable here.)*
 
 ## Reproducing
 
@@ -551,7 +475,7 @@ hardcoded structure in `fused`; in both it deserves to be a parameter.
 "$(xcodebuild -project NAMBench.xcodeproj -scheme nambench-cli -configuration Release -showBuildSettings | awk -F' = ' '/ BUILT_PRODUCTS_DIR =/{print $2; exit}')/nambench" --submodel widest --full all
 ```
 
-`nambench --list-full` prints the kernel table; `--full a2s8_h8_lane,fu_s8_head_lazy`
+`nambench --list-full` prints the kernel table; `--full a2s8_h8_lane`
 selects a subset by name or index. The Eigen reduction-order probe is standalone
 and needs no build of the benchmark:
 

@@ -1,16 +1,22 @@
 # Optimising the A2 slimmed (3-channel) path
 
-`fused` beats `a2_fast` by 1.9× on the A2 **full** submodel. It cannot touch the
-A2 **slimmed** submodel at all, because `parse_spec` rejects it on one line:
+*(Historical framing: this lab was originally motivated by a NEON engine
+called `fused`, from a fork, that beat `a2_fast` by 1.9× on the A2 **full**
+submodel but could not touch the A2 **slimmed** submodel at all — `parse_spec`
+rejected it on one line:*
 
 ```cpp
-if (as.channels % 4 != 0 || as.channels > kMaxChannels) return false;   // fused.cpp:142
+if (as.channels % 4 != 0 || as.channels > kMaxChannels) return false;   // fused.cpp:142, retired
 ```
 
-Every other fused requirement is met by the nano config. So nano falls through
+*Every other fused requirement was met by the nano config, so nano fell through
 to `a2_fast`'s `if constexpr (Channels == 3)` branch — a fully-unrolled
-**scalar** 3×3 GEMV
-([a2_fast.cpp:447-557](vendor/upstream/NAM/wavenet/a2_fast.cpp)).
+**scalar** 3×3 GEMV. `fused` has since been retired from this repository
+entirely, superseded by the planar kernels that eventually covered both A2
+submodels as Core PR #313 — but the motivation and the analysis below are
+unaffected: the question was, and is, whether that scalar GEMV
+([a2_fast.cpp:447-557](vendor/upstream/NAM/wavenet/a2_fast.cpp)) could be beaten
+bit-identically.)*
 
 This is a record of nineteen kernels — twelve planned ideas plus a tile sweep,
 two compositions and one that the measurements asked for — each measured by the
@@ -148,8 +154,8 @@ registers at tile 64) stop fitting in the register file.
 
 **`skiplast`** is two pieces of work the model never reads. The final layer's
 `layer1x1` computes a residual that nothing consumes — there is no layer 24, and
-the head reads `head_sum`, not `_layer_in`. `fused` already skips it
-(`skip_l1x1_output`); `a2_fast` does not. And the first layer's `head_sum`
+the head reads `head_sum`, not `_layer_in`. (The retired `fused` engine already
+skipped it, via `skip_l1x1_output`; `a2_fast` does not.) And the first layer's `head_sum`
 accumulate has nothing to accumulate onto, so it can store instead of
 load-add-store, which makes the per-block `memset` of `head_sum` unnecessary.
 
@@ -209,12 +215,14 @@ It is also the only candidate that reassociates the *convolution* reduction
 of the nine partials. Being both slower and less exact, it is a clean rejection.
 
 For completeness on the other two non-exact rows: `pad4`'s 132.7 dB comes from
-the head, where `fused`'s `head_conv_block` finishes with a pairwise `vaddvq_f32`
-where `a2_fast` sums sequentially; its convolution is exact. `restrict`'s
-146.8 dB comes entirely from the extra FMA contraction the pragma allows.
+the head, where the retired `fused` engine's `head_conv_block` finished with a
+pairwise `vaddvq_f32` where `a2_fast` sums sequentially; its convolution is
+exact. `restrict`'s 146.8 dB comes entirely from the extra FMA contraction the
+pragma allows.
 
-**`pad4`** — pad C=3 to C=4 with zeroed weights and run `fused`'s existing
-`conv_tile`/`tail_tile`/`head_conv_block` at Q=1. This is the obvious answer to
+**`pad4`** — pad C=3 to C=4 with zeroed weights and run kernels derived from
+the retired `fused` engine's `conv_tile`/`tail_tile`/`head_conv_block` at Q=1.
+This is the obvious answer to
 "the refusal is one line, just delete it", and it is the wrong answer: it loses
 to the scalar code it replaces. A quarter of every lane is multiplied by zero,
 and the rings grow from 172.5 KB to 230 KB — further past the L1D they already
@@ -233,7 +241,8 @@ whole run.
 **`planar_ring`** was the footprint argument: `a2_fast` rounds every ring up to
 a power of two and mirrors all 24 of them unconditionally on every block —
 about 18 KB of memcpy per 64-frame block that almost nothing reads. Sizing each
-ring exactly and mirroring lazily (what `fused` does) takes the footprint from
+ring exactly and mirroring lazily (what the retired `fused` engine did) takes
+the footprint from
 172.5 KB to 110.4 KB, crossing under the M2's 128 KB L1D.
 
 It was a clear loss — roughly back to `baseline` speed, giving up everything
@@ -341,8 +350,10 @@ their times should not move between the two builds, and they do not (all within
    in this document trades accuracy for speed.
 
 3. **The A2 full comparison is unperturbed.** Re-run after all the harness
-   changes: `upstream` 428.34 ms, `fused` 225.67 ms, **1.898×**, parity
-   132.6 dB below signal — the same result as before this work started.
+   changes (measured while `fused` was still part of the line-up, and kept
+   here as the historical check it was): `upstream` 428.34 ms, `fused`
+   225.67 ms, **1.898×**, parity 132.6 dB below signal — the same result as
+   before this work started.
 
 4. **The engine is asserted, not assumed.** The slim framework reports
    `NbEngineSlim` only once a kernel has actually been selected; until then it
@@ -350,11 +361,12 @@ their times should not move between the two builds, and they do not (all within
    fails the existing engine check rather than quietly measuring `a2_fast`
    nineteen times.
 
-5. **`fused` is excluded from slimmed runs, by shape not by flag.** On a
-   3-channel submodel its detector rejects the shape, and under
-   `ScopedEnginePrefer(FusedNeon)` a rejected shape falls through to the
-   *generic* engine rather than to `a2_fast`. The runner reads the channel count
-   from the file and drops `fused` when it is not a multiple of four.
+5. **What actually gates a slimmed run's shape eligibility is `a2_fast`'s own
+   detector, not any flag.** The runner reads the channel count from the file
+   and runs the slim lab only when it is a shape `a2_fast`'s `Channels == 3`
+   branch (or a lab kernel's own declared channel count) accepts. There is no
+   longer a `fused`-shaped exclusion to reason about: `fused` never appears in
+   this build at all.
 
 ## Considered and rejected without coding
 
@@ -367,8 +379,17 @@ their times should not move between the two builds, and they do not (all within
 
 ## Promotion
 
+*(Historical: this section records the promotion argument as it was framed at
+the time, when the production target for these findings was `fused.cpp` in a
+fork. What actually shipped — Core PR #313 — took a different route: a
+standalone `a2_planar.cpp` added directly to `a2_fast`'s own checkout, covering
+both A2 nano and A2 full, with `fused` retired rather than extended. The
+reasoning below is kept because it is the reasoning that led there, not
+because `fused.cpp` is still a target.)*
+
 The winner is the planar family, not `pad4`, so the production change to
-`fused.cpp` is a new kernel family rather than a relaxed detector:
+`fused.cpp` was, at the time, a new kernel family rather than a relaxed
+detector:
 
 1. **Relax the detector**, but not to "any channel count". `parse_spec` currently
    rejects `channels % 4 != 0`. Replace that with a check that the shape is
@@ -383,17 +404,13 @@ The winner is the planar family, not `pad4`, so the production change to
 
 3. **Carry the three switches that paid**: a wide frame tile, residual writes
    straight into the next layer's ring, and skipping the final `layer1x1`
-   (`fused` already does the last of these).
+   (the retired `fused` engine already did the last of these).
 
 4. **Reconsider the ring strategy for narrow models generally.** The
-   eager-mirror ring `fused` and `a2_fast` mode 1 share costs 18 KB of memcpy
+   eager-mirror ring `fused` and `a2_fast` mode 1 shared costs 18 KB of memcpy
    per block, which is negligible next to a C=8 layer's arithmetic and is not
    negligible next to a C=3 layer's. This is worth re-measuring on the *full*
    submodel before changing anything there — the finding above is a C=3 finding.
-
-The change stays confined to `fused.cpp`'s detector plus one kernel family, so
-`a2_fast` remains byte-identical across both checkouts and
-`Scripts/fetch-vendor.sh` keeps passing.
 
 Separately, and independently of any of this: **`a2_fast` should default to
 `NAM_A2_RING_MODE=0`, or choose per channel count.** That is a one-line change

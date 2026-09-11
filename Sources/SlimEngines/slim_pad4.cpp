@@ -1,11 +1,15 @@
-// Kernel 3: pad4 — pad C=3 to C=4 and run the existing fused kernels.
+// Kernel 3: pad4 — pad C=3 to C=4 and run kernels derived from the (now
+// retired) `fused` engine.
 //
-// This is the obvious answer to "the fused engine already beats a2_fast by
-// 1.887× at C=8, so why does it refuse C=3?" — the refusal is one line
+// This is the obvious answer to "the fused engine already beat a2_fast by
+// 1.887× at C=8, so why did it refuse C=3?" — the refusal was one line
 // (`as.channels % 4 != 0`), and padding makes it go away. The kernels below are
-// fused.cpp's conv_tile / tail_tile / head_conv_block instantiated at Q=1,
-// copied rather than shared because vendor/ is fetched at a pinned SHA and must
-// not be edited.
+// derived from fused.cpp's conv_tile / tail_tile / head_conv_block
+// instantiated at Q=1, copied rather than shared because vendor/ is fetched at
+// a pinned SHA and must not be edited — and, since `fused` has since been
+// removed from vendor/ entirely, a live include was never possible anyway.
+// This is a design descendant, not a build dependency: it does not touch
+// vendor/fused at build time and does not need it to exist.
 //
 // What it costs: a quarter of every SIMD lane is multiplied by zero, and the
 // ring buffers grow from 172.5 KB to 230 KB — further past the M2's 128 KB L1D
@@ -44,7 +48,7 @@ namespace
 
 constexpr int kPadded = 4;
 
-// --- fused.cpp kernels, Q = channels / 4 = 1 ---------------------------------
+// --- kernels derived from fused.cpp, Q = channels / 4 = 1 --------------------
 
 template <int Q, int T, int LANE>
 inline void conv_lane(float32x4_t (&acc)[Q][T], const float32x4_t (&iv)[T], const float* wc)
@@ -170,7 +174,8 @@ void tail_block(const float* z, const float* L, const float* lb, float* head_sum
     tail_tile<Q, 1>(z, L, lb, head_sum, lin, f);
 }
 
-/// LeakyReLU over a contiguous buffer, as fused's apply_activation does it.
+/// LeakyReLU over a contiguous buffer, as the retired `fused` engine's
+/// apply_activation did it.
 inline void leaky_relu(float* p, int n)
 {
   const float32x4_t zero = vdupq_n_f32(0.0f);
@@ -322,8 +327,9 @@ private:
   };
 
   /// a2_fast's ring, four channels wide: pow2 capacity with an eagerly
-  /// refreshed tail mirror. Deliberately not fused's lazy-mirror ring — the
-  /// only thing this candidate should be changing is the kernel and the width.
+  /// refreshed tail mirror. Deliberately not the retired `fused` engine's
+  /// lazy-mirror ring — the only thing this candidate should be changing is
+  /// the kernel and the width.
   struct Ring
   {
     std::vector<float> data;

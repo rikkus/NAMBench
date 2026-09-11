@@ -79,7 +79,6 @@ public struct VendorPins: Sendable, Codable {
   }
 
   public let upstream: Pin
-  public let fused: Pin
   public let eigen: Pin
 
   public static func load(from url: URL) -> VendorPins? {

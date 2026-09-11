@@ -13,7 +13,8 @@
 // a32_planar_kernel.h); this accumulates every tap into one chain, which is
 // candidate C in Scripts/eigen-order-probe and differs from Eigen at 3.75e6 ULP
 // in the probe's own measurement. That is not a bug to be fixed — it is the
-// shape `fused` uses on AArch64, and the question is what it buys.
+// shape the (now-retired) `fused` engine used on AArch64, and the question is
+// what it buys.
 //
 // What it should buy: the per-tap partial array disappears, which halves the
 // live accumulator count. That is the difference between 18 registers and 10 at

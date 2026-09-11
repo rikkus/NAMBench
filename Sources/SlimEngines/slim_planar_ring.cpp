@@ -4,7 +4,7 @@
 // then mirrors all 24 of them unconditionally on every block — about 18 KB of
 // memcpy per 64-frame block that in the overwhelming majority of blocks nothing
 // reads. Sizing each ring exactly and mirroring only when a read genuinely
-// wraps (what the fused engine does) takes the footprint from
+// wraps (what the now-retired `fused` engine did) takes the footprint from
 //
 //     172.5 KB  (pow2 capacity + a full mirror on every ring)
 //  to 110.4 KB  (exact capacity + a mirror that is usually untouched)

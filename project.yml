@@ -11,8 +11,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    # The fused engine is AArch64-only and its shape detector returns false
-    # everywhere else, so there is nothing to compare on Intel.
+    # The planar kernels are AArch64-only and the checkout compiles to plain
+    # a2_fast everywhere else, so there is nothing to compare on Intel.
     ARCHS: arm64
     ONLY_ACTIVE_ARCH: NO
     ENABLE_USER_SCRIPT_SANDBOXING: NO
@@ -20,7 +20,7 @@ settings:
     CLANG_CXX_LIBRARY: "libc++"
 
 # ---------------------------------------------------------------------------
-# All four engine frameworks are built from this one template, so the only
+# All engine frameworks are built from this one template, so the only
 # things that can differ between them are the source directory, ENGINE_DEFINES
 # and the symbol prefix. Everything that could affect codegen — optimisation
 # level, language standard, visibility, and the shared Eigen include path — is
@@ -63,9 +63,8 @@ targetTemplates:
         #
         # Two slots, not one: a build setting substituted into a list entry is
         # one entry, so "A=1 B=1" in ENGINE_DEFINES would depend on Xcode
-        # splitting it on whitespace. The full lab needs two defines
-        # (NAM_ENABLE_FUSED and NB_ENABLE_FULL_LAB), so it gets a second slot
-        # rather than relying on that. Both default to empty.
+        # splitting it on whitespace. Kept as two slots for any variant that
+        # ever needs more than one define at once. Both default to empty.
         ENGINE_DEFINES: ""
         ENGINE_DEFINES_2: ""
         GCC_PREPROCESSOR_DEFINITIONS:
@@ -78,8 +77,8 @@ targetTemplates:
 
 targets:
   # -------------------------------------------------------------------------
-  # Variant 1: sdatkinson/NeuralAmpModelerCore. No fused engine is compiled in,
-  # so wavenet::create_config routes the A2 shape to a2_fast by itself.
+  # Variant 1: sdatkinson/NeuralAmpModelerCore. wavenet::create_config routes
+  # the A2 shape to a2_fast by itself.
   # -------------------------------------------------------------------------
   NAMEngineUpstream:
     templates: [Engine]
@@ -103,13 +102,14 @@ targets:
   # -------------------------------------------------------------------------
   # Variant 2: the planar NEON kernels, as proposed to Core in PR #313.
   #
-  # Built from the head of the apple-silicon-a2-planar branch, which is cut from
-  # upstream main and carries no fused engine — so this target is configured
-  # exactly as NAMEngineUpstream is, with no NAM_ENABLE_FUSED. The only addition
-  # is NB_VENDOR_HAS_PLANAR, which lets the shim include a2_planar.h and so
-  # report whether it got the kernels or fell back to a2_fast.
+  # Built from the head of the armv7-a2-planar branch (which continues
+  # apple-silicon-a2-planar), which is cut from upstream main and carries no
+  # other engine variants — so this target is configured exactly as
+  # NAMEngineUpstream is. The only addition is NB_VENDOR_HAS_PLANAR, which lets
+  # the shim include a2_planar.h and so report whether it got the kernels or
+  # fell back to a2_fast.
   #
-  # Unlike fused, these cover both A2 submodels: 3 channels and 8.
+  # These cover both A2 submodels: 3 channels and 8.
   # -------------------------------------------------------------------------
   NAMEnginePlanar:
     templates: [Engine]
@@ -127,34 +127,6 @@ targets:
         headerVisibility: public
       - path: Sources/Shim/nam_bench_shim.cpp
       - path: vendor/planar/NAM
-        name: NAM
-        headerVisibility: project
-
-  # -------------------------------------------------------------------------
-  # rikkus/OptimisationWorkOnNeuralAmpModelerCore with the fused NEON engine,
-  # constructed under ScopedEnginePrefer(FusedNeon).
-  #
-  # No longer part of the measured line-up: the planar kernels supersede it, and
-  # cover the 3-channel submodel it never could. Still built, because the full
-  # lab's fu* candidates are validated against it — remove it and those kernels
-  # lose the reference that makes their numbers mean anything.
-  # -------------------------------------------------------------------------
-  NAMEngineFused:
-    templates: [Engine]
-    settings:
-      base:
-        VENDOR_DIR: fused
-        NB_PREFIX: nb_fused
-        NB_VARIANT_NAME: fused
-        ENGINE_DEFINES: "NAM_ENABLE_FUSED=1"
-        PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench.engine.fused
-    sources:
-      - path: Sources/Shim/NAMEngineFused.h
-        headerVisibility: public
-      - path: Sources/Shim/nam_bench_shim.h
-        headerVisibility: public
-      - path: Sources/Shim/nam_bench_shim.cpp
-      - path: vendor/fused/NAM
         name: NAM
         headerVisibility: project
 
@@ -197,31 +169,27 @@ targets:
   # -------------------------------------------------------------------------
   # Variant 4: the full-path kernel lab.
   #
-  # Built from the *same* vendor/fused tree as NAMEngineFused, through the same
-  # template, with the same flags. The only differences are NB_ENABLE_FULL_LAB
-  # and the extra sources under Sources/FullEngines, which hold candidate
-  # replacements for the 8-channel path.
+  # Built from the *same* vendor/upstream tree as NAMEngineUpstream, through the
+  # same template, with the same flags. The only differences are
+  # NB_ENABLE_FULL_LAB and the extra sources under Sources/FullEngines, which
+  # hold candidate replacements for the 8-channel path.
   #
-  # That tree is a superset of upstream: it carries a byte-identical a2_fast as
-  # well as fused (Scripts/fetch-vendor.sh asserts the a2_fast sources match).
-  # So this one framework can hold two families of candidate — those that
-  # reproduce a2_fast's arithmetic and those that reproduce fused's — with a
-  # verbatim-port control for each. Kernel 0 (a2_baseline) must land on the
-  # `upstream` number and kernel 1 (fu_baseline) on the `fused` number;
-  # anything a later kernel gains is then the kernel and not the lab.
+  # This framework holds the a2* family: candidates that reproduce a2_fast's
+  # arithmetic, with kernel 0 (a2_baseline) as the verbatim-port control that
+  # must land on the `upstream` number; anything a later kernel gains is then
+  # the kernel and not the lab.
   #
-  # fused is still compiled in and still reachable: until a kernel is selected
-  # this framework routes exactly as `fused` does.
+  # a2_fast is still compiled in and still reachable: until a kernel is
+  # selected this framework routes exactly as `upstream` does.
   # -------------------------------------------------------------------------
   NAMEngineFull:
     templates: [Engine]
     settings:
       base:
-        VENDOR_DIR: fused
+        VENDOR_DIR: upstream
         NB_PREFIX: nb_full
         NB_VARIANT_NAME: full
-        ENGINE_DEFINES: "NAM_ENABLE_FUSED=1"
-        ENGINE_DEFINES_2: "NB_ENABLE_FULL_LAB=1"
+        ENGINE_DEFINES: "NB_ENABLE_FULL_LAB=1"
         PRODUCT_BUNDLE_IDENTIFIER: cc.hemsley.nambench.engine.full
     sources:
       - path: Sources/Shim/NAMEngineFull.h
@@ -232,7 +200,7 @@ targets:
       - path: Sources/FullEngines
         name: FullEngines
         headerVisibility: project
-      - path: vendor/fused/NAM
+      - path: vendor/upstream/NAM
         name: NAM
         headerVisibility: project
 
@@ -247,7 +215,6 @@ targets:
     dependencies:
       - target: NAMEngineUpstream
       - target: NAMEnginePlanar
-      - target: NAMEngineFused
       - target: NAMEngineSlim
       - target: NAMEngineFull
     settings:
@@ -282,8 +249,6 @@ targets:
       - target: NAMEngineUpstream
         embed: true
       - target: NAMEnginePlanar
-        embed: true
-      - target: NAMEngineFused
         embed: true
       - target: NAMEngineSlim
         embed: true
@@ -333,7 +298,6 @@ targets:
       - target: BenchCore
       - target: NAMEngineUpstream
       - target: NAMEnginePlanar
-      - target: NAMEngineFused
       - target: NAMEngineSlim
       - target: NAMEngineFull
     settings:

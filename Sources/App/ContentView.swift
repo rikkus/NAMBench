@@ -32,7 +32,7 @@ struct ContentView: View {
   private var header: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text("NAM A2 Benchmark").font(.largeTitle.bold())
-      Text("A2 full WaveNet — upstream `a2_fast` vs fork `fused`")
+      Text("A2 full WaveNet — upstream `a2_fast` vs the planar kernels (Core PR #313)")
         .font(.subheadline).foregroundStyle(.secondary)
       HStack(spacing: 6) {
         Image(systemName: "waveform")
@@ -201,8 +201,9 @@ struct EngineBadge: View {
 
   private var color: Color {
     switch engine {
-    case .fused: return .green
+    case .planar: return .green
     case .slim: return .purple
+    case .full: return .purple
     case .a2Fast: return .blue
     case .generic: return .orange
     case .unknown: return .secondary
@@ -267,7 +268,6 @@ struct ResultsCard: View {
       if let pins = report.pins {
         VStack(alignment: .leading, spacing: 2) {
           Text("upstream \(pins.upstream.sha.prefix(12))")
-          Text("fused \(pins.fused.sha.prefix(12))")
           Text("eigen \(pins.eigen.sha.prefix(12)) (shared)")
         }
         .font(.system(.caption2, design: .monospaced))

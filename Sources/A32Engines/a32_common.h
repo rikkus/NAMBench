@@ -7,13 +7,14 @@
 // the only difference between two measured numbers is the kernel itself.
 //
 // Why one lab for both submodels, where SlimEngines and FullEngines are one
-// each: those two exist against different references (a2_fast and fused) out of
-// different vendor trees, which is what forced them apart. Here both submodels
+// each: those two grew out of historically different reference engines and
+// vendor trees (SlimEngines' motivating comparison was against a NEON engine,
+// `fused`, that has since been retired; FullEngines briefly carried a second
+// family validated against it too, before that family was removed along with
+// `fused`), which is what forced them apart at the time. Here both submodels
 // share one reference (a2_fast), one vendor tree, one compat header, one set of
 // ring strategies and one 16-register problem, so splitting them would duplicate
-// all of that for no analytical gain. The precedent is the full lab, which
-// already carries two families with a control each. The axis here is channel
-// count rather than reference engine.
+// all of that for no analytical gain.
 //
 // The A2 shapes are fixed and known (checked by a2_fast::is_a2_shape before
 // anything here runs). They differ only in channel count:

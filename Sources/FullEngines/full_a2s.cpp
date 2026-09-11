@@ -3,7 +3,8 @@
 // From the ablation against `a2p4`, the switches that paid were a wide frame
 // tile, writing residuals straight into the next ring, a head tiled across
 // frames, and skipping the two pieces of work nothing reads. `Pow2Lazy` (what
-// fused uses), `ExactLazy` and `prefetch` all lost and are left out.
+// the now-retired `fused` engine used), `ExactLazy` and `prefetch` all lost
+// and are left out.
 //
 // Two ring strategies are carried forward rather than one, because the ring
 // sweep was close: `Pow2Eager` is a2_fast's shipped strategy and `LinearRewind`

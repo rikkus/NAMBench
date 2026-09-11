@@ -2,8 +2,9 @@
 //
 // 1. The final layer's layer1x1 computes a residual that nothing ever reads:
 //    there is no layer 24, and the head reads `head_sum`, not `_layer_in`. The
-//    fused engine already skips it (`skip_l1x1_output`); a2_fast does not. That
-//    is one 3×3 GEMM plus a bias and a store per frame, out of 23 layers.
+//    now-retired `fused` engine already skipped it (`skip_l1x1_output`);
+//    a2_fast does not. That is one 3×3 GEMM plus a bias and a store per
+//    frame, out of 23 layers.
 //
 // 2. The first layer is the only one whose `head_sum` accumulate has nothing to
 //    accumulate onto, so it can store instead of load-add-store — and once it

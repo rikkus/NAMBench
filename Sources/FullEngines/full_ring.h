@@ -32,8 +32,8 @@ enum class RingKind
   /// memcpy every block whether or not anything reads it.
   Pow2Eager,
   /// Power-of-two capacity, mirrored only when a read genuinely wraps. What the
-  /// fused engine does: same footprint as Pow2Eager, but the common case is
-  /// copy-free.
+  /// now-retired `fused` engine did: same footprint as Pow2Eager, but the
+  /// common case is copy-free.
   Pow2Lazy,
   /// Exactly-sized capacity, mirrored only when a read wraps. Smallest
   /// footprint, and the one the nano lab expected to win and did not — an
@@ -183,117 +183,6 @@ struct PlanarRing
       }
     }
     return base;
-  }
-};
-
-/// The same four strategies over a channel-major buffer: one column per frame,
-/// kChannels floats contiguous within it. This is a2_fast's and fused's storage,
-/// and what the fu* family needs — its vectors span channels, so a frame's
-/// channels have to be adjacent.
-///
-/// Same three-call contract as PlanarRing: prepare(n), write into write_ptr(),
-/// commit(n).
-template <RingKind Kind>
-struct ChannelRing
-{
-  std::vector<float> data;
-  int cap = 0;
-  int mask = 0;
-  int wpos = 0;
-  int mbs = 0;
-  int lookback = 0;
-
-  void reset(int max_lookback, int max_buffer)
-  {
-    mbs = max_buffer;
-    lookback = max_lookback;
-    int cols = 0;
-    switch (Kind)
-    {
-      case RingKind::Pow2Eager:
-      case RingKind::Pow2Lazy:
-        cap = next_pow2(max_lookback + max_buffer);
-        cols = cap + max_buffer;
-        break;
-      case RingKind::ExactLazy:
-        cap = max_lookback + max_buffer;
-        cols = cap + max_buffer;
-        break;
-      case RingKind::LinearRewind:
-        cap = 2 * max_lookback + max_buffer;
-        cols = cap;
-        break;
-    }
-    mask = cap - 1;
-    data.assign(static_cast<size_t>(kChannels) * cols, 0.0f);
-    wpos = max_lookback;
-  }
-
-  int wrap(int v) const
-  {
-    if constexpr (Kind == RingKind::Pow2Eager || Kind == RingKind::Pow2Lazy)
-      return v & mask;
-    else if constexpr (Kind == RingKind::ExactLazy)
-    {
-      if (v >= cap)
-        v -= cap;
-      if (v < 0)
-        v += cap;
-      return v;
-    }
-    else
-      return v;
-  }
-
-  void prepare(int n)
-  {
-    if constexpr (Kind == RingKind::LinearRewind)
-    {
-      if (wpos + n > cap)
-      {
-        std::memmove(data.data(), data.data() + static_cast<size_t>(wpos - lookback) * kChannels,
-                     static_cast<size_t>(lookback) * kChannels * sizeof(float));
-        wpos = lookback;
-      }
-    }
-  }
-
-  float* write_ptr() { return data.data() + static_cast<size_t>(wpos) * kChannels; }
-
-  void commit(int n)
-  {
-    if constexpr (Kind != RingKind::LinearRewind)
-    {
-      const int overflow = wpos + n - cap;
-      if (overflow > 0)
-      {
-        std::memcpy(data.data(), data.data() + static_cast<size_t>(cap) * kChannels,
-                    static_cast<size_t>(overflow) * kChannels * sizeof(float));
-      }
-      if constexpr (Kind == RingKind::Pow2Eager)
-      {
-        std::memcpy(data.data() + static_cast<size_t>(cap) * kChannels, data.data(),
-                    static_cast<size_t>(mbs) * kChannels * sizeof(float));
-      }
-      wpos = wrap(wpos + n);
-    }
-    else
-      wpos += n;
-  }
-
-  const float* tap(int lookback_frames, int n)
-  {
-    const int base = wrap(wpos - n - lookback_frames);
-    if constexpr (Kind == RingKind::Pow2Lazy || Kind == RingKind::ExactLazy)
-    {
-      const int overflow = base + n - cap;
-      if (overflow > 0)
-      {
-        std::memcpy(data.data() + static_cast<size_t>(cap) * kChannels, data.data(),
-                    static_cast<size_t>(overflow) * kChannels * sizeof(float));
-      }
-    }
-    return data.data() + static_cast<size_t>(base) * kChannels;
   }
 };
 

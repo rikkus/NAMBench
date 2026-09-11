@@ -167,11 +167,9 @@ public enum Reporting {
       out += "## Code under test\n\n"
       out += "| Component | Commit |\n|---|---|\n"
       out += "| \(pins.upstream.url) | `\(String(pins.upstream.sha.prefix(12)))` |\n"
-      out += "| \(pins.fused.url) | `\(String(pins.fused.sha.prefix(12)))` |\n"
       out += "| Eigen (shared by both builds) | `\(String(pins.eigen.sha.prefix(12)))` |\n\n"
-      out += "Eigen is shared deliberately: `a2_fast` uses it for its GEMM while the fused "
-      out += "engine is pure NEON, so differing Eigen versions would land straight in the "
-      out += "measured difference.\n\n"
+      out += "Eigen is shared deliberately: `a2_fast` uses it for its GEMM, so a version "
+      out += "difference between builds would land straight in the measured difference.\n\n"
     }
 
     // --- Raw samples ---------------------------------------------------------

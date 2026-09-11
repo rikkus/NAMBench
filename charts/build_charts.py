@@ -54,11 +54,21 @@ FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 # benchmark-results/, Apple M2, 48 kHz, 64-frame blocks, Release.
 
 HEADLINE = [
+    # NOTE: these A2-full numbers (including the 132.6 dB parity figure, which
+    # is specific to this engine's non-bit-identical arithmetic) were measured
+    # against the `fused` NEON engine. `fused` has since been retired from
+    # this repo entirely, superseded by the `a2_planar` kernels (Core PR
+    # #313), which are bit-identical to `a2_fast` rather than 132.6 dB away
+    # from it — a materially different result, not just a rename. The label
+    # below is kept honest about which engine these particular numbers are
+    # from; a future regeneration should replace this whole entry with a
+    # current `a2_fast` vs `a2_planar` A2-full measurement rather than relabel
+    # these values.
     dict(
         title="A2 full", channels="8 channels",
         base_ms=428.34, opt_ms=225.67, speedup=1.898,
-        base_label="a2_fast", opt_label="fused NEON",
-        note="already in the Core PR", parity="132.6 dB below signal",
+        base_label="a2_fast", opt_label="fused NEON (retired, historical)",
+        note="historical — superseded by a2_planar (Core PR #313)", parity="132.6 dB below signal",
         base_rtf="25.5×", opt_rtf="48.4×",
     ),
     dict(

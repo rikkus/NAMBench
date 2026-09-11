@@ -1,21 +1,21 @@
 // Shared scaffolding for the full-path kernel lab.
 //
 // Every candidate under Sources/FullEngines is a drop-in replacement for the
-// 8-channel A2 path, built from the *same* vendor/fused tree through the same
-// Engine target template. This header holds everything that must NOT vary
-// between candidates — the weight loader, the prewarm count, the DSP plumbing —
-// so that the only difference between two measured numbers is the kernel.
+// 8-channel A2 path, built from vendor/upstream through the same Engine
+// target template. This header holds everything that must NOT vary between
+// candidates — the weight loader, the prewarm count, the DSP plumbing — so
+// that the only difference between two measured numbers is the kernel.
 //
-// Two references, two controls. vendor/fused is a superset of upstream: it
-// carries a byte-identical a2_fast alongside the fused NEON engine
-// (Scripts/fetch-vendor.sh asserts the a2_fast sources match). So this lab holds
-// two families:
+// One question: can a2_fast at C=8 be beaten while staying bit-identical to
+// it. The a2* family reproduces a2_fast's arithmetic exactly, with kernel 0
+// (a2_baseline) as the verbatim port that has to land on a2_fast's own
+// number — the control every other candidate here is validated against.
 //
-//   a2*  reproduce a2_fast's arithmetic exactly, validated against `upstream`
-//   fu*  reproduce fused's arithmetic exactly, validated against `fused`
-//
-// with kernel 0 (a2_baseline) and kernel 1 (fu_baseline) as verbatim ports that
-// have to land on their respective reference's number.
+// (An earlier phase of this lab also carried a fu* family, channel-major
+// kernels reproducing the arithmetic of a since-retired `fused` engine from
+// a fork. That family and its `fused` reference are gone from this repo —
+// superseded by the planar kernels now vendored as vendor/planar — and the
+// lab is scoped to the a2* question alone. See FULL-PATH.md for the history.)
 //
 // The A2 full shape is fixed and known (checked by a2_fast::is_a2_shape before
 // anything here runs): 23 layers, Channels == Bottleneck == 8, kernel sizes
@@ -56,11 +56,10 @@ inline constexpr std::array<int, kNumLayers> kDilations = {
 
 /// One layer's weights.
 ///
-/// a2_fast and fused happen to store these identically — column-major per tap
-/// for the conv, column-major for the 1x1 — so one canonical form serves both
-/// families and the loader is written and verified once. Candidates wanting a
-/// different arrangement (planar, padded, transposed) permute *from* this at
-/// construction time.
+/// Stored column-major per tap for the conv, column-major for the 1x1 — one
+/// canonical form, so the loader is written and verified once. Candidates
+/// wanting a different arrangement (planar, padded, transposed) permute
+/// *from* this at construction time.
 struct LayerWeights
 {
   int kernel_size = 0;
@@ -91,12 +90,11 @@ struct Weights
   float head_scale = 1.0f;
 };
 
-/// Consume `weights` in exactly the order A2FastModel::_load_weights does —
-/// which is also exactly the order FusedWaveNet::_load_weights does. Throws if
-/// the stream is the wrong length.
+/// Consume `weights` in exactly the order A2FastModel::_load_weights does.
+/// Throws if the stream is the wrong length.
 Weights parse_weights(const std::vector<float>& weights);
 
-/// Receptive field, matching both references' count so the lab warms up over the
+/// Receptive field, matching the reference's count so the lab warms up over the
 /// same number of samples as the code it stands in for.
 int prewarm_samples();
 
@@ -152,7 +150,6 @@ std::unique_ptr<nam::DSP> create(int index, const nlohmann::json& config, std::v
 // and must stay where they are.
 
 std::unique_ptr<nam::DSP> make_a2_baseline(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_baseline(const std::vector<float>&, double);
 
 // Family A: planar, a2_fast arithmetic.
 std::unique_ptr<nam::DSP> make_a2p4(const std::vector<float>&, double);
@@ -180,29 +177,6 @@ std::unique_ptr<nam::DSP> make_a2p_l1x1lane(const std::vector<float>&, double);
 std::unique_ptr<nam::DSP> make_a2s8_h8_lane(const std::vector<float>&, double);
 std::unique_ptr<nam::DSP> make_a2s8_h8_split(const std::vector<float>&, double);
 std::unique_ptr<nam::DSP> make_a2s16_split(const std::vector<float>&, double);
-
-// Family B: channel-major, fused arithmetic.
-std::unique_ptr<nam::DSP> make_fu_t4(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_t8(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_t12(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_t16(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_tail4(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_tail8(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_fusez(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_ringdirect(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_headtile(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_storehead(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_ringeager(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_ringexact(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_ringlinear(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_t6(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_t10(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_s6(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_s8(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_s8_eager(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_s8_lazy(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_s8_head(const std::vector<float>&, double);
-std::unique_ptr<nam::DSP> make_fu_s8_head_lazy(const std::vector<float>&, double);
 
 } // namespace fulllab
 

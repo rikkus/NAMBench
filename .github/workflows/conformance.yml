@@ -27,9 +27,9 @@ on:
         type: choice
         options: [lean, all]
   schedule:
-    # Weekly. `fused` and the kernel labs are checked here rather than on every
-    # push: they are regression insurance on code that no longer changes, and
-    # building them costs roughly ten times what the live comparison does — 34 s
+    # Weekly. The kernel labs are checked here rather than on every push: they
+    # are regression insurance on code that no longer changes, and building
+    # them costs roughly ten times what the live comparison does — 34 s
     # against 400 s on an M2. Once a week keeps the bit-identity checks on the
     # verbatim ports alive without paying for them on every commit.
     - cron: "17 4 * * 1"
@@ -54,12 +54,12 @@ jobs:
   # ---------------------------------------------------------------------------
   # Fetch the pinned checkouts once, and hand the same bytes to every platform.
   #
-  # Scripts/fetch-vendor.sh asserts more than it downloads — that both variants
-  # pin the same Eigen commit, and that a2_fast is byte-identical across the two
-  # checkouts. Running it once rather than per-matrix-entry means those
-  # assertions are made once, and that no two matrix entries can possibly be
-  # testing different sources. It also keeps the script off Windows, where it
-  # would need a POSIX shell it has no reason to care about.
+  # Scripts/fetch-vendor.sh asserts more than it downloads — that both
+  # checkouts pin the same Eigen commit. Running it once rather than
+  # per-matrix-entry means that assertion is made once, and that no two matrix
+  # entries can possibly be testing different sources. It also keeps the
+  # script off Windows, where it would need a POSIX shell it has no reason to
+  # care about.
   # ---------------------------------------------------------------------------
   vendor:
     name: fetch pinned sources
@@ -201,9 +201,9 @@ jobs:
           - name: windows x64 · clang-cl
             runs-on: windows-2025
             cmake-args: -T ClangCL -A x64
-          # MSVC on ARM64 has never been run against this code. fused.cpp
-          # reaches for <arm_neon.h> under _M_ARM64, which MSVC spells
-          # differently, so this may well fail — that is a finding for the fork
+          # MSVC on ARM64 has never been run against this code. The kernel labs
+          # reach for <arm_neon.h> under _M_ARM64, which MSVC spells
+          # differently, so this may well fail — that is a finding worth having
           # rather than a reason not to look.
           - name: windows arm64 · msvc
             runs-on: windows-11-arm

@@ -11,9 +11,10 @@
 //   1. It is what makes bit-identity practical. A planar register holds four
 //      consecutive *frames* of one channel, so every lane independently
 //      executes a2_fast's per-frame scalar chain. Nothing is reassociated. The
-//      fused engine cannot do this — it vectorises across channels, so its
-//      reduction runs across lanes and lands on a different association, which
-//      is exactly where its 132.6 dB against a2_fast comes from.
+//      now-retired `fused` engine could not do this — it vectorised across
+//      channels, so its reduction ran across lanes and landed on a different
+//      association, which is exactly where its 132.6 dB against a2_fast came
+//      from.
 //   2. It costs nothing. Per tap per frame both layouts are 2 input loads,
 //      4 weight loads and 16 FMAs.
 //

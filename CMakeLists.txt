@@ -52,7 +52,6 @@ set(NB_VENDOR "${NB_ROOT}/vendor")
 # ---------------------------------------------------------------------------
 foreach(_required
 	"${NB_VENDOR}/upstream/NAM/wavenet/a2_fast.cpp"
-	"${NB_VENDOR}/fused/NAM/wavenet/fused.cpp"
 	"${NB_VENDOR}/planar/NAM/wavenet/a2_planar.cpp"
 	"${NB_VENDOR}/eigen/Eigen/Dense"
 	"${NB_VENDOR}/upstream/Dependencies/nlohmann/json.hpp")
@@ -67,16 +66,10 @@ endforeach()
 # ---------------------------------------------------------------------------
 # Architecture.
 #
-# The fused engine and both kernel labs are hand-written NEON. fused.cpp guards
-# its intrinsics and its detector returns false off AArch64, so the `fused`
-# variant builds anywhere — it simply routes to the generic engine instead.
-# That is not a degraded test: on x86_64 the upstream-vs-fused comparison
-# becomes a2_fast against the generic reference implementation, which is a
-# correctness check worth having and one the Xcode build cannot perform at all.
-#
-# The lab sources are not guarded that way and are not meant to be. They are
-# candidate NEON kernels; a scalar fallback for them would be a fiction that
-# proves nothing. So the two lab variants are AArch64-only.
+# Both kernel labs are hand-written NEON: candidate kernels compared for
+# bit-identity against a2_fast, the reference. A scalar fallback for them
+# would be a fiction that proves nothing, so the lab variants are
+# AArch64-only.
 # ---------------------------------------------------------------------------
 # Order matters. On an Apple Silicon host CMAKE_SYSTEM_PROCESSOR reads arm64
 # even when CMAKE_OSX_ARCHITECTURES asks for an x86_64 cross-build, so the
@@ -218,7 +211,7 @@ endif()
 # between them are the arguments — which is the same discipline the Engine
 # target template enforces in project.yml.
 #
-#   nb_add_variant(<target> VENDOR <upstream|fused> PREFIX <sym> NAME <display>
+#   nb_add_variant(<target> VENDOR <upstream|planar> PREFIX <sym> NAME <display>
 #                  [DEFINES ...] [SOURCES ...])
 # ---------------------------------------------------------------------------
 function(nb_add_variant target)
@@ -279,20 +272,16 @@ endfunction()
 # at -O3, which is also what makes a CI job sit silent at 95% long enough to
 # look hung.
 #
-# NAMBENCH_ALL_VARIANTS brings back `fused` and both labs. What it buys:
+# NAMBENCH_ALL_VARIANTS brings back both kernel labs. What it buys:
 #
-#   fused     the reference the full lab's fu* candidates are validated
-#             against, and — off AArch64 — the only thing that exercises the
-#             generic engine, because there the upstream-vs-fused comparison
-#             is a2_fast against the generic reference implementation.
 #   labs      bit-identity checks on the verbatim ports, which are what make
 #             every other lab number mean anything.
 #
-# Neither is worthless; both are checks on static code. They belong on a
-# deliberate run rather than on every push.
+# Not worthless, but a check on static code. It belongs on a deliberate run
+# rather than on every push.
 # ---------------------------------------------------------------------------
 option(NAMBENCH_ALL_VARIANTS
-	"Also build the superseded fused engine and the kernel labs" OFF)
+	"Also build the kernel labs" OFF)
 
 # --- Variant 1: sdatkinson/NeuralAmpModelerCore, routed to a2_fast ----------
 nb_add_variant(nam_conformance_upstream
@@ -327,15 +316,6 @@ nb_add_variant(nam_conformance_planar
 	NAME a2_planar
 	DEFINES NB_VENDOR_HAS_PLANAR=1)
 
-# --- The superseded fused engine, on request only ---------------------------
-if(NAMBENCH_ALL_VARIANTS)
-	nb_add_variant(nam_conformance_fused
-		VENDOR fused
-		PREFIX nb_fused
-		NAME fused
-		DEFINES NAM_ENABLE_FUSED=1)
-endif()
-
 # The labs need more than AArch64. They are written for the Clang/GCC dialect —
 # `#pragma clang loop`, `#pragma clang fp contract`, __builtin_prefetch — which
 # MSVC proper does not speak. That is not a portability defect to fix: those
@@ -368,7 +348,7 @@ if(NB_BUILD_LABS_A32)
 	# --- Variant 5: the 32-bit ARM lab, both submodels ---------------------
 	#
 	# From vendor/upstream, like the slim lab: a2_fast is this lab's only
-	# reference at both channel counts, because `fused` is AArch64-only.
+	# reference at both channel counts.
 	nb_add_variant(nam_conformance_a32
 		VENDOR upstream
 		PREFIX nb_a32
@@ -391,10 +371,10 @@ if(NB_BUILD_LABS)
 
 	# --- Variant 4: the full-path lab, 8-channel submodel ------------------
 	nb_add_variant(nam_conformance_full
-		VENDOR fused
+		VENDOR upstream
 		PREFIX nb_full
 		NAME full
-		DEFINES NAM_ENABLE_FUSED=1 NB_ENABLE_FULL_LAB=1
+		DEFINES NB_ENABLE_FULL_LAB=1
 		SOURCES ${_full_sources})
 endif()
 
@@ -478,17 +458,6 @@ if(NAMBENCH_BUILD_BENCHMARK)
 
 	set(NB_ENGINE_LIBRARIES nam_engine_upstream nam_engine_planar)
 
-	# `fused` left the measured line-up when the planar kernels superseded it, so
-	# it is only built when asked for — either to reproduce a published fused
-	# number with --with-fused, or as the reference the full lab's fu* candidates
-	# are validated against.
-	if(NAMBENCH_ALL_VARIANTS)
-		nb_add_engine_library(nam_engine_fused
-			VENDOR fused PREFIX nb_fused NAME fused
-			DEFINES NAM_ENABLE_FUSED=1)
-		list(APPEND NB_ENGINE_LIBRARIES nam_engine_fused)
-	endif()
-
 	if(NB_BUILD_LABS)
 		nb_add_engine_library(nam_engine_slim
 			VENDOR upstream PREFIX nb_slim NAME slim
@@ -496,8 +465,8 @@ if(NAMBENCH_BUILD_BENCHMARK)
 			SOURCES ${_slim_sources})
 
 		nb_add_engine_library(nam_engine_full
-			VENDOR fused PREFIX nb_full NAME full
-			DEFINES NAM_ENABLE_FUSED=1 NB_ENABLE_FULL_LAB=1
+			VENDOR upstream PREFIX nb_full NAME full
+			DEFINES NB_ENABLE_FULL_LAB=1
 			SOURCES ${_full_sources})
 
 		list(APPEND NB_ENGINE_LIBRARIES nam_engine_slim nam_engine_full)
@@ -532,9 +501,6 @@ if(NAMBENCH_BUILD_BENCHMARK)
 	if(NB_BUILD_LABS_A32 AND NB_ARMV7)
 		target_compile_definitions(nam_benchmark PRIVATE NAMBENCH_HAVE_A32_LAB=1)
 	endif()
-	if(NAMBENCH_ALL_VARIANTS)
-		target_compile_definitions(nam_benchmark PRIVATE NAMBENCH_HAVE_FUSED=1)
-	endif()
 
 	# Find the engine libraries next to the executable, so the build tree can be
 	# copied to the machine under test as a unit.
@@ -567,9 +533,6 @@ set(NB_CONFORMANCE_MODEL "${NB_VENDOR}/upstream/example_models/A2.nam"
 find_package(Python3 COMPONENTS Interpreter)
 
 set(NB_RUN_TARGETS nam_conformance_upstream nam_conformance_planar)
-if(NAMBENCH_ALL_VARIANTS)
-	list(APPEND NB_RUN_TARGETS nam_conformance_fused)
-endif()
 if(NB_BUILD_LABS)
 	list(APPEND NB_RUN_TARGETS nam_conformance_slim nam_conformance_full)
 endif()

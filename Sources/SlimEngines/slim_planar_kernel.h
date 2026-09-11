@@ -51,7 +51,7 @@ enum class RingKind
   /// 18 KB of memcpy per 64-frame block that usually nothing reads.
   Pow2Eager,
   /// Exactly-sized capacity, mirrored only when a read genuinely wraps. What
-  /// the fused engine does. Smallest footprint.
+  /// the now-retired `fused` engine did. Smallest footprint.
   ExactLazy,
   /// One linear buffer per ring, written forward until it runs out and then
   /// memmoved back. a2_fast's NAM_A2_RING_MODE=0. No mirror at all, no masking,

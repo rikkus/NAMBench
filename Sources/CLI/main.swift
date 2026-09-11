@@ -10,10 +10,6 @@ struct Options {
   var pinsPath: String?
   var config = BenchmarkConfig()
   var quiet = false
-  /// Also measure the superseded fused engine. Off by default: the planar
-  /// kernels replaced it in the line-up, and they cover the 3-channel submodel
-  /// it never could.
-  var withFused = false
 
   static func parse(_ arguments: [String]) throws -> Options {
     var options = Options()
@@ -43,7 +39,6 @@ struct Options {
       case "--accept-tolerance": options.config.acceptTolerance = Double(try next(argument)) ?? 0.01
       case "--accept-fraction": options.config.acceptFraction = Double(try next(argument)) ?? 0.70
       case "--max-attempts": options.config.maxAttempts = Int(try next(argument)) ?? 5
-      case "--with-fused": options.withFused = true
       case "--no-parity": options.config.checkParity = false
       case "--quiet", "-q": options.quiet = true
       case "--help", "-h": printUsage(); exit(0)
@@ -131,7 +126,6 @@ func printUsage() {
       --accept-fraction <r>     fraction of samples kept (default 0.70)
       --accept-tolerance <r>    required agreement, e.g. 0.01 for 1%
       --max-attempts <n>        attempts before giving up (default 5)
-      --with-fused              also measure the superseded fused engine
       --no-parity               skip the output comparison
       --quiet, -q               only print the summary
 
@@ -140,12 +134,9 @@ func printUsage() {
     `--submodel widest` (A2 standard, 8 channels) and `--submodel narrowest`
     (A2 nano, 3 channels) are real comparisons.
 
-    `fused` is no longer measured by default — planar supersedes it — but
-    --with-fused puts it back. On the slimmed submodel it is dropped anyway: its
-    detector rejects a channel count that is not a multiple of four, and under
-    ScopedEnginePrefer(FusedNeon) that falls through to the *generic* engine
-    rather than to a2_fast. The full lab is dropped there for the same reason —
-    by channel count read from the file, not by which flag was passed.
+    The lab flags (--slim, --full) are gated by channel count read from the
+    file, not by trusting the flag: each lab's kernels are specialised for one
+    channel count and are excluded on any other submodel.
     """)
 }
 
@@ -232,24 +223,17 @@ do {
   let quiet = options.quiet
 
   // Assemble the line-up before anything is measured.
-  //
-  // `fused` is only in it when the selected submodel's channel count is a
-  // multiple of four. On a 3-channel submodel its detector rejects the shape,
-  // and under ScopedEnginePrefer(FusedNeon) that falls through to the *generic*
-  // engine, not to a2_fast — so including it would either abort on the engine
-  // assertion or, worse, quietly measure the wrong thing. The channel count is
-  // read from the file rather than inferred from the flag.
   let namBytes = try Data(contentsOf: modelURL)
   let shape = try Variant.upstream.probe(namBytes: namBytes, submodel: options.config.submodel)
 
   var variants: [Variant] = [.upstream]
 
-  // The planar kernels cover both A2 submodels — 3 channels and 8 — so unlike
-  // fused there is no shape gate here, only the channel counts they implement.
-  // Whether they are actually *in* this build is a different question, and one
-  // makeModel asserts rather than this: off AArch64 the framework is a2_fast,
-  // and the engine check refuses the run rather than measuring the reference
-  // against itself.
+  // The planar kernels cover both A2 submodels — 3 channels and 8 — so there is
+  // no shape gate here, only the channel counts they implement. Whether they
+  // are actually *in* this build is a different question, and one makeModel
+  // asserts rather than this: off AArch64 the framework is a2_fast, and the
+  // engine check refuses the run rather than measuring the reference against
+  // itself.
   if shape.channels == 3 || shape.channels == 8 {
     variants.append(.planar)
   } else if !quiet {
@@ -257,17 +241,9 @@ do {
       + "\(shape.channels)")
   }
 
-  if options.withFused {
-    if shape.channels % 4 == 0 {
-      variants.append(.fused)
-    } else if !quiet {
-      print("fused excluded: \(shape.channels) channels is not a multiple of 4, so its "
-        + "detector rejects this shape and the fork falls through to the generic engine")
-    }
-  }
   // Each lab's kernels are specialised for one channel count and throw on the
-  // other, so both are gated by the same read-it-from-the-file rule that governs
-  // `fused` rather than by trusting the flag.
+  // other, so both are gated by the channel count read from the file rather
+  // than by trusting the flag.
   func labVariants(_ name: String, _ kernels: [Int], channels: Int, make: (Int) -> Variant) -> [Variant] {
     guard !kernels.isEmpty else { return [] }
     guard shape.channels == channels else {
@@ -384,9 +360,9 @@ do {
   let speedupByVariant = Dictionary(
     report.speedups.map { ($0.variant, $0.factor) }, uniquingKeysWith: { first, _ in first }
   )
-  // A variant can have more than one parity row: full-lab candidates are
-  // compared against both shipping engines, because which one a candidate is
-  // supposed to be bit-identical to depends on which one it was derived from.
+  // A variant can in principle have more than one parity row, if the line-up
+  // ever carries a second reference engine (see
+  // BenchmarkRunner.secondaryReferenceName); today there is only ever one.
   let parityByVariant = Dictionary(grouping: report.parities, by: \.comparisonVariant)
   let baselineName = report.results.first?.variant ?? ""
 

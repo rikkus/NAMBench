@@ -29,10 +29,6 @@ namespace fulllab
 // Generic Conv1x1 order is: for i in out_ch, for j in in_ch. Both are permuted
 // into column-major-per-tap storage as they are read.
 //
-// FusedWaveNet::_load_weights consumes the same stream in the same order into
-// the same layouts, so this one loader is faithful to both references. The two
-// engines differ in how they *use* these weights, not in how they read them.
-//
 // For A2 full this consumes exactly 12,146 floats:
 //   8 + 21 × (384 + 88) + 2 × (960 + 88) + 128 + 1 + 1.
 // -----------------------------------------------------------------------------
@@ -95,10 +91,10 @@ Weights parse_weights(const std::vector<float>& weights)
 }
 
 // -----------------------------------------------------------------------------
-// Receptive field. Matches A2FastModel's and FusedWaveNet's count (both start at
-// 1, which is where the generic WaveNet's mPrewarmSamples starts when there is
-// no condition DSP), so the lab warms up over the same number of samples as the
-// code it stands in for.
+// Receptive field. Matches A2FastModel's count (starting at 1, which is where
+// the generic WaveNet's mPrewarmSamples starts when there is no condition
+// DSP), so the lab warms up over the same number of samples as the code it
+// stands in for.
 // -----------------------------------------------------------------------------
 int prewarm_samples()
 {
@@ -121,15 +117,13 @@ int next_pow2(int v)
 // Registry
 //
 // An explicit ordered table rather than self-registration: index 0 must be
-// `a2_baseline` and index 1 `fu_baseline`, because those are the two controls
-// the whole lab is validated against.
+// `a2_baseline`, the control every other candidate here is validated against.
 // -----------------------------------------------------------------------------
 namespace
 {
 
 const KernelEntry kKernels[] = {
   {"a2_baseline", &make_a2_baseline},
-  {"fu_baseline", &make_fu_baseline},
 
   {"a2p4", &make_a2p4},
   {"a2p8", &make_a2p8},
@@ -157,28 +151,6 @@ const KernelEntry kKernels[] = {
   {"a2s8_h8_lane", &make_a2s8_h8_lane},
   {"a2s8_h8_split", &make_a2s8_h8_split},
   {"a2s16_split", &make_a2s16_split},
-
-  {"fu_t4", &make_fu_t4},
-  {"fu_t8", &make_fu_t8},
-  {"fu_t12", &make_fu_t12},
-  {"fu_t16", &make_fu_t16},
-  {"fu_tail4", &make_fu_tail4},
-  {"fu_tail8", &make_fu_tail8},
-  {"fu_fusez", &make_fu_fusez},
-  {"fu_ringdirect", &make_fu_ringdirect},
-  {"fu_headtile", &make_fu_headtile},
-  {"fu_storehead", &make_fu_storehead},
-  {"fu_ringeager", &make_fu_ringeager},
-  {"fu_ringexact", &make_fu_ringexact},
-  {"fu_ringlinear", &make_fu_ringlinear},
-  {"fu_t6", &make_fu_t6},
-  {"fu_t10", &make_fu_t10},
-  {"fu_s6", &make_fu_s6},
-  {"fu_s8", &make_fu_s8},
-  {"fu_s8_eager", &make_fu_s8_eager},
-  {"fu_s8_lazy", &make_fu_s8_lazy},
-  {"fu_s8_head", &make_fu_s8_head},
-  {"fu_s8_head_lazy", &make_fu_s8_head_lazy},
 };
 
 constexpr int kKernelCount = static_cast<int>(sizeof(kKernels) / sizeof(kKernels[0]));

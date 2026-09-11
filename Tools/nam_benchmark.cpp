@@ -3,7 +3,7 @@
 // This one does measure. It exists because the numbers this project publishes
 // come from the Xcode build, and the Xcode build does not run on a Raspberry Pi.
 // A Cortex-A76 with 512 KB of L2 and no SVE is the least Apple-like AArch64 core
-// the fused kernels are likely to meet, which makes it the most interesting
+// the planar kernels are likely to meet, which makes it the most interesting
 // place to run them — and the one place none of the existing tooling reaches.
 //
 // The protocol is a port of BenchCore's, not an approximation of it. Same
@@ -45,9 +45,6 @@
 extern "C" {
 NB_DECLARE_VARIANT(nb_upstream)
 NB_DECLARE_VARIANT(nb_planar)
-#if defined(NAMBENCH_HAVE_FUSED)
-NB_DECLARE_VARIANT(nb_fused)
-#endif
 #if defined(NAMBENCH_HAVE_LABS)
 NB_DECLARE_VARIANT(nb_slim)
 NB_DECLARE_KERNEL_LAB(nb_slim)
@@ -756,7 +753,6 @@ const char* engine_name(NbEngine engine)
   {
     case NbEngineGeneric: return "generic";
     case NbEngineA2Fast: return "a2_fast";
-    case NbEngineFused: return "fused";
     case NbEngineSlim: return "slim";
     case NbEngineFull: return "full";
     case NbEnginePlanar: return "a2_planar";
@@ -780,9 +776,10 @@ int main(int argc, char** argv)
   // the comment there explains why: on Apple silicon a lower-QoS thread is
   // scheduled onto the efficiency cores, and an E-core measurement would swamp
   // every effect this benchmark is trying to resolve. A driver that did not do
-  // the same would not be measuring the same machine — which showed up as this
-  // driver reporting `fused` 1.9% faster and `upstream` 0.7% slower than the
-  // Swift CLI on the same hardware, in the same minute.
+  // the same would not be measuring the same machine — which showed up, back
+  // when this driver still measured the (now retired) `fused` engine, as this
+  // driver reporting it 1.9% faster and `upstream` 0.7% slower than the Swift
+  // CLI on the same hardware, in the same minute.
 #if defined(__APPLE__)
   pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
 #endif
@@ -792,7 +789,6 @@ int main(int argc, char** argv)
   fs::path outputPath = "benchmark.json";
   std::string slimSpec, fullSpec, a32Spec;
   std::string testbedNote;
-  bool includeFused = false;
 
   auto usage = []() {
     std::printf(
@@ -816,7 +812,6 @@ int main(int argc, char** argv)
       "  --accept-tolerance <r>   required agreement (default 0.03)\n"
       "  --min-samples <n>        extend the window below this many (default 15)\n"
       "  --max-attempts <n>       attempts before giving up (default 5)\n"
-      "  --with-fused             also measure the superseded fused engine\n"
       "  --no-parity              skip the output comparison\n"
       "  --note <text>            free text recorded in the report\n"
       "  --quiet, -q              only print the summary\n"
@@ -837,20 +832,9 @@ int main(int argc, char** argv)
 
   EngineApi planarApi;
   planarApi.name = "a2_planar";
-  planarApi.repository = "rikkus/OptimisationWorkOnNeuralAmpModelerCore@apple-silicon-a2-planar";
+  planarApi.repository = "rikkus/OptimisationWorkOnNeuralAmpModelerCore@armv7-a2-planar";
   planarApi.codePath = "a2_planar (Core PR #313)";
   NB_FILL_BASE(planarApi, nb_planar);
-
-  // Present only when the build asked for it. `fused` left the line-up when the
-  // planar kernels superseded it, and building it costs time on every platform
-  // for a comparison nobody is making any more.
-#if defined(NAMBENCH_HAVE_FUSED)
-  EngineApi fusedApi;
-  fusedApi.name = "fused";
-  fusedApi.repository = "rikkus/OptimisationWorkOnNeuralAmpModelerCore";
-  fusedApi.codePath = "fused";
-  NB_FILL_BASE(fusedApi, nb_fused);
-#endif
 
 #if defined(NAMBENCH_HAVE_LABS)
   EngineApi slimApi;
@@ -933,8 +917,6 @@ int main(int argc, char** argv)
       config.maxAttempts = static_cast<int>(std::strtol(argv[++i], nullptr, 10));
     else if (arg == "--note" && has)
       testbedNote = argv[++i];
-    else if (arg == "--with-fused")
-      includeFused = true;
     else if (arg == "--no-parity")
       config.checkParity = false;
     else if (arg == "--quiet" || arg == "-q")
@@ -1101,9 +1083,9 @@ int main(int argc, char** argv)
   std::vector<Subject> subjects;
   subjects.push_back({"a2_fast", &upstreamApi, -1});
 
-  // The planar kernels cover both A2 submodels — 3 channels and 8 — so unlike
-  // `fused` there is no shape gate here. What there is instead is a check that
-  // they are actually present: off AArch64 the checkout compiles to plain
+  // The planar kernels cover both A2 submodels — 3 channels and 8 — so there
+  // is no shape gate here. What there is instead is a check that they are
+  // actually present: off AArch64 the checkout compiles to plain
   // a2_fast, and measuring that against upstream would produce two identical
   // numbers and the false impression that the kernels achieve nothing.
   //
@@ -1144,26 +1126,6 @@ int main(int argc, char** argv)
   {
     std::printf("planar excluded: the kernels cover 3 and 8 channels, this submodel has %d\n",
                 probe.channels);
-  }
-
-  if (includeFused)
-  {
-#if defined(NAMBENCH_HAVE_FUSED)
-    if (probe.channels % 4 == 0)
-    {
-      subjects.push_back({"fused", &fusedApi, -1});
-    }
-    else if (!config.quiet)
-    {
-      std::printf("fused excluded: %d channels is not a multiple of 4, so its detector rejects "
-                  "this shape and the fork falls through to the generic engine\n",
-                  probe.channels);
-    }
-#else
-    std::fprintf(stderr, "error: --with-fused, but this build has no fused engine.\n"
-                         "  Configure with -DNAMBENCH_ALL_VARIANTS=ON.\n");
-    return 2;
-#endif
   }
 
 #if defined(NAMBENCH_HAVE_LABS) || defined(NAMBENCH_HAVE_A32_LAB)

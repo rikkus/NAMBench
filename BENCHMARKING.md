@@ -17,7 +17,11 @@ kept. Nothing in this document will ever run on a GitHub-hosted runner.
 `nam_benchmark` is a port of `BenchCore`'s protocol, not an approximation of it:
 same warm-up, same timing window, same tightest-70% selection, same
 `(max - min) / min` spread test, same retry-and-reject, same defaults. Measured
-back to back on one M2, with everything else equal:
+back to back on one M2, with everything else equal, when this cross-check was
+first done (against the now-retired `fused` engine, superseded since by the
+planar kernels — the numbers are kept because the validation they establish,
+that the two drivers agree, is unaffected by which engine happened to be the
+faster one at the time):
 
 | | `nambench` | `nam_benchmark` |
 |---|---|---|
@@ -117,11 +121,9 @@ NEON kernels proposed to Core in
 planar checkout is pinned to the head of that draft PR rather than to a copy of
 it, so the number and the proposal cannot drift apart.
 
-`fused` is no longer in the line-up. The planar kernels supersede it and cover
-the 3-channel submodel it never could — its detector rejects any channel count
-that is not a multiple of four. It is still built and still selectable with
-`--with-fused`, because the full lab's `fu*` candidates are validated against it
-and because a published result should stay reproducible.
+`fused` has been retired from this repo entirely. The planar kernels
+superseded it and cover the 3-channel submodel it never could — its detector
+rejected any channel count that was not a multiple of four.
 
 Both A2 submodels are measured on every run, as separate Bencher series:
 
@@ -581,7 +583,8 @@ combined.
 rooted device with locked clocks; on an unrooted one the clocks are not yours to
 control and the numbers would not be worth keeping.
 
-**The 2015 Intel MacBook Pro.** Deliberately left alone. `fused` is AArch64-only,
-so an Intel Mac can only measure `a2_fast` against the generic engine — which
-CI already does, on x86_64, for free, without touching a machine that has
-music-production work on it.
+**The 2015 Intel MacBook Pro.** Deliberately left alone. The planar kernels
+gate on AArch64 (and on 32-bit ARM with NEON and FMA), so an Intel Mac can only
+measure `a2_fast` against the generic engine — which CI already does, on
+x86_64, for free, without touching a machine that has music-production work on
+it.

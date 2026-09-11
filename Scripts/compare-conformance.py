@@ -6,11 +6,11 @@ samples verbatim. This reads those files back and applies the rules the project
 already states about which engine is supposed to produce which arithmetic:
 
   * routing      each variant must land on the engine it is supposed to land on
-                 for this architecture. On AArch64 the fork gets its fused NEON
-                 engine; everywhere else the detector declines the shape and the
-                 fork falls through to the *generic* engine, never to a2_fast.
-                 Both are asserted, because a silent change either way is the
-                 failure mode that would invalidate a benchmark run.
+                 for this architecture. On AArch64 (and on 32-bit ARM with NEON
+                 and FMA) the planar variant gets its planar NEON kernels;
+                 everywhere else it falls through to a2_fast. Both are
+                 asserted, because a silent change either way is the failure
+                 mode that would invalidate a benchmark run.
 
   * finiteness   no NaN, no infinity, and a peak that is neither silence nor
                  obviously diverged.
@@ -39,11 +39,11 @@ from pathlib import Path
 
 # Default parity floor, in dB below the reference signal.
 #
-# The fused engine is not a bit-for-bit reimplementation of a2_fast — it
-# reassociates sums and uses vectorised activations — so some divergence is
-# expected and wanted. What is not wanted is divergence you could hear. 100 dB
-# is roughly 17 bits down, far below the noise floor of any capture, and every
-# pairing this repository has published sits well beyond it.
+# A deliberately-reassociating lab kernel is not a bit-for-bit reimplementation
+# of a2_fast, so some divergence is expected and wanted there. What is not
+# wanted is divergence you could hear. 100 dB is roughly 17 bits down, far
+# below the noise floor of any capture, and every pairing this repository has
+# published sits well beyond it.
 DEFAULT_MIN_DB = 100.0
 
 
@@ -189,7 +189,7 @@ def expected_engine(record: Record, arch: str) -> str | tuple[str, ...]:
     Mirrors detect_engine in the shim rather than restating the build flags,
     which is the whole reason the driver reports what it actually got.
     """
-    variant, submodel = record.variant, record.submodel
+    variant = record.variant
     aarch64 = arch == "aarch64"
     armv7 = arch.startswith("armv7") or arch == "arm"
 
@@ -222,14 +222,6 @@ def expected_engine(record: Record, arch: str) -> str | tuple[str, ...]:
             return "a2_planar"
         return "a2_fast"
 
-    if variant == "fused":
-        # Under ScopedEnginePrefer(FusedNeon) a shape the fused detector rejects
-        # falls through to the generic engine. It rejects everything off AArch64,
-        # and rejects a channel count that is not a multiple of four everywhere.
-        if aarch64 and submodel == "widest":
-            return "fused"
-        return "generic"
-
     if variant == "slim":
         return "slim"
 
@@ -255,7 +247,6 @@ def reference_for(record: Record) -> tuple[str, str] | None:
     reproduce, which is what makes this mechanical:
 
       full lab   a2*  reproduce a2_fast   -> a2_fast/widest
-                 fu*  reproduce fused     -> fused/widest
       slim lab   all reproduce a2_fast's 3-channel branch -> a2_fast/narrowest
 
     `a2_fast` is the root of the tree and has nothing above it. Everything
@@ -268,23 +259,17 @@ def reference_for(record: Record) -> tuple[str, str] | None:
     if record.variant == "a2_planar":
         return ("a2_fast", record.submodel)
 
-    if record.variant == "fused":
-        return ("a2_fast", record.submodel)
-
     if record.variant == "slim":
         return ("a2_fast", "narrowest")
 
     if record.variant == "full":
-        assert record.kernel is not None
-        if record.kernel.startswith("fu"):
-            return ("fused", "widest")
         return ("a2_fast", "widest")
 
     if record.variant == "a32":
-        # One reference at both widths: `fused` is AArch64-only, so on this
-        # target a2_fast is the only thing to reproduce. The submodel comes off
-        # the record rather than the kernel name, because the runner already
-        # chose it from the kernel's declared channel count.
+        # One reference at both widths: a2_fast is the only thing this lab's
+        # kernels reproduce. The submodel comes off the record rather than the
+        # kernel name, because the runner already chose it from the kernel's
+        # declared channel count.
         return ("a2_fast", record.submodel)
 
     return None

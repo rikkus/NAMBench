@@ -39,12 +39,12 @@ public struct BenchmarkConfig: Sendable, Codable {
   public var submodel: SubmodelSelection = .widest
 
   /// Which slim-lab kernels to include, by index. Empty means none — the run
-  /// is then `upstream` (and `fused`, where the shape allows it) alone.
+  /// is then just the default line-up (`Variant.all`) alone.
   public var slimKernels: [Int] = []
 
   /// Which full-lab kernels to include, by index. Only meaningful on an
   /// 8-channel submodel; the runner drops them otherwise, by shape rather than
-  /// by flag, exactly as it drops `fused`.
+  /// by flag.
   public var fullKernels: [Int] = []
 
   /// Reset model state before every pass so each one starts identically.

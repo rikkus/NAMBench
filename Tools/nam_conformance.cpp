@@ -56,10 +56,10 @@ NB_DECLARE_KERNEL_LAB_(NB_PREFIX)
 #endif
 
 // The architecture this binary was *compiled for*, which is what decides
-// routing — the fused detector returns false unless these macros are set. It is
-// recorded rather than left to the comparator to infer from the host, because
-// under a cross-build (or Rosetta) the host and the binary disagree and the
-// binary is the one that is right.
+// routing — the planar detector returns a2_fast unless these macros are set.
+// It is recorded rather than left to the comparator to infer from the host,
+// because under a cross-build (or Rosetta) the host and the binary disagree
+// and the binary is the one that is right.
 #if defined(__aarch64__) || defined(_M_ARM64)
   #define NB_ARCH "aarch64"
 #elif defined(__x86_64__) || defined(_M_X64)
@@ -181,7 +181,6 @@ const char* engine_name(NbEngine engine)
   {
     case NbEngineGeneric: return "generic";
     case NbEngineA2Fast: return "a2_fast";
-    case NbEngineFused: return "fused";
     case NbEngineSlim: return "slim";
     case NbEngineFull: return "full";
     case NbEnginePlanar: return "a2_planar";
@@ -246,7 +245,7 @@ void json_escape(std::string& out, const std::string& text)
 
 /// Hand-written rather than via nlohmann, to keep Eigen and the JSON header out
 /// of this translation unit. The shape is small and fixed.
-bool write_report(const fs::path& path, const std::string& variant, int hasFused,
+bool write_report(const fs::path& path, const std::string& variant,
                   size_t frames, int blockSize, const std::vector<Record>& records)
 {
   std::string out;
@@ -260,9 +259,9 @@ bool write_report(const fs::path& path, const std::string& variant, int hasFused
   out += "\",\n";
 
   std::snprintf(scratch, sizeof(scratch),
-                "  \"has_fused\": %s,\n  \"frames\": %llu,\n  \"block_size\": %d,\n"
+                "  \"frames\": %llu,\n  \"block_size\": %d,\n"
                 "  \"is_lab\": %s,\n  \"records\": [\n",
-                hasFused ? "true" : "false", static_cast<unsigned long long>(frames), blockSize,
+                static_cast<unsigned long long>(frames), blockSize,
                 NB_IS_LAB ? "true" : "false");
   out += scratch;
 
@@ -508,10 +507,8 @@ int main(int argc, char** argv)
   }
 
   const std::string variant = NB_FN(_variant_name)();
-  const int hasFused = NB_FN(_has_fused)();
 
-  std::printf("%s — %s, %s (fused compiled in: %s)\n", variant.c_str(), NB_ARCH, NB_COMPILER,
-              hasFused ? "yes" : "no");
+  std::printf("%s — %s, %s\n", variant.c_str(), NB_ARCH, NB_COMPILER);
 
   const std::vector<double> input = make_input(frames);
   std::vector<Record> records;
@@ -520,11 +517,7 @@ int main(int argc, char** argv)
   // Which cases this variant runs follows the same rule main.swift applies:
   // read the shape, do not trust the flag.
   //
-  //   upstream / fused   both submodels. On the 3-channel submodel the fork's
-  //                      detector declines the shape and falls through to the
-  //                      generic engine; that is asserted downstream rather
-  //                      than avoided, because it is the fallback behaviour
-  //                      that matters.
+  //   upstream / planar  both submodels.
   //   slim lab           the 3-channel submodel only, every kernel.
   //   full lab           the 8-channel submodel only, every kernel.
   //   a32 lab            both submodels — it carries kernels for each, so the
@@ -559,7 +552,7 @@ int main(int argc, char** argv)
 #endif
 
   const fs::path reportPath = outDir / (variant + ".json");
-  if (!write_report(reportPath, variant, hasFused, frames, blockSize, records))
+  if (!write_report(reportPath, variant, frames, blockSize, records))
   {
     std::fprintf(stderr, "error: could not write %s\n", reportPath.string().c_str());
     return 1;

@@ -32,23 +32,15 @@ reports the engine it actually got by asking the same detectors
 | `a2_fast` | `a2_fast` | `a2_fast` |
 | `a2_planar`, on AArch64 | `a2_planar` | `a2_planar` |
 | `a2_planar`, elsewhere | `a2_fast` | `a2_fast` |
-| `fused`, on AArch64 | `fused` | `generic` |
-| `fused`, elsewhere | `generic` | `generic` |
 | slim lab | not built | `slim` |
 | full lab | `full` | not built |
 
-The two `generic` cells are the interesting ones. Under
-`ScopedEnginePrefer(FusedNeon)` a shape the fused detector rejects falls through
-to the *generic* engine and never to `a2_fast` — so a benchmark that assumed
-"fused framework means fused engine" would quietly measure the wrong thing.
-Off AArch64 the detector rejects everything, and on the 3-channel submodel it
-rejects a channel count that is not a multiple of four. Both are asserted rather
-than avoided.
-
-That has a useful consequence. On x86_64 the `a2_fast` versus `fused`
-comparison *is* `a2_fast` against the generic reference implementation — a
-correctness check the Apple-only build cannot perform at all, obtained for free
-from runners this project would otherwise have no use for.
+The "elsewhere" cells are the interesting ones. Off AArch64 (and off 32-bit
+ARM with NEON and FMA) the planar checkout compiles to plain `a2_fast`, so a
+benchmark that assumed "planar framework means the planar kernels" would
+quietly measure the reference against itself. That is asserted rather than
+avoided: the run reports which engine it actually got, and the driver refuses
+to present a2_fast-vs-a2_fast as a comparison.
 
 ### Parity
 
@@ -59,16 +51,15 @@ as dB below the reference signal — the same measure `BenchCore` reports.
   platform and compiler, because that is precisely what Core PR #313 claims and
   asks Core to rely on: "not within a tolerance, not below the noise floor — the
   same float32 bits, sample for sample"
-- `fused` against `a2_fast`
 - slim-lab kernels against `a2_fast` on the 3-channel submodel
-- full-lab `a2*` kernels against `a2_fast`, `fu*` kernels against `fused`
+- full-lab `a2*` kernels against `a2_fast`
 
 The floor is 100 dB, about 17 bits down and far below the noise floor of any
 capture. Current pairings sit at 119–141 dB.
 
 The verbatim ports are held to a stricter rule. `full_common.h` and
 `slim_common.h` both describe their baselines as reproducing their reference's
-arithmetic exactly, so `a2_baseline`, `fu_baseline` and slim `baseline` must be
+arithmetic exactly, so `a2_baseline` and slim `baseline` must be
 **bit-identical** — `max|diff|` of exactly zero. A verbatim port that has
 drifted is the thing most worth catching, because it invalidates every number
 the lab produces without looking wrong.
@@ -91,9 +82,9 @@ No NaN, no infinity, no silent output, no diverged output.
 - **Android and iOS on real hardware.** Android is cross-compiled only. iOS runs
   in the Simulator, which is real arm64 execution of the real kernels and so is
   perfectly good for arithmetic, and worthless for time.
-- **MSVC on ARM64.** Marked experimental in the matrix. `fused.cpp` reaches for
-  `<arm_neon.h>` under `_M_ARM64`, which MSVC spells differently; if that job is
-  red it is a finding for the fork, not a reason to stop looking.
+- **MSVC on ARM64.** Marked experimental in the matrix. The kernel labs reach
+  for `<arm_neon.h>` under `_M_ARM64`, which MSVC spells differently; if that
+  job is red it is a finding worth having, not a reason to stop looking.
 - **The kernel labs under MSVC.** They use `#pragma clang loop`,
   `#pragma clang fp contract` and `__builtin_prefetch`. Those pragmas are how a
   candidate pins down the codegen it is testing, so a version with them stripped

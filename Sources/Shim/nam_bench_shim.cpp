@@ -3,11 +3,10 @@
 // The variant is selected entirely by build settings:
 //   NB_PREFIX          symbol prefix, e.g. nb_upstream
 //   NB_VARIANT_NAME    display name, e.g. "upstream"
-//   NAM_ENABLE_FUSED   defined only for the fork build
 //
 // Everything else — sources, flags, include paths (including one shared Eigen
-// tree) — is identical between the two frameworks. That is the whole point:
-// any measured difference has to come from the engine, not the build.
+// tree) — is identical between the frameworks. That is the whole point: any
+// measured difference has to come from the engine, not the build.
 
 #include <algorithm>
 #include <chrono>
@@ -25,11 +24,6 @@
 #include "NAM/dsp.h"
 #include "NAM/get_dsp.h"
 #include "NAM/wavenet/a2_fast.h"
-
-#if defined(NAM_ENABLE_FUSED)
-  #include "NAM/wavenet/engine_prefer.h"
-  #include "NAM/wavenet/fused.h"
-#endif
 
 // Defined only for the build made from vendor/planar. Including the header is
 // what makes NAM_A2_PLANAR visible here, and NAM_A2_PLANAR is what says whether
@@ -60,11 +54,10 @@
   #error "NB_VARIANT_NAME must be defined (e.g. -DNB_VARIANT_NAME=upstream, unquoted)"
 #endif
 
-// a2_fast is the upstream variant's whole subject, and the two builds must stay
-// identical apart from NAM_ENABLE_FUSED — so this is a build error, not a
-// silent fallback to the generic engine.
+// a2_fast is the upstream variant's whole subject, so its absence is a build
+// error, not a silent fallback to the generic engine.
 #if !defined(NAM_ENABLE_A2_FAST)
-  #error "NAM_ENABLE_A2_FAST must be defined for both variants"
+  #error "NAM_ENABLE_A2_FAST must be defined for every variant"
 #endif
 
 #define NB_CAT_(a, b) a##b
@@ -301,8 +294,8 @@ int g_slim_kernel = -1;
 
 #if defined(NB_ENABLE_FULL_LAB)
 /// The same, for the full-path lab. Negative means "none chosen yet", in which
-/// case this build behaves exactly like `fused` — the engine it is built
-/// alongside and the one its second control is validated against.
+/// case this build behaves exactly like `upstream` — a2_fast is this lab's
+/// reference, and the one its control kernel is validated against.
 int g_full_kernel = -1;
 #endif
 
@@ -315,12 +308,9 @@ int g_a32_kernel = -1;
 
 /// Report which engine this build will actually route `modelConfig` to.
 ///
-/// This mirrors wavenet::create_config rather than trusting the build flags.
-/// It matters most for the fork: under ScopedEnginePrefer(FusedNeon) a config
-/// whose shape the fused engine does not accept falls through to the *generic*
-/// engine, never to a2_fast. Measuring that by accident would look like a
-/// dramatic regression, so the caller compares this against what it expects and
-/// refuses to run on a mismatch.
+/// This mirrors wavenet::create_config rather than trusting the build flags,
+/// so the caller can compare this against what it expects and refuse to run
+/// on a mismatch rather than silently measuring the wrong thing.
 NbEngine detect_engine(const nlohmann::json& modelConfig, int32_t* channels)
 {
   // is_a2_shape is the only detector that yields a channel count, and it is
@@ -331,11 +321,10 @@ NbEngine detect_engine(const nlohmann::json& modelConfig, int32_t* channels)
     *channels = isA2 ? static_cast<int32_t>(a2Channels) : 0;
 
 #if defined(NB_ENABLE_FULL_LAB)
-  // Checked before the fused branch below, because the full lab is built *with*
-  // NAM_ENABLE_FUSED — the fused engine is one of the two references its
-  // candidates are measured against, so it has to remain compiled in and
-  // reachable. Until a kernel is selected this falls through and reports fused,
-  // exactly as the plain fused build does.
+  // Until a kernel is selected this falls through and reports a2_fast, exactly
+  // as the plain `upstream` build does — the full lab is built from
+  // vendor/upstream, and a2_fast is the reference its candidates are measured
+  // against.
   if (g_full_kernel >= 0 && isA2 && a2Channels == fulllab::kChannels)
     return NbEngineFull;
 #endif
@@ -348,16 +337,12 @@ NbEngine detect_engine(const nlohmann::json& modelConfig, int32_t* channels)
   //     return create_a2_fast_reference_model(channels, ...);
   //
   // and create_a2_planar_model returns nullptr for any channel count other than
-  // 3 or 8. Restating the dispatcher rather than trusting the build flag is the
-  // same discipline applied to fused below, for the same reason: this is a
+  // 3 or 8. Restating the dispatcher rather than trusting the build flag matters
+  // here for the same reason it does elsewhere in this function: this is a
   // fallthrough, and a silent one.
   if (isA2 && (a2Channels == 3 || a2Channels == 8))
     return NbEnginePlanar;
   return isA2 ? NbEngineA2Fast : NbEngineGeneric;
-#elif defined(NAM_ENABLE_FUSED)
-  if (nam::wavenet::fused::available() && nam::wavenet::fused::is_fused_shape(modelConfig))
-    return NbEngineFused;
-  return NbEngineGeneric;
 #elif defined(NB_ENABLE_SLIM_LAB)
   // _create bypasses get_dsp entirely once a kernel has been chosen, so report
   // what will actually run rather than what create_config would have picked.
@@ -403,11 +388,10 @@ NB_EXPORT const char* NB_FN(_variant_name)(void)
 
 NB_EXPORT int NB_FN(_has_fused)(void)
 {
-#if defined(NAM_ENABLE_FUSED)
-  return nam::wavenet::fused::available() ? 1 : 0;
-#else
+  // The fused engine has been retired from every variant; this always answers
+  // false now. Kept only because it is generated once, here, for every
+  // variant prefix by the shared NB_DECLARE_VARIANT macro.
   return 0;
-#endif
 }
 
 NB_EXPORT int NB_FN(_probe)(const uint8_t* namBytes, size_t len, NbSubmodel mode, int32_t index, NbProbe* out,
@@ -549,11 +533,6 @@ NB_EXPORT NbModel* NB_FN(_create)(const uint8_t* namBytes, size_t len, NbSubmode
 
     if (!built)
     {
-#if defined(NAM_ENABLE_FUSED)
-      // Explicit rather than relying on Auto: Auto also happens to select fused
-      // for this shape today, but only because fused is tested first.
-      const nam::wavenet::ScopedEnginePrefer prefer(nam::wavenet::EnginePrefer::FusedNeon);
-#endif
       // Skip the load-time prewarm; the benchmark's own warm-up loop runs the
       // whole file repeatedly, which settles far more than prewarm() does.
       nam::DspLoadOptions options;
@@ -742,8 +721,8 @@ NB_EXPORT int NB_FN(_kernel_channels)(int index)
 
 NB_EXPORT int NB_FN(_kernel_exact)(int index)
 {
-  // As in the slim lab: the two verbatim ports (a2_baseline, fu_baseline) claim
-  // exactness, everything else is held to the dB floor.
+  // As in the slim lab: the verbatim port (a2_baseline) claims exactness,
+  // everything else is held to the dB floor.
   const char* name = fulllab::kernel_name(index);
   if (name == nullptr)
     return -1;

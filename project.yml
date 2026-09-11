@@ -102,8 +102,8 @@ targets:
   # -------------------------------------------------------------------------
   # Variant 2: the planar NEON kernels, as proposed to Core in PR #313.
   #
-  # Built from the head of the armv7-a2-planar branch (which continues
-  # apple-silicon-a2-planar), which is cut from upstream main and carries no
+  # Built from the head of the apple-silicon-a2-planar branch (PR #313's head,
+  # ARMv7 work included), which is cut from upstream main and carries no
   # other engine variants — so this target is configured exactly as
   # NAMEngineUpstream is. The only addition is NB_VENDOR_HAS_PLANAR, which lets
   # the shim include a2_planar.h and so report whether it got the kernels or

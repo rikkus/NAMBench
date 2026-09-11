@@ -1,7 +1,7 @@
 // Umbrella header for the planar variant framework.
 //
 // Built from rikkus/OptimisationWorkOnNeuralAmpModelerCore at the head of the
-// armv7-a2-planar branch (which continues apple-silicon-a2-planar) — the code
+// apple-silicon-a2-planar branch (PR #313's head, ARMv7 work included) — the code
 // proposed to Core in PR #313, not a restatement of it, so a number measured
 // here belongs to that proposal.
 //

@@ -24,10 +24,10 @@ UPSTREAM_SHA="2563c0fd4cb1f9ce457d89a761738ea15097e1f3"
 # draft PR, not a summary of it. This is the code the benchmark now measures, so
 # the number and the proposal cannot drift apart.
 #
-# Fork branch armv7-a2-planar, which continues apple-silicon-a2-planar. That
-# branch is cut from upstream main and carries no other engine variants: just
-# a2_fast, plus a2_planar, plus a two-line change in A2FastConfig::create that
-# prefers the planar model where one exists.
+# Fork branch apple-silicon-a2-planar (the head of PR #313, which now also
+# carries the ARMv7 work). That branch is cut from upstream main and carries no
+# other engine variants: just a2_fast, plus a2_planar, plus a two-line change in
+# A2FastConfig::create that prefers the planar model where one exists.
 #
 # The gate is __aarch64__, or 32-bit ARM with NEON and FMA -- not
 # __APPLE__ && __aarch64__. Where it cannot open the translation unit has no

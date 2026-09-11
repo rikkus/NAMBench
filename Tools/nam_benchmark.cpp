@@ -832,7 +832,7 @@ int main(int argc, char** argv)
 
   EngineApi planarApi;
   planarApi.name = "a2_planar";
-  planarApi.repository = "rikkus/OptimisationWorkOnNeuralAmpModelerCore@armv7-a2-planar";
+  planarApi.repository = "rikkus/OptimisationWorkOnNeuralAmpModelerCore@apple-silicon-a2-planar";
   planarApi.codePath = "a2_planar (Core PR #313)";
   NB_FILL_BASE(planarApi, nb_planar);
 

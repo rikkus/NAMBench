@@ -269,7 +269,7 @@ public final class Variant {
   /// than absent.
   public static let planar = Variant(
     name: "a2_planar",
-    repository: "rikkus/OptimisationWorkOnNeuralAmpModelerCore@armv7-a2-planar",
+    repository: "rikkus/OptimisationWorkOnNeuralAmpModelerCore@apple-silicon-a2-planar",
     codePath: "a2_planar",
     expectedEngine: .planar,
     api: .planar

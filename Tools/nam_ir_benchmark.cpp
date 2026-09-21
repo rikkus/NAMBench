@@ -543,10 +543,14 @@ int main(int argc, char** argv)
         if (!config.quiet)
         {
           report_progress(record.timing);
-          std::printf("    %s, %d taps: blocks median %.2f%% / p99 %.2f%% / max %.2f%% of "
-                      "deadline\n",
-                      record.active.c_str(), record.taps, record.blockMedianPercent,
-                      record.blockP99Percent, record.blockMaxPercent);
+          // Only where there is a window to have pooled blocks from. A rejected
+          // attempt has no accepted passes, and printing its zeroes would read
+          // as a convolution that took no time at all.
+          if (record.timing.succeeded)
+            std::printf("    %s, %d taps: blocks median %.2f%% / p99 %.2f%% / max %.2f%% of "
+                        "deadline\n",
+                        record.active.c_str(), record.taps, record.blockMedianPercent,
+                        record.blockP99Percent, record.blockMaxPercent);
         }
 
         subject.api->destroy(ir);

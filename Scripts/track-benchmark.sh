@@ -51,6 +51,13 @@
 #                       different Bencher branch from the laptop's.
 #   --submodels LIST    which to measure (default: widest,narrowest — A2
 #                       standard and A2 nano, uploaded as separate series)
+#   --ir                measure impulse-response convolution instead:
+#                       AudioDSPTools main against the partitioned-ir branch.
+#                       Always the portable driver, on every platform — the
+#                       Xcode CLI has no IR mode — so the Mac's IR numbers come
+#                       from the same binary the Pi's and the board's do.
+#   --taps LIST         --ir only: IR lengths (default
+#                       256,512,1024,2048,4096,8192)
 #   --timing-seconds N  timing window per variant (default: 30)
 #   --cpu-set LIST      taskset list, e.g. 0-3. Linux and --board only.
 #   --check             check this machine can reach Bencher, then stop.
@@ -73,6 +80,8 @@ TESTBED=""
 BRANCH=""
 HASH=""
 SUBMODELS="widest,narrowest"
+IR=0
+TAPS="256,512,1024,2048,4096,8192"
 TIMING="30"
 CPU_SET=""
 BOARD=""
@@ -175,6 +184,8 @@ while [ $# -gt 0 ]; do
 		--branch) BRANCH="$2"; shift 2 ;;
 		--hash) HASH="$2"; shift 2 ;;
 		--submodels) SUBMODELS="$2"; shift 2 ;;
+		--ir) IR=1; shift ;;
+		--taps) TAPS="$2"; shift 2 ;;
 		--timing-seconds) TIMING="$2"; shift 2 ;;
 		--cpu-set) CPU_SET="$2"; shift 2 ;;
 		--board) BOARD="$2"; shift 2 ;;
@@ -205,6 +216,12 @@ load_dotenv "${INVOKED_FROM}/.env"
 # wrong one.
 if [ -n "${BOARD}" ]; then
 	DRIVER="a32"
+elif [ "${IR}" -eq 1 ]; then
+	# The Xcode CLI measures WaveNet engines and nothing else, so an IR run uses
+	# the portable driver everywhere. That is not a compromise on the Mac: every
+	# testbed's IR numbers then come from one binary built from one source, which
+	# is exactly what the WaveNet side gives up by having two drivers at all.
+	DRIVER="portable"
 else
 	case "$(uname -s)" in
 		Darwin) DRIVER="xcode" ;;
@@ -479,10 +496,13 @@ if [ "${CHECK}" -eq 1 ]; then
 	printf '  project  %s\n' "${PROJECT}"
 	printf '  branch   %s%s\n' "${BRANCH}" "${HASH:+ @ ${HASH:0:12}}"
 	printf '  key      %s\n' "${DOTENV_LOADED:-the environment}"
+	[ "${IR}" -eq 1 ] && printf '  subject  %s\n' "impulse responses of ${TAPS} taps"
 	case "${DRIVER}" in
 		xcode) printf '  driver   %s\n' "nambench (Xcode)" ;;
-		portable) printf '  driver   %s\n' "nam_benchmark (portable)" ;;
-		a32) printf '  driver   %s\n' "nam_benchmark (cross-built here, measured on ${BOARD})"
+		portable) printf '  driver   %s\n' \
+			"$([ "${IR}" -eq 1 ] && echo nam_ir_benchmark || echo nam_benchmark) (portable)" ;;
+		a32) printf '  driver   %s\n' \
+		       "$([ "${IR}" -eq 1 ] && echo nam_ir_benchmark || echo nam_benchmark) (cross-built here, measured on ${BOARD})"
 		     printf '  clock    %s\n' \
 		       "$([ "${MAX_FREQ}" = "none" ] && echo 'as configured' || echo "capped to ${MAX_FREQ} kHz")" ;;
 	esac
@@ -544,17 +564,27 @@ case "${DRIVER}" in
 		;;
 
 	portable)
-		log "driver: nam_benchmark (portable)"
+		if [ "${IR}" -eq 1 ]; then
+			TARGET="nam_ir_benchmark"
+		else
+			TARGET="nam_benchmark"
+		fi
+		log "driver: ${TARGET} (portable)"
 		cmake -S . -B build-benchmark -DCMAKE_BUILD_TYPE=Release \
 			-DNAMBENCH_BUILD_BENCHMARK=ON >/dev/null
-		cmake --build build-benchmark --target nam_benchmark --parallel "$(build_jobs)" >/dev/null
-		./Scripts/run-benchmark.sh \
-			--build-dir build-benchmark \
-			--submodels "${SUBMODELS}" \
-			--output-dir "$(dirname "${REPORT}")" \
-			--bmf "${BMF}" \
-			${CPU_SET:+--cpu-set "${CPU_SET}"} \
-			-- --timing-seconds "${TIMING}" ${EXTRA[@]+"${EXTRA[@]}"}
+		cmake --build build-benchmark --target "${TARGET}" --parallel "$(build_jobs)" >/dev/null
+		RUN=(./Scripts/run-benchmark.sh
+			--build-dir build-benchmark
+			--output-dir "$(dirname "${REPORT}")"
+			--bmf "${BMF}")
+		if [ "${IR}" -eq 1 ]; then
+			RUN=("${RUN[@]}" --ir --taps "${TAPS}")
+		else
+			RUN=("${RUN[@]}" --submodels "${SUBMODELS}")
+		fi
+		[ -n "${CPU_SET}" ] && RUN=("${RUN[@]}" --cpu-set "${CPU_SET}")
+		RUN=("${RUN[@]}" -- --timing-seconds "${TIMING}" ${EXTRA[@]+"${EXTRA[@]}"})
+		"${RUN[@]}"
 		;;
 
 	a32)
@@ -570,7 +600,11 @@ case "${DRIVER}" in
 		# rest of *that* to nam_benchmark.
 		DEPLOY=("${REPO_ROOT}/Scripts/a32-deploy.sh" --host "${BOARD}" --step bench --bmf "${BMF}")
 		[ -n "${CPU_SET}" ] && DEPLOY=("${DEPLOY[@]}" --cpu-set "${CPU_SET}")
-		DEPLOY=("${DEPLOY[@]}" -- --submodels "${SUBMODELS}")
+		if [ "${IR}" -eq 1 ]; then
+			DEPLOY=("${DEPLOY[@]}" -- --ir --taps "${TAPS}")
+		else
+			DEPLOY=("${DEPLOY[@]}" -- --submodels "${SUBMODELS}")
+		fi
 		[ "${MAX_FREQ}" != "none" ] && DEPLOY=("${DEPLOY[@]}" --max-freq "${MAX_FREQ}")
 		DEPLOY=("${DEPLOY[@]}" -- --timing-seconds "${TIMING}" ${EXTRA[@]+"${EXTRA[@]}"})
 		"${DEPLOY[@]}"

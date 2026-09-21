@@ -30,6 +30,17 @@
 #                      and A2 nano). Both run inside ONE governor window and one
 #                      thermal check, so the machine is in the same state for
 #                      each and the pair can be read together.
+#
+#   --ir               measure impulse-response convolution instead of the
+#                      WaveNet engines: nam_ir_benchmark, AudioDSPTools main
+#                      against the partitioned-ir branch. Everything this script
+#                      does to the machine is the same, which is the point of
+#                      putting it here rather than in a script of its own.
+#   --taps LIST        --ir only: IR lengths (default 256,512,1024,2048,4096,8192)
+#   --blocks LIST      --ir only: block sizes, one report each (default 64).
+#                      One report per size because block size is not part of a
+#                      Bencher benchmark name, so two of them in one report
+#                      would overwrite each other.
 #   --output-dir DIR   where reports go (default: benchmark-results)
 #   --bmf PATH         merge every submodel into one Bencher Metric Format file
 #   --cpu-set LIST     taskset list, e.g. 0-3 (default: no pinning)
@@ -48,6 +59,9 @@ BUILD_DIR="${REPO_ROOT}/build-benchmark"
 MODEL=""
 AUDIO="${REPO_ROOT}/audio-input/input.wav"
 SUBMODELS="widest,narrowest"
+IR=0
+TAPS="256,512,1024,2048,4096,8192"
+BLOCKS="64"
 OUTPUT_DIR="${REPO_ROOT}/benchmark-results"
 BMF=""
 CPU_SET=""
@@ -69,6 +83,9 @@ while [ $# -gt 0 ]; do
 		--model) MODEL="$2"; shift 2 ;;
 		--audio) AUDIO="$2"; shift 2 ;;
 		--submodels) SUBMODELS="$2"; shift 2 ;;
+		--ir) IR=1; shift ;;
+		--taps) TAPS="$2"; shift 2 ;;
+		--blocks) BLOCKS="$2"; shift 2 ;;
 		--output-dir) OUTPUT_DIR="$2"; shift 2 ;;
 		--bmf) BMF="$2"; shift 2 ;;
 		--cpu-set) CPU_SET="$2"; shift 2 ;;
@@ -81,11 +98,25 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-BINARY="${BUILD_DIR}/nam_benchmark"
-[ -x "${BINARY}" ] || die "no nam_benchmark at ${BINARY}
+if [ "${IR}" -eq 1 ]; then
+	TARGET="nam_ir_benchmark"
+	# Every block size produces the same benchmark names, so merging two of them
+	# into one BMF would silently keep whichever came last. Caught here rather
+	# than after the measurement has been spent.
+	case "${BLOCKS}" in
+		*,*) [ -z "${BMF}" ] || die "--bmf with more than one --blocks value.
+  Each block size produces the same benchmark names, so one upload cannot carry
+  two of them. Run each size separately, and give each its own --prefix when
+  converting (see Scripts/bencher-report.py)." ;;
+	esac
+else
+	TARGET="nam_benchmark"
+fi
+BINARY="${BUILD_DIR}/${TARGET}"
+[ -x "${BINARY}" ] || die "no ${TARGET} at ${BINARY}
   Build it with:
     cmake -S . -B ${BUILD_DIR} -DCMAKE_BUILD_TYPE=Release -DNAMBENCH_BUILD_BENCHMARK=ON
-    cmake --build ${BUILD_DIR} --target nam_benchmark --parallel 4"
+    cmake --build ${BUILD_DIR} --target ${TARGET} --parallel 4"
 
 # --- Model ------------------------------------------------------------------
 #
@@ -93,16 +124,21 @@ BINARY="${BUILD_DIR}/nam_benchmark"
 # measured on. Fall back to upstream's own example model so the script still
 # works on a machine that has no captures on it — with a loud note, since the
 # two are not comparable.
-if [ -z "${MODEL}" ]; then
-	MODEL="$(find "${REPO_ROOT}/nam-files" -name '*.nam' 2>/dev/null | sort | head -1 || true)"
+#
+# An IR run has no .nam at all: the impulse response is generated inside the
+# shim, identically in both variants and on every machine.
+if [ "${IR}" -eq 0 ]; then
 	if [ -z "${MODEL}" ]; then
-		MODEL="${REPO_ROOT}/vendor/upstream/example_models/A2.nam"
-		warn "no capture in nam-files/; falling back to upstream's example_models/A2.nam.
+		MODEL="$(find "${REPO_ROOT}/nam-files" -name '*.nam' 2>/dev/null | sort | head -1 || true)"
+		if [ -z "${MODEL}" ]; then
+			MODEL="${REPO_ROOT}/vendor/upstream/example_models/A2.nam"
+			warn "no capture in nam-files/; falling back to upstream's example_models/A2.nam.
   That is a real A2 shape and fine for tracking this machine against itself, but
   its numbers are not comparable with any published run."
+		fi
 	fi
+	[ -f "${MODEL}" ] || die "no such model: ${MODEL}"
 fi
-[ -f "${MODEL}" ] || die "no such model: ${MODEL}"
 [ -f "${AUDIO}" ] || die "no such audio: ${AUDIO}"
 
 HOST="$(hostname -s 2>/dev/null || hostname)"
@@ -348,7 +384,11 @@ if [ -n "${CPU_SET}" ]; then
 	log "pinned to CPUs ${CPU_SET}"
 fi
 
-log "model $(basename "${MODEL}")"
+if [ "${IR}" -eq 1 ]; then
+	log "impulse responses of ${TAPS} taps"
+else
+	log "model $(basename "${MODEL}")"
+fi
 log "audio $(basename "${AUDIO}")"
 
 # The clock the run was held at goes in the report, not just in this terminal.
@@ -365,23 +405,45 @@ NOTE="${HOST}${CPU_SET:+ cpus=${CPU_SET}}"
 STATUS=0
 REPORTS=()
 
+# In --ir mode the iteration is over block sizes instead of submodels, for the
+# same reason the WaveNet run iterates submodels here rather than being invoked
+# twice: everything measured inside this loop describes one machine in one
+# state. One report per block size, because block size is not part of a Bencher
+# benchmark name and two of them in one report would overwrite each other.
+if [ "${IR}" -eq 1 ]; then
+	LOOP="${BLOCKS}"
+else
+	LOOP="${SUBMODELS}"
+fi
+
 OLD_IFS="${IFS}"
 IFS=','
-for SUBMODEL in ${SUBMODELS}; do
+for ITEM in ${LOOP}; do
 	IFS="${OLD_IFS}"
-	[ -n "${SUBMODEL}" ] || continue
-
-	REPORT="${OUTPUT_DIR}/${HOST}-${STAMP}-${SUBMODEL}.json"
-	log "measuring ${SUBMODEL}"
+	[ -n "${ITEM}" ] || continue
 
 	set +e
-	${RUNNER[@]+"${RUNNER[@]}"} "${BINARY}" \
-		--model "${MODEL}" \
-		--audio "${AUDIO}" \
-		--submodel "${SUBMODEL}" \
-		--output "${REPORT}" \
-		--note "${NOTE}" \
-		${EXTRA[@]+"${EXTRA[@]}"}
+	if [ "${IR}" -eq 1 ]; then
+		REPORT="${OUTPUT_DIR}/${HOST}-${STAMP}-ir-block${ITEM}.json"
+		log "measuring impulse responses, ${ITEM}-frame blocks"
+		${RUNNER[@]+"${RUNNER[@]}"} "${BINARY}" \
+			--audio "${AUDIO}" \
+			--taps "${TAPS}" \
+			--blocks "${ITEM}" \
+			--output "${REPORT}" \
+			--note "${NOTE}" \
+			${EXTRA[@]+"${EXTRA[@]}"}
+	else
+		REPORT="${OUTPUT_DIR}/${HOST}-${STAMP}-${ITEM}.json"
+		log "measuring ${ITEM}"
+		${RUNNER[@]+"${RUNNER[@]}"} "${BINARY}" \
+			--model "${MODEL}" \
+			--audio "${AUDIO}" \
+			--submodel "${ITEM}" \
+			--output "${REPORT}" \
+			--note "${NOTE}" \
+			${EXTRA[@]+"${EXTRA[@]}"}
+	fi
 	ONE_STATUS=$?
 	set -e
 

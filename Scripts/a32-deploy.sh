@@ -140,15 +140,18 @@ if [ "${DO_BUILD}" -eq 1 ]; then
 fi
 
 BINARIES=()
-for b in "${BUILD_DIR}"/nam_benchmark "${BUILD_DIR}"/nam_conformance_*; do
+for b in "${BUILD_DIR}"/nam_benchmark "${BUILD_DIR}"/nam_ir_benchmark \
+	"${BUILD_DIR}"/nam_conformance_*; do
 	[ -x "$b" ] && [ -f "$b" ] && BINARIES=("${BINARIES[@]+${BINARIES[@]}}" "$b")
 done
 [ "${#BINARIES[@]}" -gt 0 ] || die "nothing executable in ${BUILD_DIR}; build first"
 
-# The engine libraries the benchmark dlopens/links against live beside it.
+# The variant libraries the benchmarks link against live beside them: the NAM
+# engines for nam_benchmark, the AudioDSPTools pair for nam_ir_benchmark.
 LIBS=()
 while IFS= read -r l; do LIBS=("${LIBS[@]+${LIBS[@]}}" "$l"); done < <(
-	find "${BUILD_DIR}" -maxdepth 1 -name 'libnam_engine_*' -type f 2>/dev/null || true
+	find "${BUILD_DIR}" -maxdepth 1 \( -name 'libnam_engine_*' -o -name 'libnam_ir_*' \) \
+		-type f 2>/dev/null || true
 )
 
 # --- Deploy -----------------------------------------------------------------

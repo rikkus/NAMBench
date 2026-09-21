@@ -513,6 +513,86 @@ if(NAMBENCH_BUILD_BENCHMARK)
 			BUILD_RPATH "$ORIGIN"
 			INSTALL_RPATH "$ORIGIN")
 	endif()
+
+	# -----------------------------------------------------------------------
+	# The impulse-response benchmark.
+	#
+	# Same shape as the engine libraries above and for the same reason: both
+	# AudioDSPTools checkouts define dsp::ImpulseResponse, so measuring them in
+	# one process needs one hidden-visibility shared library each, exporting
+	# nothing but its prefixed C API.
+	#
+	# They build against vendor/eigen-adt rather than vendor/eigen, because
+	# AudioDSPTools pins a different Eigen than NeuralAmpModelerCore does (see
+	# Scripts/fetch-vendor.sh). Both IR libraries share that one tree, which is
+	# the part that matters: the convolution is Eigen code.
+	# -----------------------------------------------------------------------
+	if(IS_DIRECTORY "${NB_VENDOR}/eigen-adt")
+		set(NB_ADT_EIGEN "${NB_VENDOR}/eigen-adt")
+	else()
+		set(NB_ADT_EIGEN "${NB_VENDOR}/eigen")
+	endif()
+
+	function(nb_add_ir_library target)
+		cmake_parse_arguments(V "" "VENDOR;PREFIX;NAME" "DEFINES" ${ARGN})
+
+		set(_tree "${NB_VENDOR}/${V_VENDOR}")
+		# Only what ImpulseResponse needs. NoiseGate and RecursiveLinearFilter
+		# are the rest of the plugin's chain and are not under test here.
+		set(_adt_sources
+			"${_tree}/dsp/ImpulseResponse.cpp"
+			"${_tree}/dsp/dsp.cpp"
+			"${_tree}/dsp/wav.cpp")
+		if(EXISTS "${_tree}/dsp/PartitionedConvolution.cpp")
+			list(APPEND _adt_sources "${_tree}/dsp/PartitionedConvolution.cpp")
+		endif()
+
+		add_library(${target} SHARED
+			"${NB_ROOT}/Sources/Shim/nam_ir_shim.cpp"
+			${_adt_sources})
+
+		target_include_directories(${target} PRIVATE
+			"${_tree}"
+			"${NB_ROOT}/Sources/Shim")
+
+		target_include_directories(${target} SYSTEM PRIVATE "${NB_ADT_EIGEN}")
+
+		target_compile_definitions(${target} PRIVATE
+			NB_IR_PREFIX=${V_PREFIX}
+			NB_IR_VARIANT_NAME=${V_NAME}
+			${V_DEFINES})
+
+		target_link_libraries(${target} PRIVATE nb_conformance_flags)
+
+		set_target_properties(${target} PROPERTIES
+			CXX_VISIBILITY_PRESET hidden
+			VISIBILITY_INLINES_HIDDEN ON)
+	endfunction()
+
+	nb_add_ir_library(nam_ir_upstream
+		VENDOR adt-upstream PREFIX nb_ir_upstream NAME adt_upstream)
+
+	nb_add_ir_library(nam_ir_partitioned
+		VENDOR adt-partitioned PREFIX nb_ir_partitioned NAME adt_partitioned
+		DEFINES NB_IR_HAS_PARTITIONED=1)
+
+	add_executable(nam_ir_benchmark
+		"${NB_ROOT}/Tools/nam_ir_benchmark.cpp"
+		"${NB_ROOT}/Tools/nb_counters.cpp")
+
+	target_include_directories(nam_ir_benchmark PRIVATE "${NB_ROOT}/Sources/Shim")
+	target_link_libraries(nam_ir_benchmark PRIVATE
+		nb_conformance_flags nam_ir_upstream nam_ir_partitioned)
+
+	if(APPLE)
+		set_target_properties(nam_ir_benchmark PROPERTIES
+			BUILD_RPATH "@loader_path"
+			INSTALL_RPATH "@loader_path")
+	else()
+		set_target_properties(nam_ir_benchmark PROPERTIES
+			BUILD_RPATH "$ORIGIN"
+			INSTALL_RPATH "$ORIGIN")
+	endif()
 endif()
 
 # ---------------------------------------------------------------------------

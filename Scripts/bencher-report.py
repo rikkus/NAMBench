@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """Convert a NAMBench report into Bencher Metric Format (BMF) JSON.
 
-Reads either producer's report — the Swift `nambench` CLI or the portable
-`nam_benchmark` — because the two share key names wherever they overlap, and
-emits the BMF that `bencher run --adapter json --file ...` expects.
+Reads any producer's report — the Swift `nambench` CLI, the portable
+`nam_benchmark`, or `nam_ir_benchmark` — because they share key names wherever
+they overlap, and emits the BMF that `bencher run --adapter json --file ...`
+expects.
 
-One measure:
+Two measures:
 
   core_percent  what one NAM instance costs, as a percentage of one CPU core,
                while keeping up with real-time audio.
 
                    (meanMs / 1000) / audio seconds x 100
+
+  block_p99_percent
+               the 99th-percentile block, as a percentage of that block's own
+               real-time budget. Only present where the producer measured
+               individual blocks, which today means the impulse-response
+               benchmark.
 
 Real-time audio is constrained by how much work the CPU can do inside each
 callback, so that fraction is the number worth tracking. The whole-file render
@@ -29,10 +36,21 @@ the useful inverse honest: 100 / core_percent is the number of instances that fi
 on one core, under ideal conditions with no contention, no thermal limit and no
 headroom.
 
-What it does not measure: whether a block misses its deadline. That depends on
-the worst case, and the protocol deliberately discards slow outliers as
-interference. core_percent is a cost and capacity measure, not a real-time-safety
-guarantee.
+What core_percent does not measure: whether a block misses its deadline. That
+depends on the worst case, and the protocol deliberately discards slow outliers
+as interference. core_percent is a cost and capacity measure, not a
+real-time-safety guarantee.
+
+That is what block_p99_percent is for, and it is why the impulse-response
+benchmark reports both. Partitioned FFT convolution does a whole partition's
+transform in one callback, so an average that improves and a worst case that
+gets worse is a real and expected outcome there — a plugin that misses one
+callback clicks, however good its average was. 100% is a block that used its
+entire deadline. It is a p99 rather than a maximum because a maximum over
+millions of blocks is a measurement of the scheduler: one preemption, one page
+fault, and the number is about the operating system rather than the code. The
+maximum is still recorded in the report for diagnosis; what is tracked is the
+p99.
 
 It is also specific to the block size the run used — smaller blocks cost more
 per sample — so a run at a size other than the default is warned about below.
@@ -48,10 +66,16 @@ both A2 submodels becomes a single Bencher report.
 
 A benchmark name is `<model>/<kernel>` — `a2_standard/a2_planar`, `a2_nano/a2_fast`
 — because Bencher has exactly one free-text dimension per series and two things
-to say with it. The machine is not in the name: that is the *testbed* dimension,
-which is what keeps an M2's history from being averaged with a Pi's. So the four
-names, across three testbeds, are twelve independent series, and a threshold on
-one of them alerts on that kernel, on that model, on that machine alone.
+to say with it. Impulse-response runs use the same shape, with the IR length
+where the model goes: `ir_8192/adt_partitioned_fft`. Length belongs in the name
+because it is the independent variable of that benchmark — the whole question is
+where the FFT path starts to pay — and because two lengths are no more
+comparable to each other than two submodels are.
+
+The machine is *not* in the name: that is the testbed dimension, which is what
+keeps an M2's history from being averaged with a Pi's. So each name, on each of
+the three testbeds, is an independent series, and a threshold on one of them
+alerts on that kernel, on that model, on that machine alone.
 
 Both halves are spelled the way the Core code path spells them, underscores and
 all, so that a label on a dashboard and a symbol in the source are the same word.
@@ -120,7 +144,94 @@ def submodel_name(report: dict[str, Any]) -> str:
 DEFAULT_BLOCK_SIZE = 64
 
 
+def convert_ir(report: dict[str, Any], prefix: str) -> tuple[dict[str, Any], list[str]]:
+    """Convert an `nam_ir_benchmark` report.
+
+    One entry per (IR length, variant), carrying both measures. The variant
+    names arrive as `adt_partitioned:fft`; the colon becomes an underscore so
+    that a benchmark name is punctuated the same way everywhere and survives
+    being put in a URL.
+    """
+    bmf: dict[str, Any] = {}
+    skipped: list[str] = []
+
+    audio_seconds = report.get("audio", {}).get("durationSeconds")
+
+    seen_blocks: set[int] = set()
+    for result in report.get("results", []):
+        taps = result.get("taps")
+        variant = str(result.get("variant", "?")).replace(":", "_")
+        name = f"{prefix}ir_{taps}/{variant}"
+
+        block_size = result.get("blockSize")
+        if block_size:
+            seen_blocks.add(int(block_size))
+
+        if not result.get("succeeded", False):
+            skipped.append(f"{name} ({result.get('failureReason', 'no reason given')})")
+            continue
+
+        mean = result.get("meanMs")
+        if not mean or mean <= 0:
+            skipped.append(f"{name} (no usable mean)")
+            continue
+        if not audio_seconds or audio_seconds <= 0:
+            skipped.append(f"{name} (report has no audio duration to normalise by)")
+            continue
+
+        def core_percent(milliseconds: float) -> float:
+            return (milliseconds / 1000.0) / audio_seconds * 100.0
+
+        accepted = result.get("acceptedMs") or []
+        low = min(accepted) if accepted else result.get("minMs")
+        high = max(accepted) if accepted else result.get("maxMs")
+
+        measure: dict[str, float] = {"value": core_percent(float(mean))}
+        if low and high and low > 0 and high >= low:
+            measure["lower_value"] = core_percent(float(low))
+            measure["upper_value"] = core_percent(float(high))
+        measures: dict[str, Any] = {"core_percent": measure}
+
+        # The p99 goes up with no bounds around it. Bencher's lower and upper
+        # values are an interval around a central estimate, and a percentile has
+        # no such interval to report: the median below it and the maximum above
+        # it are different statistics, not error bars on this one. Sending them
+        # as bounds would draw a band on the chart that means nothing.
+        p99 = result.get("blockP99Percent")
+        if p99 is not None and p99 > 0:
+            measures["block_p99_percent"] = {"value": float(p99)}
+        else:
+            skipped.append(f"{name} (no per-block timings; core_percent only)")
+
+        bmf[name] = measures
+
+    if len(seen_blocks) == 1 and not prefix:
+        block_size = next(iter(seen_blocks))
+        if block_size != DEFAULT_BLOCK_SIZE:
+            print(
+                f"warning: this run used {block_size}-frame blocks, not "
+                f"{DEFAULT_BLOCK_SIZE}. Block size is not part of the benchmark name.\n"
+                f"  Separate them with:  --prefix 'block{block_size}/'",
+                file=sys.stderr,
+            )
+    elif len(seen_blocks) > 1:
+        # Two block sizes in one report would collide on the same names, with
+        # whichever came last silently winning.
+        sys.exit(
+            "error: this report mixes block sizes "
+            + ", ".join(str(b) for b in sorted(seen_blocks))
+            + ". Block size is not part of the benchmark name, so they would\n"
+            "  overwrite one another. Run each block size separately and upload\n"
+            "  each with its own --prefix."
+        )
+
+    return bmf, skipped
+
+
 def convert(report: dict[str, Any], prefix: str) -> tuple[dict[str, Any], list[str]]:
+    if report.get("producer") == "nam_ir_benchmark":
+        return convert_ir(report, prefix)
+
     submodel = submodel_name(report)
 
     # Block size changes the answer — Core PR #313 measures a2_fast at 418 ms on

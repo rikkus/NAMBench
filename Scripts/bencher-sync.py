@@ -10,7 +10,7 @@ newest thing being measured is the one thing nobody is watching.
 This script derives both from what is actually in the project, and is safe to
 run after every upload.
 
-  Thresholds  one per (branch, testbed, core_percent).
+  Thresholds  one per (branch, testbed, measure).
 
               That is the whole of Bencher's threshold scope; it is deliberately
               *not* per benchmark. One model per machine is evaluated against
@@ -25,7 +25,8 @@ run after every upload.
               path or `--thresholds-reset` lets the last one silently redefine
               the model. Owning them here means there is one definition.
 
-  Plots       one per (testbed, model), with every kernel of that model on it.
+  Plots       one per (measure, testbed, model), with every kernel of that model
+              on it.
 
               A plot is pinned to fixed UUIDs, so it cannot follow new data by
               itself. Grouping this way puts a2_fast and a2_planar on one axis
@@ -36,14 +37,22 @@ run after every upload.
               a2_standard is not put beside a2_nano because they differ by
               roughly seven times.
 
+There are two measures. `core_percent` is what a variant costs on average;
+`block_p99_percent` is its 99th-percentile block as a fraction of that block's
+deadline, which only the impulse-response benchmark produces. They get separate
+plots because they are separate questions — one is capacity, the other is
+whether the audio thread makes it — and separate thresholds because a p99 is
+noisier than a mean and a boundary tight enough for one would cry wolf on the
+other.
+
 Benchmark names are `<model>/<kernel>`, per Scripts/bencher-report.py. A name
 without a `/` is left out of the plots — it is not one of ours, and guessing
 which axis it belongs on would be worse than omitting it.
 
 Nothing here deletes anything. A plot this script does not recognise is left
 alone, and so is a testbed or benchmark that has been archived. A plot is
-recognised by its testbed and model, not its title, so renaming one on the
-dashboard is safe.
+recognised by its measure, testbed and model, not its title, so renaming one on
+the dashboard is safe.
 
 Usage:
     BENCHER_PROJECT=nambench BENCHER_API_KEY=bencher_user_... \\
@@ -59,8 +68,6 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any, NoReturn
-
-MEASURE = "core_percent"
 
 # A t-test on the last 64 runs, with nothing alerting until there are ten of
 # them: below that the test is arithmetic on nothing, and every early run would
@@ -81,6 +88,15 @@ THRESHOLD_MODEL = {
     "upper_boundary": 0.98,
 }
 
+# The same test, one boundary wider. A p99 is a tail statistic drawn from
+# millions of blocks: it moves with a scheduling decision in a way a mean over
+# the same passes does not, and the protocol's window selection — which throws
+# out a noisy *pass* — cannot throw out a noisy block within an accepted one. A
+# boundary tight enough for the mean would alert on the machine rather than on
+# the code, and a threshold that cries wolf gets muted, which is worse than not
+# having it.
+P99_THRESHOLD_MODEL = {**THRESHOLD_MODEL, "lower_boundary": 0.99, "upper_boundary": 0.99}
+
 # 84 days. Long enough that a plot still has a shape after a quiet fortnight,
 # short enough that a rewrite six months ago is not still setting the y-axis.
 PLOT_WINDOW_SECONDS = 84 * 24 * 60 * 60
@@ -98,6 +114,27 @@ PLOT_STYLE = {
     # and the alert itself is what matters.
     "lower_boundary": False,
     "upper_boundary": False,
+}
+
+# No error bars on the p99 plot. A percentile has no interval around it to draw:
+# the median below it and the maximum above it are different statistics, not
+# uncertainty in this one, and bencher-report.py deliberately uploads no bounds
+# for it. Asking for bars there would draw nothing, or worse, draw something.
+P99_PLOT_STYLE = {**PLOT_STYLE, "lower_value": False, "upper_value": False}
+
+# Every measure this script manages, in the order their plots are pinned.
+#
+# core_percent first, and the order fixed here rather than sorted, because plot
+# indices are positions on the dashboard: sorting by name would put
+# block_p99_percent ahead of it, shift every existing plot by one, and rewrite
+# the whole dashboard the first time this ran.
+MEASURES: dict[str, dict[str, Any]] = {
+    "core_percent": {"threshold": THRESHOLD_MODEL, "style": PLOT_STYLE, "suffix": ""},
+    "block_p99_percent": {
+        "threshold": P99_THRESHOLD_MODEL,
+        "style": P99_PLOT_STYLE,
+        "suffix": " p99 block",
+    },
 }
 
 
@@ -189,45 +226,65 @@ def split_name(name: str) -> tuple[str, str] | None:
 
 
 def sync_thresholds(
-    project: str, branch: str, testbeds: list[dict[str, Any]], dry_run: bool
+    project: str,
+    branch: str,
+    testbeds: list[dict[str, Any]],
+    measures: dict[str, str],
+    dry_run: bool,
 ) -> None:
-    existing = {
-        (t["branch"]["slug"], t["testbed"]["slug"]): t
-        for t in listing(project, "threshold")
-        if t["measure"]["name"] == MEASURE
-    }
+    """One threshold per (branch, testbed, measure), for each measure present.
 
-    for testbed in testbeds:
-        slug = testbed["slug"]
-        current = existing.get((branch, slug))
-        model = (current or {}).get("model") or {}
+    Measures the project does not have yet are skipped rather than created: a
+    measure comes into existence when a run uploads one, and installing a
+    threshold on a measure with no data would watch a series that does not
+    exist.
+    """
+    listed = listing(project, "threshold")
 
-        if current and all(model.get(k) == v for k, v in THRESHOLD_MODEL.items()):
-            print(f"threshold {branch}/{slug}: up to date")
+    for measure_name, spec in MEASURES.items():
+        if measure_name not in measures:
+            print(f"threshold {measure_name}: no such measure in {project} yet; skipping")
             continue
 
-        flags = [
-            "--test", THRESHOLD_MODEL["test"],
-            "--min-sample-size", str(THRESHOLD_MODEL["min_sample_size"]),
-            "--max-sample-size", str(THRESHOLD_MODEL["max_sample_size"]),
-            "--lower-boundary", str(THRESHOLD_MODEL["lower_boundary"]),
-            "--upper-boundary", str(THRESHOLD_MODEL["upper_boundary"]),
-        ]
+        wanted_model = spec["threshold"]
+        existing = {
+            (t["branch"]["slug"], t["testbed"]["slug"]): t
+            for t in listed
+            if t["measure"]["name"] == measure_name
+        }
 
-        if current:
-            # Updating replaces the model rather than the threshold, so the
-            # threshold's identity — and the alerts already filed against it —
-            # survive a change of parameters.
-            verb, action = "updating", ["threshold", "update", project, current["uuid"], *flags]
-        else:
-            verb, action = "creating", [
-                "threshold", "create", project,
-                "--branch", branch, "--testbed", slug, "--measure", MEASURE, *flags,
+        for testbed in testbeds:
+            slug = testbed["slug"]
+            label = f"threshold {branch}/{slug}/{measure_name}"
+            current = existing.get((branch, slug))
+            model = (current or {}).get("model") or {}
+
+            if current and all(model.get(k) == v for k, v in wanted_model.items()):
+                print(f"{label}: up to date")
+                continue
+
+            flags = [
+                "--test", wanted_model["test"],
+                "--min-sample-size", str(wanted_model["min_sample_size"]),
+                "--max-sample-size", str(wanted_model["max_sample_size"]),
+                "--lower-boundary", str(wanted_model["lower_boundary"]),
+                "--upper-boundary", str(wanted_model["upper_boundary"]),
             ]
 
-        print(f"threshold {branch}/{slug}: {verb}")
-        if not dry_run:
-            bencher(*action)
+            if current:
+                # Updating replaces the model rather than the threshold, so the
+                # threshold's identity — and the alerts already filed against it
+                # — survive a change of parameters.
+                verb, action = "updating", ["threshold", "update", project, current["uuid"], *flags]
+            else:
+                verb, action = "creating", [
+                    "threshold", "create", project,
+                    "--branch", branch, "--testbed", slug, "--measure", measure_name, *flags,
+                ]
+
+            print(f"{label}: {verb}")
+            if not dry_run:
+                bencher(*action)
 
 
 def coverage(
@@ -271,20 +328,32 @@ def sync_plots(
     branch: dict[str, Any],
     testbeds: list[dict[str, Any]],
     benchmarks: list[dict[str, Any]],
-    measure_uuid: str,
+    measures: dict[str, str],
     dry_run: bool,
 ) -> None:
-    measured = coverage(project, branch, testbeds, benchmarks, measure_uuid)
+    """Pin one plot per (measure, testbed, model).
 
-    # (testbed slug, model) -> the benchmarks to draw on it, in kernel order so
-    # the legend does not reshuffle between runs.
-    wanted: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    for testbed in testbeds:
-        for benchmark in benchmarks:
-            parts = split_name(benchmark["name"])
-            if not parts or (testbed["slug"], benchmark["name"]) not in measured:
-                continue
-            wanted.setdefault((testbed["slug"], parts[0]), []).append(benchmark)
+    All measures are handled in one pass rather than one call each, because the
+    plot index is a single 0..64 space shared by every plot in the project.
+    Assigning indices per measure would have each pass renumber the other's.
+    """
+    uuid_of_measure = {name: measures[name] for name in MEASURES if name in measures}
+    if not uuid_of_measure:
+        print("no plots: the project has none of the measures this script manages")
+        return
+    measure_of_uuid = {uuid: name for name, uuid in uuid_of_measure.items()}
+
+    # (measure, testbed slug, model) -> the benchmarks to draw on it, in kernel
+    # order so the legend does not reshuffle between runs.
+    wanted: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for measure_name, measure_uuid in uuid_of_measure.items():
+        measured = coverage(project, branch, testbeds, benchmarks, measure_uuid)
+        for testbed in testbeds:
+            for benchmark in benchmarks:
+                parts = split_name(benchmark["name"])
+                if not parts or (testbed["slug"], benchmark["name"]) not in measured:
+                    continue
+                wanted.setdefault((measure_name, testbed["slug"], parts[0]), []).append(benchmark)
 
     for series in wanted.values():
         series.sort(key=lambda b: b["name"])
@@ -303,10 +372,13 @@ def sync_plots(
     slug_of = {t["uuid"]: t["slug"] for t in testbeds}
     name_of = {b["uuid"]: b["name"] for b in benchmarks}
 
-    def key_of(plot: dict[str, Any]) -> tuple[str, str] | None:
-        """(testbed slug, model) for a plot of one testbed and one model's
-        kernels in core_percent, or None for any other plot."""
-        if plot.get("measures") != [measure_uuid] or len(plot.get("testbeds", [])) != 1:
+    def key_of(plot: dict[str, Any]) -> tuple[str, str, str] | None:
+        """(measure, testbed slug, model) for a plot of one testbed and one
+        model's kernels in one managed measure, or None for any other plot."""
+        drawn = plot.get("measures") or []
+        if len(drawn) != 1 or drawn[0] not in measure_of_uuid:
+            return None
+        if len(plot.get("testbeds", [])) != 1:
             return None
         slug = slug_of.get(plot["testbeds"][0])
         models = {
@@ -315,9 +387,9 @@ def sync_plots(
         }
         if slug is None or len(models) != 1 or None in models:
             return None
-        return (slug, models.pop())
+        return (measure_of_uuid[drawn[0]], slug, models.pop())
 
-    existing: dict[tuple[str, str], dict[str, Any]] = {}
+    existing: dict[tuple[str, str, str], dict[str, Any]] = {}
     for plot in plots:
         key = key_of(plot)
         if key is not None:
@@ -334,20 +406,35 @@ def sync_plots(
     # machines, but a run that silently stopped charting the newest one is the
     # exact failure this script exists to prevent, so say so instead.
     if len(wanted) > 64:
-        die(f"{len(wanted)} testbed/model pairs, and Bencher pins at most 64 plots")
+        die(f"{len(wanted)} measure/testbed/model triples, and Bencher pins at most 64 plots")
 
-    for index, (testbed_slug, model) in enumerate(sorted(wanted)):
-        series = wanted[(testbed_slug, model)]
-        current = existing.get((testbed_slug, model))
+    # Measure first, in MEASURES order, so core_percent keeps the indices it has
+    # and a measure added later lands after everything already on the dashboard
+    # instead of pushing it all down.
+    measure_order = list(MEASURES)
+
+    def order(key: tuple[str, str, str]) -> tuple[int, str, str]:
+        return (measure_order.index(key[0]), key[1], key[2])
+
+    for index, key in enumerate(sorted(wanted, key=order)):
+        measure_name, testbed_slug, model = key
+        style = MEASURES[measure_name]["style"]
+        series = wanted[key]
+        current = existing.get(key)
         # Testbed first, so the list sorts into one block per machine — which is
         # how anyone reads it, having usually come to look at one machine. Only
         # for a new plot: an existing one keeps whatever it has been renamed to.
-        title = current["title"] if current and current.get("title") else f"{testbed_slug} : {model}"
+        title = (
+            current["title"]
+            if current and current.get("title")
+            else f"{testbed_slug} : {model}{MEASURES[measure_name]['suffix']}"
+        )
         if len(title) > 64:
             print(f"skipping plot {title!r}: Bencher titles are limited to 64 characters")
             continue
 
         testbed_uuid = next(t["uuid"] for t in testbeds if t["slug"] == testbed_slug)
+        measure_uuid = uuid_of_measure[measure_name]
         desired = {
             "title": title,
             "index": index,
@@ -356,14 +443,14 @@ def sync_plots(
             "testbeds": [testbed_uuid],
             "measures": [measure_uuid],
             "benchmarks": [b["uuid"] for b in series],
-            **PLOT_STYLE,
+            **style,
         }
 
-        if current and index < len(placed) and placed[index] == (testbed_slug, model) and all(
-            sorted(current.get(key, [])) == sorted(value) if isinstance(value, list)
-            else current.get(key) == value
-            for key, value in desired.items()
-            if key != "index"  # not reported by the API; checked by position above
+        if current and index < len(placed) and placed[index] == key and all(
+            sorted(current.get(k, [])) == sorted(v) if isinstance(v, list)
+            else current.get(k) == v
+            for k, v in desired.items()
+            if k != "index"  # not reported by the API; checked by position above
         ):
             print(f"plot {title!r}: up to date")
             continue
@@ -372,16 +459,16 @@ def sync_plots(
             "--title", title,
             "--index", str(index),
             "--window", str(PLOT_WINDOW_SECONDS),
-            "--x-axis", PLOT_STYLE["x_axis"],
-            "--y-axis", PLOT_STYLE["y_axis"],
+            "--x-axis", style["x_axis"],
+            "--y-axis", style["y_axis"],
         ]
-        for key in ("lower_value", "upper_value", "lower_boundary", "upper_boundary"):
+        for k in ("lower_value", "upper_value", "lower_boundary", "upper_boundary"):
             # `create` takes these as bare switches, `update` as explicit
             # booleans, because update has to be able to turn one back off.
-            flag = "--" + key.replace("_", "-")
+            flag = "--" + k.replace("_", "-")
             if current:
-                flags += [flag, "true" if PLOT_STYLE[key] else "false"]
-            elif PLOT_STYLE[key]:
+                flags += [flag, "true" if style[k] else "false"]
+            elif style[k]:
                 flags += [flag]
         flags += ["--branches", branch["uuid"], "--testbeds", testbed_uuid, "--measures", measure_uuid]
         for benchmark in series:
@@ -400,6 +487,7 @@ def sync_plots(
 
     if not wanted:
         print("no plots: no benchmark has metrics on any testbed yet")
+
 
 
 def main() -> int:
@@ -447,17 +535,23 @@ def main() -> int:
     if branch is None:
         die(f"{args.project} has no branch {args.branch!r}")
 
+    # Which of the measures this script manages the project actually has. A
+    # measure exists once a run has uploaded one, so a project that has never
+    # seen an impulse-response run simply has no block_p99_percent to watch.
+    listed = listing(args.project, "measure")
+    measures = {m["name"]: m["uuid"] for m in listed if m["name"] in MEASURES}
+    if not measures:
+        die(
+            f"{args.project} has none of {', '.join(MEASURES)}; upload a run before syncing"
+        )
+
     if not args.skip_thresholds:
-        sync_thresholds(args.project, args.branch, testbeds, args.dry_run)
+        sync_thresholds(args.project, args.branch, testbeds, measures, args.dry_run)
 
     if not args.skip_plots:
-        measures = listing(args.project, "measure")
-        measure = next((m for m in measures if m["name"] == MEASURE), None)
-        if measure is None:
-            die(f"{args.project} has no {MEASURE} measure; upload a run before syncing plots")
         sync_plots(
             args.project, branch, testbeds, listing(args.project, "benchmark"),
-            measure["uuid"], args.dry_run,
+            measures, args.dry_run,
         )
 
     if args.dry_run:

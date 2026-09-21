@@ -584,7 +584,22 @@ case "${DRIVER}" in
 		fi
 		[ -n "${CPU_SET}" ] && RUN=("${RUN[@]}" --cpu-set "${CPU_SET}")
 		RUN=("${RUN[@]}" -- --timing-seconds "${TIMING}" ${EXTRA[@]+"${EXTRA[@]}"})
-		"${RUN[@]}"
+		# An IR run exits non-zero when any of its eighteen subjects was
+		# rejected, but still writes the BMF for the ones that were not. Let it
+		# through here and let the BMF check below decide: with `set -e` the
+		# script would otherwise stop with sixteen good measurements in hand and
+		# upload none of them. A run the clock moved under writes no BMF at all,
+		# so it still stops — one line further down.
+		if [ "${IR}" -eq 1 ]; then
+			set +e
+			"${RUN[@]}"
+			RUN_STATUS=$?
+			set -e
+			[ "${RUN_STATUS}" -eq 0 ] \
+				|| warn "the run reported rejected subjects; uploading the rest"
+		else
+			"${RUN[@]}"
+		fi
 		;;
 
 	a32)

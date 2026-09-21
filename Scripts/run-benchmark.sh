@@ -402,7 +402,16 @@ NOTE="${HOST}${CPU_SET:+ cpus=${CPU_SET}}"
 # Every submodel runs inside the one governor window and between the one pair of
 # thermal readings, so A2 standard and A2 nano describe the same machine in the
 # same state and can honestly be read side by side.
+# Two different kinds of failure, kept apart because they mean opposite things
+# about the data:
+#
+#   STATUS  a subject the protocol rejected. The machine was too noisy to
+#           measure *that* subject; everything else in the run is still good.
+#   VOID    the machine changed speed while it was being measured. Nothing
+#           measured here describes one machine, so nothing may be published,
+#           however many subjects individually agreed with themselves.
 STATUS=0
+VOID=0
 REPORTS=()
 
 # In --ir mode the iteration is over block sizes instead of submodels, for the
@@ -486,6 +495,7 @@ ${DROPS}
   clock matters far more here than a high one, because what is being reported is
   a ratio."
 	STATUS=1
+	VOID=1
 elif [ -n "${BEFORE_RESIDENCY}" ] && [ -n "${INTENDED_FREQ}" ]; then
 	log "clock held at ${INTENDED_FREQ} kHz throughout"
 fi
@@ -496,12 +506,31 @@ done
 
 # --- Bencher Metric Format --------------------------------------------------
 
+# A rejected subject is uploaded as a gap in its own series rather than as a
+# number, which is what bencher-report.py already does with one: it omits the
+# variant, says on stderr which and why, and refuses only if nothing at all
+# succeeded.
+#
+# Whether one rejection should sink the whole upload depends on what the run is.
+# The WaveNet run measures two variants and the thing wanted from it is the
+# ratio between them, so half of it is worth little — it stays all-or-nothing.
+# The IR run is an eighteen-point ladder of independent series, where losing
+# seventeen good measurements to one noisy point buys nothing.
+#
+# A run the clock moved under is refused either way. That is not one subject
+# being hard to measure; it is every number here describing a machine that was
+# not one machine.
 if [ -n "${BMF}" ]; then
-	if [ "${STATUS}" -ne 0 ]; then
-		warn "not writing BMF: at least one variant produced no trustworthy result"
+	if [ "${VOID}" -ne 0 ]; then
+		warn "not writing BMF: the clock moved during this run, so nothing measured
+  here describes one machine"
 	elif [ "${#REPORTS[@]}" -eq 0 ]; then
 		warn "not writing BMF: no reports were produced"
+	elif [ "${STATUS}" -ne 0 ] && [ "${IR}" -eq 0 ]; then
+		warn "not writing BMF: at least one variant produced no trustworthy result"
 	else
+		[ "${STATUS}" -eq 0 ] || warn "some subjects were rejected; they are omitted
+  from the upload rather than reported. bencher-report.py lists them below."
 		python3 "${REPO_ROOT}/Scripts/bencher-report.py" \
 			${REPORTS[@]+"${REPORTS[@]}"} --output "${BMF}"
 	fi

@@ -343,6 +343,22 @@ cmake --build build-benchmark --target nam_ir_benchmark --parallel 4
 Scripts/run-benchmark.sh --ir --build-dir build-benchmark
 ```
 
+### A rejected point is a gap, not a number
+
+An IR run is eighteen independent series. If the protocol rejects one of
+them — the machine was too noisy to measure a 10 ms pass to within 3% — that
+point is omitted from the upload, named on stderr with its reason, and the other
+seventeen are uploaded. Its series gets a gap where a run that could not be
+trusted would otherwise have left something that could not be trusted either.
+
+This is deliberately *not* what the WaveNet run does. There the line-up is two
+variants and what is wanted from it is the ratio between them, so half of it is
+worth little and one rejection still refuses the whole upload.
+
+Both refuse everything if the residency check says the clock moved during the
+run. That is not one subject being hard to measure; it is every number in the
+run describing a machine that was not one machine.
+
 `--taps` sets the ladder (default `256,512,1024,2048,4096,8192`) and `--blocks`
 the block sizes. Each block size gets its own report, because block size is not
 part of a Bencher benchmark name and two of them in one upload would overwrite

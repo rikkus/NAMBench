@@ -54,7 +54,7 @@ ADT_UPSTREAM_SHA="844680d118f0317565132c3c5e3aca5f5c976e7a"
 # the first block, so latency stays at zero, plus FFT partitions for the tail.
 # Branch partitioned-ir, cut from the upstream commit above.
 ADT_PARTITIONED_URL="https://github.com/rikkus/AudioDSPTools.git"
-ADT_PARTITIONED_SHA="5da8afbc1180cf2abb5b2bbbbe3c4ce6b6fe79f9"
+ADT_PARTITIONED_SHA="ba646f436adaac5d2b21ecf20ff2620bf1221bb4"
 
 EIGEN_URL="https://gitlab.com/libeigen/eigen.git"
 

@@ -241,6 +241,28 @@ NB_IR_EXPORT int32_t NB_IR_FN(_ir_channels)(const NbIr* ir)
   return static_cast<int32_t>(ir->ir->GetNumIRChannels());
 }
 
+NB_IR_EXPORT int32_t NB_IR_FN(_ir_partitions)(const NbIr* ir)
+{
+  if (ir == nullptr || !ir->ir)
+    return 0;
+#if defined(NB_IR_HAS_PARTITIONED)
+  return static_cast<int32_t>(ir->ir->GetNumPartitions());
+#else
+  return 0;
+#endif
+}
+
+NB_IR_EXPORT int32_t NB_IR_FN(_ir_fft_block)(const NbIr* ir)
+{
+  if (ir == nullptr || !ir->ir)
+    return 0;
+#if defined(NB_IR_HAS_PARTITIONED)
+  return static_cast<int32_t>(ir->ir->GetFftBlockSize());
+#else
+  return 0;
+#endif
+}
+
 NB_IR_EXPORT void NB_IR_FN(_ir_reset)(NbIr* ir, int32_t blockSize)
 {
   if (ir == nullptr || !ir->ir || blockSize <= 0)

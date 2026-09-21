@@ -72,6 +72,8 @@ struct IrApi
   NbIrImpl (*implementation)(const NbIr*) = nullptr;
   int32_t (*taps)(const NbIr*) = nullptr;
   int32_t (*channels)(const NbIr*) = nullptr;
+  int32_t (*partitions)(const NbIr*) = nullptr;
+  int32_t (*fft_block)(const NbIr*) = nullptr;
   void (*reset)(NbIr*, int32_t) = nullptr;
   uint64_t (*process)(NbIr*, const double*, size_t, double*, double*, uint64_t*) = nullptr;
 };
@@ -85,6 +87,8 @@ struct IrApi
     (api).implementation = &P##_ir_implementation;                                                \
     (api).taps = &P##_ir_taps;                                                                    \
     (api).channels = &P##_ir_channels;                                                            \
+    (api).partitions = &P##_ir_partitions;                                                        \
+    (api).fft_block = &P##_ir_fft_block;                                                          \
     (api).reset = &P##_ir_reset;                                                                  \
     (api).process = &P##_ir_process;                                                              \
   } while (0)
@@ -118,6 +122,12 @@ struct IrResult
   int32_t irChannels = 0;
   std::string requested;
   std::string active;
+  /// How the FFT path was configured. Zero partitions on an "fft" subject
+  /// means the IR fit inside the direct head and no transform ran — the
+  /// subject is a plain FIR, and saying "fft" without this would be reporting
+  /// one thing as another.
+  int32_t partitions = 0;
+  int32_t fftBlock = 0;
   /// Per-block cost as a percentage of that block's real-time budget, pooled
   /// over every pass the window accepted.
   double blockMedianPercent = 0.0;
@@ -508,6 +518,8 @@ int main(int argc, char** argv)
         record.irChannels = subject.api->channels(ir);
         record.requested = impl_name(subject.requested);
         record.active = impl_name(subject.api->implementation(ir));
+        record.partitions = subject.api->partitions(ir);
+        record.fftBlock = subject.api->fft_block(ir);
 
         // Pool the accepted passes' blocks. The budget a block has is exactly
         // how long its own audio lasts, so a percentage here is directly
@@ -547,10 +559,24 @@ int main(int argc, char** argv)
           // attempt has no accepted passes, and printing its zeroes would read
           // as a convolution that took no time at all.
           if (record.timing.succeeded)
-            std::printf("    %s, %d taps: blocks median %.2f%% / p99 %.2f%% / max %.2f%% of "
+          {
+            char shape[96] = {0};
+            if (record.fftBlock > 0)
+              std::snprintf(shape, sizeof(shape), " (%d-point blocks, %d partition%s)",
+                            record.fftBlock, record.partitions,
+                            record.partitions == 1 ? "" : "s");
+            std::printf("    %s%s, %d taps: blocks median %.2f%% / p99 %.2f%% / max %.2f%% of "
                         "deadline\n",
-                        record.active.c_str(), record.taps, record.blockMedianPercent,
+                        record.active.c_str(), shape, record.taps, record.blockMedianPercent,
                         record.blockP99Percent, record.blockMaxPercent);
+            // The case this exists to catch: an FFT subject that ran no
+            // transform at all, because the whole impulse response fit in the
+            // direct head. Its number is real, but it is the direct head's
+            // number and comparing it with upstream says nothing about FFT.
+            if (record.active == "fft" && record.partitions == 0)
+              std::printf("      note: the IR fits in the direct head, so no transform runs "
+                          "here — this row measures a plain FIR\n");
+          }
         }
 
         subject.api->destroy(ir);
@@ -663,9 +689,10 @@ int main(int argc, char** argv)
     const IrResult& r = results[i];
     append("    {\"variant\": \"%s\", \"taps\": %d, \"requestedTaps\": %d, \"blockSize\": %d, "
            "\"irChannels\": %d, \"requested\": \"%s\", \"implementation\": \"%s\", "
-           "\"succeeded\": %s, ",
+           "\"fftPartitions\": %d, \"fftBlockSize\": %d, \"succeeded\": %s, ",
            r.timing.variant.c_str(), r.taps, r.requestedTaps, r.blockSize, r.irChannels,
-           r.requested.c_str(), r.active.c_str(), r.timing.succeeded ? "true" : "false");
+           r.requested.c_str(), r.active.c_str(), r.partitions, r.fftBlock,
+           r.timing.succeeded ? "true" : "false");
     append("\"meanMs\": %.6f, \"medianMs\": %.6f, \"minMs\": %.6f, \"maxMs\": %.6f, "
            "\"spread\": %.6f, \"standardDeviationMs\": %.6f, \"realTimeFactor\": %.6f, "
            "\"corePercent\": %.6f, ",

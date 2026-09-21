@@ -80,6 +80,21 @@ typedef struct NbIr NbIr;
   NB_IR_EXPORT int32_t P##_ir_taps(const NbIr* ir);                                               \
   NB_IR_EXPORT int32_t P##_ir_channels(const NbIr* ir);                                           \
                                                                                                   \
+  /**                                                                                             \
+   * How the FFT path was configured: the transform block size, and how many                      \
+   * partitions cover the tail behind the direct head. Both 0 on the direct                        \
+   * path, and both 0 for a variant that has no FFT path at all.                                   \
+   *                                                                                              \
+   * Zero partitions with an FFT implementation is the case worth being able to                    \
+   * see: the impulse response fit entirely inside the direct head, so no                          \
+   * transform runs and the subject is a plain FIR wearing an FFT label. That is                    \
+   * the real configuration at the shortest length the FFT path is ever chosen                      \
+   * for, and reporting `fft` there without saying so would be a measurement of                     \
+   * one thing presented as another.                                                                \
+   */                                                                                             \
+  NB_IR_EXPORT int32_t P##_ir_partitions(const NbIr* ir);                                         \
+  NB_IR_EXPORT int32_t P##_ir_fft_block(const NbIr* ir);                                          \
+                                                                                                  \
   /** Clear history so every pass starts identically, off the audio thread. */                    \
   NB_IR_EXPORT void P##_ir_reset(NbIr* ir, int32_t blockSize);                                    \
                                                                                                   \

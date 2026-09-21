@@ -253,30 +253,41 @@ load, not an arbitrary ceiling.
 
 ### Results
 
-M2 MacBook Air, 64-frame blocks, mono IR. `core%` is the average cost; `p99` is
+M2 MacBook Air, 64-frame blocks, mono IR, all eighteen points accepted (spread
+0.4-1.6%). `core%` is the average cost of keeping up with real time; `p99` is
 the 99th-percentile block against its own deadline.
 
 | taps | ms of IR | shipping | | partitioned FFT | | |
 |---:|---:|---:|---:|---:|---:|---:|
 | | | core% | p99 | core% | p99 | |
-| 256 | 5.3 | 0.092% | 0.14% | 0.093% | 0.12% | 0.99x |
-| 512 | 10.7 | 0.204% | 0.33% | **0.171%** | 0.43% | 1.19x |
-| 1024 | 21.3 | 0.450% | 0.58% | **0.193%** | 0.52% | 2.33x |
-| 2048 | 42.7 | 1.009% | 1.18% | **0.237%** | 0.69% | 4.26x |
-| 4096 | 85.3 | 2.151% | 2.84% | *rejected* | | |
-| 8192 | 170.7 | 4.373% | 5.11% | **0.470%** | 2.31% | **9.31x** |
+| 256 | 5.3 | 0.086% | 0.12% | 0.091% | 0.12% | 0.95x |
+| 512 | 10.7 | 0.200% | 0.29% | **0.168%** | 0.40% | 1.19x |
+| 1024 | 21.3 | 0.437% | 0.59% | **0.188%** | 0.48% | 2.33x |
+| 2048 | 42.7 | 0.985% | 1.34% | **0.229%** | 0.65% | 4.29x |
+| 4096 | 85.3 | 2.220% | 2.94% | **0.378%** | 1.75% | 5.87x |
+| 8192 | 170.7 | 4.268% | 5.18% | **0.459%** | 2.26% | **9.30x** |
 
-The branch's own direct path is bit-identical to upstream at every length, and
-within 1% of it in time. The FFT path is around 136 dB below the signal.
+The branch's own direct path, measured alongside and not shown above, is
+bit-identical to upstream at every length and within 1-7% of it in time. The FFT
+path lands 136-138 dB below the signal.
 
-At 8192 taps it is not only nine times cheaper on average but *calmer* in its
-worst block than the code it replaces — 2.31% of a deadline against 5.11%. The
-crossover is around 512 taps, which is roughly where `Auto` already switches
-(`kAutoDirectMaxTaps = 256`).
+From 1024 taps up, the FFT path is both cheaper on average *and* calmer in its
+worst block than the code it replaces — at 8192 taps, 2.26% of a deadline
+against 5.18%. The burstiness that `block_p99_percent` exists to catch is real,
+but it only costs anything at 512 taps, where the p99 is worse than shipping
+(0.40% against 0.29%) while the average is better.
 
-Two points are missing because the protocol rejected them: this laptop was not
-quiet enough to measure a 10 ms pass to within 3%. They are gaps rather than
-numbers nobody should trust. The Pi and the Tinker Board are still to run.
+**The 256-tap row is not measuring FFT.** At exactly 256 taps the whole impulse
+response fits inside the direct head, so no transform runs and the subject is a
+plain FIR — which is why it comes out bit-identical to upstream there, and 5%
+slower, that 5% being the ring buffer it carries for a tail it does not have.
+The driver says so on the line it prints, and `fftPartitions` in the report is
+0. It is the real configuration at the shortest length `Auto` ever chooses the
+FFT path for, so it is worth being able to see rather than worth hiding.
+
+The crossover is therefore just above 256 taps, which is where
+`kAutoDirectMaxTaps` already puts it. Whether that holds on a Cortex-A76 and a
+Cortex-A17 is still to be measured.
 
 ### Three subjects, not two
 

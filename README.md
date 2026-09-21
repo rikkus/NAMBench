@@ -106,6 +106,55 @@ part gains most at 32 — putting them side by side would flatter the ARMv7 one 
 a difference in the measurement rather than in the code.
 [A32-PATH.md](A32-PATH.md) has the campaign behind them.
 
+## Impulse responses
+
+A second subject, measured by the same protocol on the same machines:
+AudioDSPTools' impulse-response convolution, `main` against the
+[`partitioned-ir`](https://github.com/rikkus/AudioDSPTools/tree/partitioned-ir)
+branch, which keeps a direct FIR head for the first block — so latency stays at
+zero — and moves the tail into partitioned FFT.
+
+```bash
+cmake --build build-benchmark --target nam_ir_benchmark --parallel 4
+./Scripts/run-benchmark.sh --ir --build-dir build-benchmark
+```
+
+Direct convolution costs one multiply-add per tap per output sample, so it
+grows with the length of the IR; the FFT path barely does. At 48 kHz, 8192 taps
+is 170 ms of impulse response, and it is where AudioDSPTools truncates — the
+longest the plugin can load.
+
+M2 MacBook Air, 64-frame blocks, mono IR. `core%` is the average cost; `p99` is
+the 99th-percentile block against its own deadline.
+
+| taps | ms of IR | shipping | | partitioned FFT | | |
+|---:|---:|---:|---:|---:|---:|---:|
+| | | core% | p99 | core% | p99 | |
+| 256 | 5.3 | 0.092% | 0.14% | 0.093% | 0.12% | 0.99x |
+| 512 | 10.7 | 0.204% | 0.33% | **0.171%** | 0.43% | 1.19x |
+| 1024 | 21.3 | 0.450% | 0.58% | **0.193%** | 0.52% | 2.33x |
+| 2048 | 42.7 | 1.009% | 1.18% | **0.237%** | 0.69% | 4.26x |
+| 4096 | 85.3 | 2.151% | 2.84% | *rejected* | | |
+| 8192 | 170.7 | 4.373% | 5.11% | **0.470%** | 2.31% | **9.31x** |
+
+The branch's own direct path is bit-identical to upstream at every length, and
+within 1% of it in time. The FFT path is around 136 dB below the signal.
+
+At 8192 taps it is not only nine times cheaper on average but *calmer* in its
+worst block than the code it replaces — 2.31% of a deadline against 5.11%. The
+crossover is around 512 taps, which is roughly where `Auto` already switches
+(`kAutoDirectMaxTaps = 256`).
+
+Two points are missing because the protocol rejected them: this laptop was not
+quiet enough to measure a 10 ms pass to within 3%. They are gaps rather than
+numbers nobody should trust. The Pi and the Tinker Board are still to run.
+
+It reports a worst-case block alongside the average, which `core_percent` cannot
+give: partitioned FFT convolution does a whole partition's transform in one
+callback, so an implementation can improve the average and worsen the worst
+case, and a plugin that misses one callback clicks. See
+[BENCHMARKING.md](BENCHMARKING.md#impulse-responses).
+
 ## What it measures, and why it is built this way
 
 **Which submodel, chosen by shape not by position.** The `.nam` is a

@@ -6,13 +6,23 @@ no timing. This is the other half.
 Everything here runs on physical machines, one at a time, and the numbers are
 kept. Nothing in this document will ever run on a GitHub-hosted runner.
 
-## The two drivers
+## The drivers
 
-| | `nambench` | `nam_benchmark` |
-|---|---|---|
-| built by | Xcode, from `project.yml` | CMake, `-DNAMBENCH_BUILD_BENCHMARK=ON` |
-| runs on | macOS, iOS | macOS, Linux, Android |
-| status | canonical — every published number came from it | exists because the Pi cannot run the other one |
+| | `nambench` | `nam_benchmark` | `nam_ir_benchmark` |
+|---|---|---|---|
+| built by | Xcode, from `project.yml` | CMake, `-DNAMBENCH_BUILD_BENCHMARK=ON` | the same |
+| runs on | macOS, iOS | macOS, Linux, Android | the same |
+| measures | WaveNet engines | WaveNet engines | impulse-response convolution |
+| status | canonical — every published WaveNet number came from it | exists because the Pi cannot run the other one | the only driver for its subject |
+
+The first two are the same measurement by two routes; the third is a different
+subject measured the same way. All three run one protocol, which since the IR
+work lives in `Tools/nb_protocol.h` and is shared source rather than a
+description two files follow: the WAV loader, the warm-up, the timing window,
+the tightest-70% selection, the spread test, the retry-and-reject, and what is
+recorded about the machine. A driver supplies only what it means to run one
+pass. That is what makes a WaveNet number and an IR number safe to put on the
+same Bencher project.
 
 `nam_benchmark` is a port of `BenchCore`'s protocol, not an approximation of it:
 same warm-up, same timing window, same tightest-70% selection, same
@@ -35,7 +45,11 @@ its measurement on a `QOS_CLASS_USER_INTERACTIVE` thread, and until the portable
 driver did the same, macOS put it on the efficiency cores and the two disagreed
 by 1.4% in opposite directions.
 
-Each testbed uses one driver for life, so no history ever contains a mixture.
+Each testbed uses one WaveNet driver for life, so no history ever contains a
+mixture. `nam_ir_benchmark` is the exception that proves the point: every
+testbed uses it, including the Macs, because there is no Xcode equivalent — so
+the IR series are the one set here measured by a single binary from a single
+source on every machine.
 
 The `driver:` field in `.github/workflows/benchmark.yml` names one of these two
 *and* where it runs, which is why it has three values rather than two: `xcode`
@@ -220,6 +234,121 @@ accepted samples was 0.04–0.17%, where the M2 routinely lands between 1% and 4
 and sometimes fails all five attempts. A dedicated machine with nothing else
 running is worth more than a fast one.
 
+## Impulse responses
+
+A second subject, measured by the same protocol on the same machines:
+AudioDSPTools' impulse-response convolution, `main` against the
+`partitioned-ir` branch.
+
+Upstream convolves directly — one multiply-add per tap, per output sample — so
+its cost is linear in the length of the IR. The branch keeps a direct FIR head
+covering the first block, which is what holds latency at zero, and moves
+everything behind it into uniformly partitioned FFT convolution, whose cost
+barely grows with length at all. The longer the IR, the wider the gap.
+
+"Taps" is that length in samples: at 48 kHz, 512 taps is about 11 ms of
+impulse response and 8192 is 170 ms. 8192 is where the ladder stops because
+that is where AudioDSPTools truncates, so it is the longest IR the plugin can
+load, not an arbitrary ceiling.
+
+### Results
+
+M2 MacBook Air, 64-frame blocks, mono IR. `core%` is the average cost; `p99` is
+the 99th-percentile block against its own deadline.
+
+| taps | ms of IR | shipping | | partitioned FFT | | |
+|---:|---:|---:|---:|---:|---:|---:|
+| | | core% | p99 | core% | p99 | |
+| 256 | 5.3 | 0.092% | 0.14% | 0.093% | 0.12% | 0.99x |
+| 512 | 10.7 | 0.204% | 0.33% | **0.171%** | 0.43% | 1.19x |
+| 1024 | 21.3 | 0.450% | 0.58% | **0.193%** | 0.52% | 2.33x |
+| 2048 | 42.7 | 1.009% | 1.18% | **0.237%** | 0.69% | 4.26x |
+| 4096 | 85.3 | 2.151% | 2.84% | *rejected* | | |
+| 8192 | 170.7 | 4.373% | 5.11% | **0.470%** | 2.31% | **9.31x** |
+
+The branch's own direct path is bit-identical to upstream at every length, and
+within 1% of it in time. The FFT path is around 136 dB below the signal.
+
+At 8192 taps it is not only nine times cheaper on average but *calmer* in its
+worst block than the code it replaces — 2.31% of a deadline against 5.11%. The
+crossover is around 512 taps, which is roughly where `Auto` already switches
+(`kAutoDirectMaxTaps = 256`).
+
+Two points are missing because the protocol rejected them: this laptop was not
+quiet enough to measure a 10 ms pass to within 3%. They are gaps rather than
+numbers nobody should trust. The Pi and the Tinker Board are still to run.
+
+### Three subjects, not two
+
+| Bencher name | what it is |
+|---|---|
+| `ir_<taps>/adt_upstream` | what the plugin ships |
+| `ir_<taps>/adt_partitioned_direct` | the branch's direct path, forced |
+| `ir_<taps>/adt_partitioned_fft` | the branch's FFT path, forced |
+
+The middle one is there because the branch's direct path is a *rewrite* of
+upstream's, not the same code — it manages its own history buffer so that the
+FFT path can share the arrangement. `Auto` selects it for short IRs, so if it
+had regressed, every short IR would carry that regression and no amount of
+comparing the FFT path against upstream would reveal it. It is measured, and it
+comes out bit-identical to upstream at every length: `max|diff|` exactly zero,
+not a tolerance.
+
+The FFT path is not bit-identical and cannot be — it is a different order of
+arithmetic. It lands around 136 dB below the signal, which is checked as an
+accuracy floor before anything is timed, and a point that fails it is not
+reported at all.
+
+### Two measures
+
+`core_percent` alone would be misleading here in a way it is not for the
+WaveNet engines. Partitioned FFT convolution is bursty by construction: a whole
+partition's transform lands in one callback, so the work is spread unevenly
+across blocks in a way a direct convolution's never is. An implementation can
+lower the average and raise the worst case, and a plugin that misses one
+callback clicks however good its average was.
+
+So the IR benchmark also reports **`block_p99_percent`**: the 99th-percentile
+block, as a percentage of that block's own real-time budget. 100% is a callback
+that used its entire deadline. The shim reads the clock at every block boundary,
+so the per-block times and the total they are compared against come from the
+same reads and cannot disagree, and the pooled blocks are exactly the blocks of
+the passes the window accepted.
+
+A p99 rather than a maximum. A maximum over a million blocks is a measurement of
+the operating system — one preemption or one page fault and the number stops
+being about the code. The maximum is in the JSON for diagnosis; the p99 is what
+Bencher tracks.
+
+### The impulse response is generated
+
+There is no IR asset in this repository. What a convolution costs is set by how
+many taps it has and not by what is in them — both implementations touch every
+tap of every block regardless of their values — so the shim generates one from
+an integer LCG and a multiplicative decay. No libm call, so every platform
+produces the same floats; no file, so nothing can differ between two runs being
+compared; and nobody's cabinet measurement is being redistributed.
+
+### Running one
+
+```bash
+Scripts/track-benchmark.sh --ir
+```
+
+or, without uploading:
+
+```bash
+cmake -S . -B build-benchmark -DCMAKE_BUILD_TYPE=Release -DNAMBENCH_BUILD_BENCHMARK=ON
+cmake --build build-benchmark --target nam_ir_benchmark --parallel 4
+Scripts/run-benchmark.sh --ir --build-dir build-benchmark
+```
+
+`--taps` sets the ladder (default `256,512,1024,2048,4096,8192`) and `--blocks`
+the block sizes. Each block size gets its own report, because block size is not
+part of a Bencher benchmark name and two of them in one upload would overwrite
+each other; `--bmf` with more than one is refused up front rather than after
+the measurement has been spent.
+
 ## The planar gate
 
 `a2_planar.h` defines `NAM_A2_PLANAR` wherever `__aarch64__` is defined, and on
@@ -342,6 +471,12 @@ So four names across three testbeds are twelve independent series. Both halves
 are spelled the way the Core code path spells them, underscores and all, so a
 label on the dashboard and a symbol in the source are the same word.
 
+The IR benchmark keeps the same shape with the impulse-response length where
+the model goes — `ir_8192/adt_partitioned_fft`. Length belongs in the name for
+the same reason a submodel does: it is the independent variable of that
+benchmark, and two lengths are no more comparable to each other than A2
+standard is to A2 nano.
+
 ### Thresholds, plots, and `bencher-sync.py`
 
 `bencher run` uploads metrics and nothing else. A chart has to be pinned before
@@ -357,7 +492,7 @@ and it deletes nothing.
 BENCHER_PROJECT=nambench Scripts/bencher-sync.py --dry-run
 ```
 
-**Thresholds** — one per (branch, testbed, `core_percent`). That is the whole of
+**Thresholds** — one per (branch, testbed, measure). That is the whole of
 Bencher's threshold scope; it is not per benchmark, and does not need to be. One
 model per machine is evaluated against each benchmark on that machine
 separately, so a single t-test alerts on `a2_nano/a2_planar` regressing while
@@ -372,6 +507,13 @@ the kernel stopped doing the work — a model that failed to load, a routing
 change that fell through to a smaller path, a loop the compiler found dead — and
 without it that arrives as a win and gets defended.
 
+There are two measures, so two thresholds per testbed. `block_p99_percent` gets
+the same t-test one boundary wider, at 0.99. A tail statistic drawn from
+millions of blocks moves with a scheduling decision in a way a mean over the
+same passes does not, and the protocol's window selection throws out a noisy
+*pass* but cannot throw out a noisy block inside an accepted one. A threshold
+that cries wolf gets muted, which is worse than not having one.
+
 Thresholds are installed for every testbed as soon as it exists, rather than
 being carried along by `bencher run --threshold-*`. Those flags come with
 `--thresholds-reset`, so two upload paths differing by one argument take turns
@@ -379,21 +521,29 @@ redefining the model and the one that alerts is whichever ran last. That is why
 neither the workflow nor `track-benchmark.sh` passes them any more, while both
 still pass `--error-on-alert`.
 
-**Plots** — one per (testbed, model), carrying every kernel of that model.
+**Plots** — one per (measure, testbed, model), carrying every kernel of that
+model.
 
 A pinned plot is a fixed list of UUIDs and cannot follow new data by itself,
 which is the reason for the sync rather than a one-off. Grouping this way puts
 `a2_fast` and `a2_planar` on one axis at one scale, which is the comparison this
 project exists to make. Machines stay apart because the faster one would flatten
 the other against the baseline, and `a2_standard` stays away from `a2_nano`
-because they differ by roughly seven times. Each plot draws the error bars — the
-min and max of the accepted set, so you can see how noisy the machine was before
-believing a step in the line. It does not draw the boundary limits: Bencher marks
-those with a warning triangle at every point, which reads as a problem when it
-is only where the threshold sits.
+because they differ by roughly seven times. A `core_percent` plot draws the
+error bars — the min and max of the accepted set, so you can see how noisy the
+machine was before believing a step in the line. A `block_p99_percent` plot does
+not: a percentile has no interval around it to draw, and the median below it and
+the maximum above it are different statistics rather than uncertainty in this
+one. No plot draws the boundary limits: Bencher marks those with a warning
+triangle at every point, which reads as a problem when it is only where the
+threshold sits.
 
-A plot is recognised by its testbed and model, not its title, so one renamed on
-the dashboard keeps its name and is still updated in place.
+A plot is recognised by its measure, testbed and model, not its title, so one
+renamed on the dashboard keeps its name and is still updated in place. Indices
+are one shared 0..64 space across every measure, which is why the sync assigns
+them all in one pass and in a fixed measure order: sorting by name would have
+put `block_p99_percent` ahead of `core_percent` and shifted every existing plot
+by one the first time it ran.
 
 Plots follow `main` only. They are project-wide and capped at 64, so a set per
 branch would fill the dashboard with charts nobody asked for and nobody deletes;

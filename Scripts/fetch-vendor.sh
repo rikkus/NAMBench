@@ -38,6 +38,24 @@ UPSTREAM_SHA="2563c0fd4cb1f9ce457d89a761738ea15097e1f3"
 PLANAR_URL="https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore.git"
 PLANAR_SHA="44412fad6ad135d51218785e15dc7418c29a2124"
 
+# AudioDSPTools, for the impulse-response benchmark.
+#
+# The same two-checkouts-one-dependency arrangement as the NAM engines above,
+# for the same reason: ImpulseResponse's convolution is written in Eigen, so an
+# Eigen difference between the two builds would land in the measured result.
+# These two share a tree with each other but NOT with the NAM checkouts, because
+# AudioDSPTools pins a different Eigen than NeuralAmpModelerCore does and
+# building either project against the other's pin would measure something
+# neither project ships.
+ADT_UPSTREAM_URL="https://github.com/sdatkinson/AudioDSPTools.git"
+ADT_UPSTREAM_SHA="844680d118f0317565132c3c5e3aca5f5c976e7a"
+
+# Partitioned-FFT convolution for long impulse responses: a direct FIR head for
+# the first block, so latency stays at zero, plus FFT partitions for the tail.
+# Branch partitioned-ir, cut from the upstream commit above.
+ADT_PARTITIONED_URL="https://github.com/rikkus/AudioDSPTools.git"
+ADT_PARTITIONED_SHA="5da8afbc1180cf2abb5b2bbbbe3c4ce6b6fe79f9"
+
 EIGEN_URL="https://gitlab.com/libeigen/eigen.git"
 
 # Optional local clones to fetch from instead of the network. Much faster, and
@@ -47,6 +65,8 @@ LOCAL_HINTS=(
 	"/Users/rik/code.local/nam/NeuralAmpModelerPlugin/NeuralAmpModelerCore"
 	"/Users/rik/code.local/nam/OptimisationWorkOnNeuralAmpModelerPlugin/NeuralAmpModelerCore"
 	"/Users/rik/code.local/nam/older/OptimisationWorkOnNeuralAmpModelerCore"
+	"/Users/rik/code.local/nam/NeuralAmpModelerPlugin/iPlug2/Dependencies/AudioDSPTools"
+	"/Users/rik/code.local/nam/OptimisationWorkOnNeuralAmpModelerPlugin/iPlug2/Dependencies/AudioDSPTools"
 )
 
 # --- Helpers -----------------------------------------------------------------
@@ -121,6 +141,8 @@ mkdir -p "${VENDOR}"
 
 fetch_at "${VENDOR}/upstream" "${UPSTREAM_URL}" "${UPSTREAM_SHA}" "$(find_local_with_commit "${UPSTREAM_SHA}")"
 fetch_at "${VENDOR}/planar" "${PLANAR_URL}" "${PLANAR_SHA}" "$(find_local_with_commit "${PLANAR_SHA}")"
+fetch_at "${VENDOR}/adt-upstream" "${ADT_UPSTREAM_URL}" "${ADT_UPSTREAM_SHA}" "$(find_local_with_commit "${ADT_UPSTREAM_SHA}")"
+fetch_at "${VENDOR}/adt-partitioned" "${ADT_PARTITIONED_URL}" "${ADT_PARTITIONED_SHA}" "$(find_local_with_commit "${ADT_PARTITIONED_SHA}")"
 
 # --- Eigen: one shared tree, asserted identical across every checkout --------
 
@@ -154,6 +176,50 @@ fetch_at "${VENDOR}/eigen" "${EIGEN_URL}" "${UPSTREAM_EIGEN}" "$(
 	done
 )"
 
+# --- Eigen for AudioDSPTools: a second shared tree ---------------------------
+#
+# AudioDSPTools pins its own Eigen, and it is not the one NeuralAmpModelerCore
+# pins. Forcing either project onto the other's would measure a configuration
+# neither of them ships, so there are two trees. What still has to hold — and is
+# asserted here for the same reason it is asserted above — is that the two
+# AudioDSPTools checkouts agree with each other.
+
+ADT_UPSTREAM_EIGEN="$(pinned_eigen_sha "${VENDOR}/adt-upstream")"
+ADT_PARTITIONED_EIGEN="$(pinned_eigen_sha "${VENDOR}/adt-partitioned")"
+
+[ -n "${ADT_UPSTREAM_EIGEN}" ] || die "could not read pinned Eigen commit from vendor/adt-upstream"
+[ -n "${ADT_PARTITIONED_EIGEN}" ] || die "could not read pinned Eigen commit from vendor/adt-partitioned"
+
+if [ "${ADT_UPSTREAM_EIGEN}" != "${ADT_PARTITIONED_EIGEN}" ]; then
+	die "the AudioDSPTools checkouts pin different Eigen commits:
+    adt-upstream:    ${ADT_UPSTREAM_EIGEN}
+    adt-partitioned: ${ADT_PARTITIONED_EIGEN}
+  ImpulseResponse's convolution is Eigen code — the direct path is a dot
+  product and the partitioned path an Eigen::FFT — so different Eigen versions
+  would put a dependency difference into the measured result, and into the
+  accuracy comparison between them. Reconcile the pins before benchmarking."
+fi
+
+if [ "${ADT_UPSTREAM_EIGEN}" = "${UPSTREAM_EIGEN}" ]; then
+	# Nothing wrong with this; it just means the two projects have converged and
+	# the second tree is redundant. Say so rather than fetching it twice.
+	log "AudioDSPTools pins the same Eigen as the NAM checkouts — sharing vendor/eigen"
+	ADT_EIGEN_DIR="${VENDOR}/eigen"
+else
+	ADT_EIGEN_DIR="${VENDOR}/eigen-adt"
+	log "AudioDSPTools pins Eigen ${ADT_UPSTREAM_EIGEN:0:12} — a separate shared tree"
+	fetch_at "${ADT_EIGEN_DIR}" "${EIGEN_URL}" "${ADT_UPSTREAM_EIGEN}" "$(
+		for hint in "${LOCAL_HINTS[@]}"; do
+			if [ -d "${hint}/Dependencies/eigen/.git" ] || [ -f "${hint}/Dependencies/eigen/.git" ]; then
+				if git -C "${hint}/Dependencies/eigen" cat-file -e "${ADT_UPSTREAM_EIGEN}^{commit}" 2>/dev/null; then
+					printf '%s' "${hint}/Dependencies/eigen"
+					break
+				fi
+			fi
+		done
+	)"
+fi
+
 # --- Sanity checks -----------------------------------------------------------
 
 [ -f "${VENDOR}/upstream/NAM/wavenet/a2_fast.cpp" ] || die "vendor/upstream missing NAM/wavenet/a2_fast.cpp"
@@ -162,6 +228,19 @@ fetch_at "${VENDOR}/eigen" "${EIGEN_URL}" "${UPSTREAM_EIGEN}" "$(
 [ -f "${VENDOR}/eigen/Eigen/Dense" ] || die "vendor/eigen missing Eigen/Dense"
 [ -f "${VENDOR}/upstream/Dependencies/nlohmann/json.hpp" ] || die "vendor/upstream missing nlohmann/json.hpp"
 [ -f "${VENDOR}/planar/Dependencies/nlohmann/json.hpp" ] || die "vendor/planar missing nlohmann/json.hpp"
+[ -f "${VENDOR}/adt-upstream/dsp/ImpulseResponse.cpp" ] || die "vendor/adt-upstream missing dsp/ImpulseResponse.cpp"
+[ -f "${VENDOR}/adt-partitioned/dsp/ImpulseResponse.cpp" ] || die "vendor/adt-partitioned missing dsp/ImpulseResponse.cpp"
+[ -f "${VENDOR}/adt-partitioned/dsp/PartitionedConvolution.cpp" ] || die "vendor/adt-partitioned missing dsp/PartitionedConvolution.cpp"
+[ -f "${ADT_EIGEN_DIR}/Eigen/Dense" ] || die "${ADT_EIGEN_DIR} missing Eigen/Dense"
+
+# The partitioned branch is cut from the upstream commit above, so its diff is
+# the change being measured and nothing else. Print it: an unexpectedly large
+# one means the comparison is no longer isolating the convolution.
+if git -C "${VENDOR}/adt-partitioned" cat-file -e "${ADT_UPSTREAM_SHA}^{commit}" 2>/dev/null; then
+	log "partitioned branch changes under dsp/:$(git -C "${VENDOR}/adt-partitioned" diff --shortstat "${ADT_UPSTREAM_SHA}" -- dsp/)"
+else
+	log "adt-partitioned is a shallow checkout; skipping the diff against ${ADT_UPSTREAM_SHA:0:12}"
+fi
 
 # The planar branch deliberately DOES touch a2_fast — that is where the two-line
 # dispatcher change lives — so byte-identity is the wrong test for it. What must
@@ -171,11 +250,14 @@ fetch_at "${VENDOR}/eigen" "${EIGEN_URL}" "${UPSTREAM_EIGEN}" "$(
 #
 # Checked by comparing everything in a2_fast.cpp except the dispatcher body,
 # which is the one hunk the PR touches there.
-if command -v git >/dev/null 2>&1; then
-	changed="$(git -C "${VENDOR}/planar" diff --stat "${UPSTREAM_SHA}" -- NAM/ 2>/dev/null | tail -1 || true)"
-	if [ -n "${changed}" ]; then
-		log "planar branch changes under NAM/ vs upstream:${changed}"
-	fi
+#
+# Only possible when the checkout actually has the base commit. These are
+# shallow fetches of a single commit, so usually it does not, and saying so is
+# better than printing nothing and looking like a clean result.
+if git -C "${VENDOR}/planar" cat-file -e "${UPSTREAM_SHA}^{commit}" 2>/dev/null; then
+	log "planar branch changes under NAM/ vs upstream:$(git -C "${VENDOR}/planar" diff --shortstat "${UPSTREAM_SHA}" -- NAM/)"
+else
+	log "planar is a shallow checkout; skipping the diff against upstream ${UPSTREAM_SHA:0:12}"
 fi
 log "planar at $(git -C "${VENDOR}/planar" rev-parse --short HEAD) (PR #313)"
 
@@ -195,6 +277,20 @@ cat > "${VENDOR}/pins.json" <<EOF
   "eigen": {
     "url": "${EIGEN_URL}",
     "sha": "$(git -C "${VENDOR}/eigen" rev-parse HEAD)",
+    "shared": true
+  },
+  "adt_upstream": {
+    "url": "${ADT_UPSTREAM_URL}",
+    "sha": "$(git -C "${VENDOR}/adt-upstream" rev-parse HEAD)"
+  },
+  "adt_partitioned": {
+    "url": "${ADT_PARTITIONED_URL}",
+    "sha": "$(git -C "${VENDOR}/adt-partitioned" rev-parse HEAD)",
+    "branch": "partitioned-ir"
+  },
+  "eigen_adt": {
+    "url": "${EIGEN_URL}",
+    "sha": "$(git -C "${ADT_EIGEN_DIR}" rev-parse HEAD)",
     "shared": true
   }
 }

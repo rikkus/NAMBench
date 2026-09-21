@@ -172,13 +172,18 @@ jobs:
           # Pi's clock and thermals are not controlled here, so nothing measured on
           # it in CI is quoted. The pinned-hardware numbers come from the
           # `pi500`/`tinker` testbeds in benchmark.yml, on this same runner.
+          # `parallel: 2`, not the default 4: the Pi has 8 GB and no swap (it is an
+          # RT audio machine), and two four-way C++ builds running at once on it have
+          # already OOM-killed cc1plus. Two jobs' worth of parallelism fits.
           - name: linux aarch64 · Pi 5 bare metal · gcc-13 (self-hosted)
             runs-on: machina
             apt: ''
+            parallel: 2
             cmake-args: -DCMAKE_CXX_COMPILER=g++-13
           - name: linux aarch64 · Pi 5 bare metal · clang-18 (self-hosted)
             runs-on: machina
             apt: ''
+            parallel: 2
             cmake-args: -DCMAKE_CXX_COMPILER=clang++-18
 
           # --- Linux ARMv7 (armhf), cross-built and run under qemu -----------
@@ -252,7 +257,7 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-args }} ${{ env.NB_VARIANTS }}
 
       - name: Build
-        run: cmake --build build --config Release --parallel 4
+        run: cmake --build build --config Release --parallel ${{ matrix.parallel || 4 }}
 
       - name: Check
         run: ctest --test-dir build --build-config Release --output-on-failure
@@ -291,7 +296,7 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 ${{ env.NB_VARIANTS }}
 
       - name: Build
-        run: cmake --build build --config Release --parallel 4
+        run: cmake --build build --config Release --parallel ${{ matrix.parallel || 4 }}
 
   # ---------------------------------------------------------------------------
   # iOS, in the Simulator.
@@ -324,7 +329,7 @@ jobs:
             -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 ${{ env.NB_VARIANTS }}
 
       - name: Build
-        run: cmake --build build --config Release --parallel 4
+        run: cmake --build build --config Release --parallel ${{ matrix.parallel || 4 }}
 
       - name: Boot a simulator
         id: sim

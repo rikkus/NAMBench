@@ -253,9 +253,11 @@ load, not an arbitrary ceiling.
 
 ### Results
 
-M2 MacBook Air, 64-frame blocks, mono IR, all eighteen points accepted (spread
-0.4-1.6%). `core%` is the average cost of keeping up with real time; `p99` is
-the 99th-percentile block against its own deadline.
+64-frame blocks, mono IR, all eighteen points accepted on every machine. `core%`
+is the average cost of keeping up with real time; `p99` is the 99th-percentile
+block against its own deadline.
+
+**M2 MacBook Air** (spread 0.4-1.6%)
 
 | taps | ms of IR | shipping | | partitioned FFT | | |
 |---:|---:|---:|---:|---:|---:|---:|
@@ -267,27 +269,58 @@ the 99th-percentile block against its own deadline.
 | 4096 | 85.3 | 2.220% | 2.94% | **0.378%** | 1.75% | 5.87x |
 | 8192 | 170.7 | 4.268% | 5.18% | **0.459%** | 2.26% | **9.30x** |
 
-The branch's own direct path, measured alongside and not shown above, is
-bit-identical to upstream at every length and within 1-7% of it in time. The FFT
-path lands 136-138 dB below the signal.
+**Raspberry Pi 500, Cortex-A76** (spread 0.02-0.21%)
 
-From 1024 taps up, the FFT path is both cheaper on average *and* calmer in its
-worst block than the code it replaces — at 8192 taps, 2.26% of a deadline
-against 5.18%. The burstiness that `block_p99_percent` exists to catch is real,
-but it only costs anything at 512 taps, where the p99 is worse than shipping
-(0.40% against 0.29%) while the average is better.
+| taps | ms of IR | shipping | | partitioned FFT | | |
+|---:|---:|---:|---:|---:|---:|---:|
+| | | core% | p99 | core% | p99 | |
+| 256 | 5.3 | 0.190% | 0.21% | 0.201% | 0.22% | 0.95x |
+| 512 | 10.7 | **0.357%** | 0.39% | 0.407% | 1.02% | 0.88x |
+| 1024 | 21.3 | 0.687% | 0.73% | **0.448%** | 1.18% | 1.53x |
+| 2048 | 42.7 | 1.359% | 1.51% | **0.535%** | 1.52% | 2.54x |
+| 4096 | 85.3 | 2.719% | 2.89% | **0.718%** | 3.16% | 3.79x |
+| 8192 | 170.7 | 6.621% | 6.91% | **0.883%** | 4.48% | **7.50x** |
+
+**Tinker Board, Cortex-A17 at 1.416 GHz** (spread 0.06-0.36%)
+
+| taps | ms of IR | shipping | | partitioned FFT | | |
+|---:|---:|---:|---:|---:|---:|---:|
+| | | core% | p99 | core% | p99 | |
+| 256 | 5.3 | **1.428%** | 2.03% | 1.810% | 2.43% | 0.79x |
+| 512 | 10.7 | **2.653%** | 3.24% | 3.276% | 8.29% | 0.81x |
+| 1024 | 21.3 | 5.122% | 5.71% | **3.495%** | 9.19% | 1.47x |
+| 2048 | 42.7 | 10.059% | 10.65% | **3.920%** | 10.89% | 2.57x |
+| 4096 | 85.3 | 20.855% | 21.57% | **5.211%** | 21.11% | 4.00x |
+| 8192 | 170.7 | 42.042% | 47.33% | **6.102%** | 28.26% | **6.89x** |
+
+The branch's own direct path, measured alongside and not shown above, is
+bit-identical to upstream at every length on every machine, and within 1-7% of
+it in time. The FFT path lands 136-138 dB below the signal.
+
+At 8192 taps the FFT path is both cheaper on average *and* calmer in its worst
+block everywhere. On the Tinker Board that is the difference that matters:
+shipping's slowest single block there reached 123% of its deadline, a click,
+where the FFT path's never passed 34%. Below that, the burstiness that
+`block_p99_percent` exists to catch is real: a partition's transform lands in
+one callback, so on the ARM boards the FFT path's p99 is *worse* than shipping's
+at 512 and 1024 taps, and roughly level at 2048-4096, even where its average is
+far better. On the M2 it is only worse at 512.
 
 **The 256-tap row is not measuring FFT.** At exactly 256 taps the whole impulse
 response fits inside the direct head, so no transform runs and the subject is a
-plain FIR — which is why it comes out bit-identical to upstream there, and 5%
-slower, that 5% being the ring buffer it carries for a tail it does not have.
-The driver says so on the line it prints, and `fftPartitions` in the report is
-0. It is the real configuration at the shortest length `Auto` ever chooses the
-FFT path for, so it is worth being able to see rather than worth hiding.
+plain FIR — which is why it comes out bit-identical to upstream there, and
+slower (5% on the M2 and the Pi, 27% on the Tinker Board), that cost being the
+ring buffer it carries for a tail it does not have. The driver says so on the
+line it prints, and `fftPartitions` in the report is 0. It is the real
+configuration at the shortest length `Auto` ever chooses the FFT path for, so it
+is worth being able to see rather than worth hiding.
 
-The crossover is therefore just above 256 taps, which is where
-`kAutoDirectMaxTaps` already puts it. Whether that holds on a Cortex-A76 and a
-Cortex-A17 is still to be measured.
+**The crossover depends on the machine.** On the M2 it is just above 256 taps,
+where `kAutoDirectMaxTaps` puts it. On both ARM boards it is between 512 and
+1024: at 512 taps `Auto` picks FFT and pays 12% more on the Pi 500 and 23% more
+on the Tinker Board, with a p99 two to three times shipping's. Raising the
+threshold to 512 would give up the M2's 1.19x at that one length to stop the
+loss on both boards — the boards being where CPU is scarce.
 
 ### Three subjects, not two
 

@@ -87,10 +87,10 @@ typedef struct NbIr NbIr;
    *                                                                                              \
    * Zero partitions with an FFT implementation is the case worth being able to                    \
    * see: the impulse response fit entirely inside the direct head, so no                          \
-   * transform runs and the subject is a plain FIR wearing an FFT label. That is                    \
-   * the real configuration at the shortest length the FFT path is ever chosen                      \
-   * for, and reporting `fft` there without saying so would be a measurement of                     \
-   * one thing presented as another.                                                                \
+   * transform runs and the subject is a plain FIR wearing an FFT label. Auto                       \
+   * never chooses that (above 512 taps there is always a partition), but                           \
+   * forcing FFT on a short IR does, and reporting `fft` there without saying                       \
+   * so would be a measurement of one thing presented as another.                                   \
    */                                                                                             \
   NB_IR_EXPORT int32_t P##_ir_partitions(const NbIr* ir);                                         \
   NB_IR_EXPORT int32_t P##_ir_fft_block(const NbIr* ir);                                          \

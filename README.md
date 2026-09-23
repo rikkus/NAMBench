@@ -182,16 +182,19 @@ response fits inside the direct head, so no transform runs and the subject is a
 plain FIR — which is why it comes out bit-identical to upstream there, and
 slower (3% on the M2, 6% on the Pi, 27% on the Tinker Board), that cost being the
 ring buffer it carries for a tail it does not have. The driver says so on the
-line it prints, and `fftPartitions` in the report is 0. It is the real
-configuration at the shortest length `Auto` ever chooses the FFT path for, so it
-is worth being able to see rather than worth hiding.
+line it prints, and `fftPartitions` in the report is 0. `Auto` never picks the
+FFT path at this length: it sends only IRs above 512 taps there, and those
+always have at least one partition. So this row is what forcing FFT on a short
+IR costs, kept so the ladder starts in the same place on every machine.
 
-**The crossover depends on the machine.** On the M2 it is just above 256 taps,
-where `kAutoDirectMaxTaps` puts it. On both ARM boards it is between 512 and
-1024: at 512 taps `Auto` picks FFT and pays 10% more on the Pi 500 and 21% more
-on the Tinker Board, with a p99 about two and a half times shipping's. Raising
-the threshold to 512 would give up the M2's 1.25x at that one length to stop the
-loss on both boards — the boards being where CPU is scarce.
+**The crossover depends on the machine, and `Auto` is set for the boards.** On
+the M2 FFT wins from just above 256 taps. On both ARM boards it wins from
+between 512 and 1024: at 512 taps it costs 10% more than direct on the Pi 500
+and 21% more on the Tinker Board, with a p99 about two and a half times
+shipping's. So since `e2dc6bc` the branch's `kAutoDirectMaxTaps` is 512, up from
+256: `Auto` runs direct up to 512 taps and FFT above, giving up the M2's 1.25x at
+that one length to stop the loss on both boards, where CPU is scarcest. The
+tables force each path, so that change does not move any number in them.
 
 **Only half of each spectrum is multiplied.** Audio and impulse responses are
 real, so every spectrum the FFT path forms is conjugate-symmetric: bin

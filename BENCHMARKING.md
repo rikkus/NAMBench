@@ -334,6 +334,9 @@ transform callback cheaper, which is why it shows most in the p99: at 8192
 taps, 2.26% to 1.61% on the M2, 4.48% to 3.22% on the Pi 500, 28.26% to 21.74%
 on the Tinker Board. No length got slower on any machine.
 
+[IR-PATH.md](IR-PATH.md) records the investigation around these numbers, and
+the decisions it led to.
+
 ### Three subjects, not two
 
 | Bencher name | what it is |

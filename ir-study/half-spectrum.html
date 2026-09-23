@@ -1,0 +1,268 @@
+<meta charset="utf-8">
+<title>The Mirrored Half</title>
+<style>
+:root{
+  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7;
+  --ship:#86b6ef; --fft:#1c5cab; --spike:#d4442f; --rule:#e8e7e0;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835;
+    --ship:#256abf; --fft:#b7d3f6; --spike:#f07a5f; --rule:#262624;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835;
+  --ship:#256abf; --fft:#b7d3f6; --spike:#f07a5f; --rule:#262624;
+}
+body{background:var(--page);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;}
+.wrap{max-width:780px;margin:0 auto;padding-inline:20px;padding-block:40px 64px;}
+h1{font-size:30px;line-height:1.15;margin:0 0 10px;text-wrap:balance;letter-spacing:-.01em}
+h2{font-size:19px;line-height:1.3;margin:0 0 8px;text-wrap:balance}
+p{margin:0 0 12px;max-width:66ch;color:var(--ink2)}
+p strong{color:var(--ink)}
+.lede{font-size:17px;color:var(--ink2);max-width:62ch}
+.meta{font-size:12.5px;color:var(--muted);letter-spacing:.02em;margin-bottom:22px}
+section{padding-block:30px;border-top:1px solid var(--rule)}
+.fig{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px 14px 8px;margin:14px 0 8px;}
+.fig svg{display:block;width:100%;height:auto;overflow:visible}
+.cap{font-size:12.5px;color:var(--muted);margin:6px 2px 0;max-width:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--ink2);margin:0 0 6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:11px;height:11px;border-radius:2px;display:inline-block}
+.sw.ship{background:var(--ship)} .sw.fft{background:var(--fft)} .sw.spike{background:var(--spike)}
+.row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.seg{display:inline-flex;border:1px solid var(--axis);border-radius:5px;overflow:hidden}
+.seg button{font:inherit;font-size:12.5px;padding:4px 10px;background:transparent;color:var(--ink2);border:0;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--page)}
+.seg button:focus-visible{outline:2px solid var(--fft);outline-offset:-2px}
+text{fill:var(--ink2);font:11px system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums}
+text.t-muted{fill:var(--muted)} text.t-ink{fill:var(--ink);font-weight:600} text.t-spike{fill:var(--spike);font-weight:600}
+.gl{stroke:var(--grid);stroke-width:1} .ax{stroke:var(--axis);stroke-width:1}
+.f-ship{fill:var(--ship)} .f-fft{fill:var(--fft)} .f-spike{fill:var(--spike)}
+.s-ship{stroke:var(--ship)} .s-fft{stroke:var(--fft)} .s-spike{stroke:var(--spike)}
+table{border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums;width:100%}
+th,td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--rule)}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--ink2);font-size:12px;letter-spacing:.03em}
+.tbl{overflow-x:auto;margin:10px 0}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:16px 0 4px}
+.fact{padding:12px 14px;border:1px solid var(--rule);border-radius:6px;background:var(--surface)}
+.fact b{display:block;font-size:22px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.fact b.ship{color:var(--ship)} .fact b.fft{color:var(--fft)} .fact b.spike{color:var(--spike)}
+.fact span{font-size:12.5px;color:var(--ink2)}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--rule);padding:1px 4px;border-radius:3px}
+</style>
+<style>
+.f-mirror{fill:var(--ship)} .f-need{fill:var(--fft)} .f-waste{fill:var(--spike)} .f-edge{fill:var(--ink2)}
+.s-ink2{stroke:var(--ink2)} .f-none{fill:none}
+.why{border-left:3px solid var(--fft);padding:10px 14px;background:var(--surface);margin:14px 0;border-radius:0 6px 6px 0}
+.why p{margin:0 0 8px}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:8px 0 2px}
+.pair div{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;padding:8px 10px;border:1px solid var(--rule);border-radius:5px;color:var(--ink)}
+.pair div small{display:block;font:12px system-ui,sans-serif;color:var(--muted);margin-bottom:2px}
+select{font:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--axis);border-radius:5px;background:var(--surface);color:var(--ink)}
+rect.bin{cursor:pointer}
+</style>
+<div class="wrap">
+<h1>Why half the spectrum is spare</h1>
+<p class="lede">The FFT path turns each block of audio into 1024 frequency bins, multiplies them by the IR's bins, and turns the result back into audio. For audio, bins 513–1023 carry no new information: each one is a mirror image of a bin in 1–511. This page shows why, and what it costs the branch to compute them anyway.</p>
+<div class="meta">partitioned-ir branch · 8192-tap IR · 512-sample blocks · 1024-point FFT · 48 kHz</div>
+
+<section>
+<h2>What a bin is</h2>
+<p>An FFT of N samples gives N bins. Bin <em>k</em> answers one question: how much of the signal is a wave that completes <em>k</em> cycles across the block, and at what phase? The answer is a complex number. Its <strong>size</strong> is the amplitude and its <strong>angle</strong> is the phase.</p>
+<p>With 1024 samples at 48 kHz, bin <em>k</em> is <em>k</em> × 46.875 Hz. Bin 512 is 24 kHz, the highest frequency 48 kHz audio can hold (Nyquist). Bins above 512 don't describe higher frequencies. They describe the same frequencies again, as <em>negative</em> frequencies: bin 1024 − <em>k</em> is frequency −<em>k</em>.</p>
+<p>A negative frequency is a wave spinning the other way. A complex signal needs both directions to describe it. A real signal, which is just a list of ordinary numbers like audio samples, only ever gets them as matched pairs. The pair must cancel each other's imaginary parts, so the numbers stay real.</p>
+</section>
+
+<section>
+<h2>Try it with 16 samples</h2>
+<p>Same rule, small enough to see. Sixteen real samples give sixteen bins. Tap any bin to see its partner. Bin <em>k</em> and bin 16 − <em>k</em> always have the same size, and their phases are equal and opposite. That makes each one the <strong>complex conjugate</strong> of the other: the same number with the sign of its imaginary part flipped. Bin 0 (the average level) and bin 8 (Nyquist) are their own partners, so they are always purely real.</p>
+<div class="fig">
+  <div class="row">
+    <div class="legend"><span><i class="sw fft"></i>bins 1–7: unique</span><span><i class="sw ship"></i>bins 9–15: mirrors</span><span><i class="sw" style="background:var(--ink2)"></i>bins 0 and 8: their own mirror</span></div>
+    <label for="toy-sig" class="legend"><span>signal&nbsp;<select id="toy-sig"><option value="one">one sine, 3 cycles</option><option value="two">two sines, 2 and 5 cycles</option><option value="rand" selected>random numbers</option><option value="gtr">16 samples of guitar</option></select></span></label>
+  </div>
+  <svg id="c-toy" viewBox="0 0 740 400" role="img" aria-label="16 samples and their 16 FFT bins, with mirrored pairs linked"></svg>
+  <div class="pair"><div id="pa"></div><div id="pb"></div></div>
+  <p class="cap">Arcs join each mirrored pair. Pick any signal: as long as the samples are real, the right half is always the left half reversed and conjugated.</p>
+</div>
+<div class="why">
+<p><strong>Why it has to be so.</strong> Bin <em>k</em> is Σ x[n]·e<sup>−2πi·kn/N</sup>. For bin N − <em>k</em>, the exponent picks up an extra e<sup>−2πi·n</sup>, which is exactly 1, so it becomes Σ x[n]·e<sup>+2πi·kn/N</sup>. That's the same sum with every rotation reversed. When every x[n] is real, reversing the rotations just flips the sign of the imaginary part of the total: X[N − k] = conj(X[k]).</p>
+<p style="margin:0">It works the other way too: any spectrum with this mirror symmetry inverse-transforms to a purely real signal. That's why the inverse FFT only needs the first half.</p>
+</div>
+</section>
+
+<section>
+<h2>The same with a real block of your guitar</h2>
+<p>This is what the branch actually transforms: 512 samples of the guitar DI (4.2 s into <code>input.wav</code>) plus 512 zeros, making 1024 samples. The second half of the spectrum is the first half reflected around bin 512.</p>
+<div class="fig">
+  <div class="legend"><span><i class="sw fft"></i>bins 0–512: 0 Hz to 24 kHz</span><span><i class="sw ship"></i>bins 513–1023: the same, mirrored</span></div>
+  <svg id="c-gtr" viewBox="0 0 740 380" role="img" aria-label="1024-sample guitar block and its mirrored magnitude spectrum"></svg>
+  <p class="cap">Magnitude in dB relative to the largest bin, computed in this page from the embedded samples. The phase (not shown) mirrors too, with the sign flipped.</p>
+</div>
+</section>
+
+<section>
+<h2>The IR's bins mirror too, and so does their product</h2>
+<p>The IR is real, so each partition's spectrum has the same symmetry. Multiplying two mirrored spectra bin by bin gives a mirrored spectrum, because conj(a) × conj(b) = conj(a × b). Every bin above 512 in the accumulator is therefore just the conjugate of one below it, and the inverse FFT can rebuild the output from bins 0–512 alone.</p>
+</section>
+
+<section>
+<h2>What the branch does with each half</h2>
+<p>Eigen's FFT already takes advantage of this internally. Its real-input forward transform computes bins 0–512 with a half-size (512-point) complex FFT, then copies conjugates into 513–1023 because the code didn't ask for <code>HalfSpectrum</code>. Its real-output inverse only reads bins 0–512. In between, the branch's multiply-add loop runs over all 1024 bins for each of the 15 partitions, so half of that work goes into bins nothing reads.</p>
+<div class="fig">
+  <div class="legend"><span><i class="sw fft"></i>needed</span><span><i class="sw ship"></i>filled by copying, then unused</span><span><i class="sw spike"></i>computed, then never read</span></div>
+  <svg id="c-pipe" viewBox="0 0 740 300" role="img" aria-label="Which bins each stage of a transform callback computes and uses"></svg>
+  <p class="cap">One transform callback at 8192 taps. Bins are drawn to scale: 513 needed, 511 not.</p>
+</div>
+</section>
+
+<section>
+<h2>Measured: the same output, 30% less work</h2>
+<p>I built a copy of the branch's convolver with three changes: set Eigen's <code>HalfSpectrum</code> flag, and stop the accumulator clear and the multiply-add loop at bin 512 instead of 1023. Then I ran both on the same 2 s of input with the same 8192-tap IR.</p>
+<div class="fig">
+  <svg id="c-meas" viewBox="0 0 740 170" role="img" aria-label="Transform callback time, full versus half spectrum"></svg>
+  <p class="cap">Apple M2, 64-frame callbacks, median transform callback over 20 runs (repeated three times: 29.3 / 29.2 / 29.8 µs against 20.4 / 20.4 / 20.6 µs). Output compared sample by sample: 0 of 96,000 differ. It's bit-identical, because bins 0–512 get exactly the same arithmetic as before.</p>
+</div>
+<p>It's 30%, not 50%, because the two FFTs were already half-size inside Eigen, so only the multiply-adds and the mirror copies were doubled. The quiet callbacks don't change, since they never touch the spectrum.</p>
+<p><strong>Since then:</strong> the change is on <code>partitioned-ir</code> as commit <code>a09e360</code>. It also stores only 513 bins per spectrum, which cuts the spectra from 240 KiB to 120 KiB at 8192 taps. A separate test isolated that storage change from the loop change, and it's worth about 1% on the Tinker Board's transform callback and nothing measurable on the M2 or Pi 500. Once the loop stops at bin 512 it never reads the upper half anyway, so shrinking the buffers mostly frees memory rather than saving time. The full benchmark on all three machines: at 8192 taps the FFT path went from 9.30× to 11.29× shipping on the M2, 7.50× to 9.13× on the Pi 500, and 6.89× to 7.91× on the Tinker Board, and no length got slower anywhere.</p>
+</section>
+</div>
+<script>
+const GTR = [0.22745,0.21732,0.20572,0.19577,0.18649,0.17404,0.15677,0.13632,0.11526,0.0943,0.07269,0.04977,0.02576,0.00052,-0.02609,-0.05258,-0.07785,-0.10147,-0.1232,-0.1416,-0.15561,-0.16705,-0.17871,-0.19092,-0.20129,-0.20767,-0.20966,-0.20804,-0.2041,-0.19876,-0.1911,-0.17911,-0.16141,-0.13882,-0.11252,-0.08167,-0.04446,-0.00156,0.04312,0.08575,0.12555,0.16415,0.20343,0.24423,0.28583,0.32562,0.36066,0.3898,0.41556,0.4411,0.46664,0.49063,0.51273,0.53491,0.55875,0.58231,0.60315,0.62048,0.63559,0.64948,0.66226,0.67371,0.68213,0.68533,0.68234,0.6748,0.66449,0.65067,0.63123,0.60428,0.56897,0.52414,0.47025,0.4093,0.34265,0.27036,0.1929,0.11295,0.03296,-0.04654,-0.12619,-0.20526,-0.27988,-0.34741,-0.40903,-0.46722,-0.52225,-0.57208,-0.61478,-0.64893,-0.67413,-0.69315,-0.71082,-0.72995,-0.74799,-0.76114,-0.76971,-0.77704,-0.78488,-0.79172,-0.79474,-0.79315,-0.78857,-0.78412,-0.78162,-0.78098,-0.77899,-0.77112,-0.75574,-0.73523,-0.71222,-0.68649,-0.65662,-0.62308,-0.58694,-0.54807,-0.505,-0.45807,-0.4079,-0.35535,-0.30283,-0.25336,-0.20789,-0.16452,-0.12103,-0.07852,-0.04068,-0.00964,0.01675,0.04144,0.06537,0.08722,0.10544,0.11987,0.13153,0.14224,0.15347,0.16476,0.17398,0.17944,0.18161,0.18231,0.18036,0.17371,0.16199,0.14691,0.13214,0.12003,0.11038,0.10129,0.09085,0.07925,0.06949,0.065,0.06625,0.07053,0.07587,0.08282,0.09232,0.10321,0.11377,0.12366,0.1329,0.14084,0.14658,0.15167,0.15826,0.16641,0.17447,0.18124,0.18768,0.19376,0.19894,0.20288,0.20639,0.20972,0.21136,0.21042,0.20703,0.20172,0.19592,0.18997,0.18387,0.17746,0.16937,0.15854,0.14502,0.13089,0.1178,0.10571,0.09344,0.07944,0.0625,0.04361,0.02484,0.00806,-0.00687,-0.02084,-0.03445,-0.04718,-0.05832,-0.06934,-0.08215,-0.09586,-0.10855,-0.11923,-0.12735,-0.13333,-0.13818,-0.14395,-0.15073,-0.1557,-0.15576,-0.14944,-0.13766,-0.12183,-0.10287,-0.08075,-0.05563,-0.0278,0.00323,0.03772,0.07526,0.11444,0.1532,0.18985,0.22424,0.25708,0.28836,0.31812,0.34616,0.37265,0.39786,0.42224,0.44601,0.46902,0.49136,0.51373,0.5361,0.55707,0.57413,0.58646,0.59512,0.6012,0.60449,0.60535,0.60449,0.60159,0.59518,0.58429,0.56992,0.5535,0.53531,0.51456,0.48975,0.45981,0.4241,0.38324,0.33987,0.29712,0.25415,0.20813,0.15723,0.10156,0.04352,-0.01382,-0.06955,-0.12405,-0.17792,-0.23169,-0.28491,-0.33539,-0.38208,-0.42563,-0.46707,-0.50632,-0.54187,-0.57315,-0.59958,-0.62054,-0.63556,-0.64664,-0.65778,-0.67059,-0.68372,-0.69601,-0.70706,-0.71576,-0.72104,-0.72351,-0.7251,-0.72665,-0.72604,-0.72101,-0.71182,-0.7002,-0.68622,-0.66855,-0.64774,-0.62463,-0.59946,-0.57135,-0.54077,-0.50983,-0.47949,-0.44943,-0.41943,-0.39056,-0.36359,-0.33847,-0.31525,-0.29474,-0.27762,-0.26303,-0.2493,-0.23489,-0.21951,-0.20346,-0.18732,-0.17255,-0.16,-0.14917,-0.1395,-0.13144,-0.12527,-0.11877,-0.11011,-0.10117,-0.09521,-0.09198,-0.08804,-0.08105,-0.0719,-0.06265,-0.05301,-0.04144,-0.02728,-0.01007,0.01114,0.03494,0.05734,0.07596,0.09207,0.10919,0.12833,0.14786,0.1665,0.18552,0.20599,0.22781,0.25006,0.27155,0.29114,0.30853,0.32587,0.34467,0.36404,0.38055,0.39203,0.39951,0.4043,0.40588,0.40387,0.39832,0.39081,0.38278,0.37375,0.36331,0.35138,0.33728,0.32092,0.30328,0.28571,0.26776,0.24741,0.22418,0.20029,0.17804,0.15735,0.13687,0.11575,0.09409,0.0723,0.05127,0.0329,0.01797,0.00439,-0.01093,-0.02893,-0.04688,-0.06165,-0.07297,-0.08188,-0.08881,-0.09305,-0.09311,-0.08853,-0.07886,-0.06454,-0.04672,-0.02454,0.00342,0.03751,0.07489,0.11221,0.14865,0.18576,0.22488,0.2652,0.30426,0.34067,0.3746,0.40778,0.44156,0.47556,0.50824,0.53821,0.56592,0.5928,0.61853,0.64108,0.65942,0.67441,0.68781,0.70007,0.70874,0.71112,0.70856,0.70361,0.69821,0.69278,0.68539,0.67239,0.65067,0.6203,0.5853,0.54819,0.50842,0.46371,0.4122,0.35385,0.29062,0.22375,0.15472,0.08398,0.01044,-0.06573,-0.14218,-0.21567,-0.28458,-0.34918,-0.40915,-0.4628,-0.5098,-0.55173,-0.59052,-0.6261,-0.65662,-0.6806,-0.69818,-0.71069,-0.71954,-0.7269,-0.73465,-0.74265,-0.74872,-0.75174,-0.75226,-0.75085,-0.74646,-0.73776,-0.72562,-0.71228,-0.69833,-0.68173,-0.66003,-0.63257,-0.59885,-0.55936,-0.51614,-0.47238,-0.43066,-0.38989,-0.34857,-0.30634,-0.2644,-0.22479,-0.18896,-0.15872,-0.13495,-0.11728,-0.1048,-0.09665,-0.09125,-0.08572,-0.0788,-0.07242,-0.06979,-0.07263,-0.07825,-0.0831,-0.08676,-0.09061,-0.09705,-0.1084,-0.12518,-0.14603,-0.16824,-0.18976,-0.21118,-0.23468,-0.25937];
+const NS="http://www.w3.org/2000/svg";
+function el(t,a,p,x){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;if(p)p.appendChild(e);return e;}
+function clear(s){while(s.firstChild)s.removeChild(s.firstChild);}
+function dft(x){const N=x.length,re=new Array(N).fill(0),im=new Array(N).fill(0);
+  for(let k=0;k<N;k++)for(let n=0;n<N;n++){const a=-2*Math.PI*k*n/N;re[k]+=x[n]*Math.cos(a);im[k]+=x[n]*Math.sin(a);}return {re,im};}
+const cfmt=(r,i)=>{const z=v=>Math.abs(v)<5e-9?0:v; r=z(r); i=z(i); return `${r.toFixed(2)} ${i<0?'−':'+'} ${Math.abs(i).toFixed(2)}i`;};
+
+// --- toy ---------------------------------------------------------------------
+let toyX=[], toySel=3;
+function toySignal(kind){const N=16,x=[];let s=7;
+  for(let n=0;n<N;n++){
+    if(kind==='one') x.push(Math.cos(2*Math.PI*3*n/N+0.6));
+    else if(kind==='two') x.push(0.8*Math.sin(2*Math.PI*2*n/N)+0.5*Math.cos(2*Math.PI*5*n/N+1.1));
+    else if(kind==='gtr') x.push(GTR[200+n*3]/0.8);
+    else { s=(s*1103515245+12345)%2147483648; x.push((s/2147483648)*2-1); }
+  } return x;}
+function drawToy(){
+  const svg=document.getElementById('c-toy'); clear(svg);
+  const N=16, X=dft(toyX), mag=X.re.map((r,k)=>Math.hypot(r,X.im[k])), mmax=Math.max(...mag,1e-9);
+  const L=40,R=720, cw=(R-L)/N;
+  // samples
+  const t0=18, th=80, mid=t0+th/2, xmax=Math.max(...toyX.map(Math.abs),1e-9);
+  el('text',{x:L,y:t0-4,class:'t-ink'},svg,'16 real samples');
+  el('line',{x1:L,x2:R,y1:mid,y2:mid,class:'ax'},svg);
+  toyX.forEach((v,n)=>{const cx=L+cw*n+cw/2, y=mid-v/xmax*(th/2-4);
+    el('line',{x1:cx,x2:cx,y1:mid,y2:y,class:'s-ink2','stroke-width':1.5},svg); el('circle',{cx,cy:y,r:3.5,class:'f-edge'},svg);});
+  // bins
+  const b0=150, bh=150, base=b0+bh;
+  el('text',{x:L,y:b0-18,class:'t-ink'},svg,'16 bins: size of each complex number');
+  const partner=k=>(N-k)%N;
+  // arcs
+  for(let k=1;k<N/2;k++){const x1=L+cw*k+cw/2,x2=L+cw*(N-k)+cw/2, h=18+ (N/2-k)*3;
+    const on=(k===toySel||N-k===toySel);
+    el('path',{d:`M${x1} ${base+22}C${x1} ${base+22+h} ${x2} ${base+22+h} ${x2} ${base+22}`,class:'f-none '+(on?'s-fft':'s-ink2'),'stroke-width':on?2:1,opacity:on?1:0.35},svg);}
+  mag.forEach((m,k)=>{
+    const h=Math.max(1.5,m/mmax*(bh-14)), x=L+cw*k+4, w=cw-8;
+    const cls = (k===0||k===N/2)?'f-edge':(k<N/2?'f-need':'f-mirror');
+    const sel = k===toySel||k===partner(toySel);
+    const r=el('rect',{x,y:base-h,width:w,height:h,class:'bin '+cls,opacity:sel||toySel<0?1:0.55,tabindex:0,role:'button','aria-label':'bin '+k},svg);
+    r.addEventListener('click',()=>{toySel=k;drawToy();});
+    r.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toySel=k;drawToy();}});
+    if(sel) el('rect',{x:x-2,y:base-h-2,width:w+4,height:h+4,class:'f-none s-fft','stroke-width':2},svg);
+    el('text',{x:x+w/2,y:base+14,'text-anchor':'middle',class:sel?'t-ink':''},svg,String(k));
+  });
+  el('line',{x1:L,x2:R,y1:base,y2:base,class:'ax'},svg);
+  const k=toySel, p=partner(k);
+  const A=document.getElementById('pa'), B=document.getElementById('pb');
+  A.innerHTML=`<small>bin ${k}</small>${cfmt(X.re[k],X.im[k])}`;
+  B.innerHTML= k===p ? `<small>bin ${k} is its own mirror</small>imaginary part is always 0` : `<small>bin ${p} (its mirror)</small>${cfmt(X.re[p],X.im[p])}`;
+}
+const sel=document.getElementById('toy-sig');
+sel.addEventListener('change',()=>{toyX=toySignal(sel.value);drawToy();});
+toyX=toySignal(sel.value); drawToy();
+
+// --- guitar 1024 -------------------------------------------------------------
+(function(){
+  const svg=document.getElementById('c-gtr');
+  const N=1024, x=GTR.concat(new Array(512).fill(0));
+  // radix-2 FFT
+  const re=x.slice(), im=new Array(N).fill(0);
+  for(let i=1,j=0;i<N;i++){let b=N>>1;for(;j&b;b>>=1)j^=b;j^=b;if(i<j){[re[i],re[j]]=[re[j],re[i]];}}
+  for(let len=2;len<=N;len<<=1){const a=-2*Math.PI/len;for(let i=0;i<N;i+=len)for(let j=0;j<len/2;j++){
+    const wr=Math.cos(a*j),wi=Math.sin(a*j),ur=re[i+j],ui=im[i+j],vr=re[i+j+len/2]*wr-im[i+j+len/2]*wi,vi=re[i+j+len/2]*wi+im[i+j+len/2]*wr;
+    re[i+j]=ur+vr;im[i+j]=ui+vi;re[i+j+len/2]=ur-vr;im[i+j+len/2]=ui-vi;}}
+  const mag=re.map((r,k)=>Math.hypot(r,im[k])), mx=Math.max(...mag);
+  const db=mag.map(m=>Math.max(-90,20*Math.log10(m/mx+1e-12)));
+  const L=46,R=730, xs=k=>L+k/(N-1)*(R-L);
+  // waveform
+  const t0=24,th=80,mid=t0+th/2;
+  el('text',{x:L,y:t0-8,class:'t-ink'},svg,'1024 samples: 512 of guitar, then 512 zeros');
+  el('line',{x1:L,x2:R,y1:mid,y2:mid,class:'ax'},svg);
+  let d='';x.forEach((v,n)=>{d+=(n?'L':'M')+xs(n).toFixed(1)+' '+(mid-v*th/2).toFixed(1);});
+  el('path',{d,class:'f-none s-ink2','stroke-width':1},svg);
+  // spectrum
+  const s0=160,sh=160, y=v=>s0+(-v)/90*sh;
+  el('text',{x:L,y:s0-12,class:'t-ink'},svg,'1024 bins: magnitude, dB');
+  el('rect',{x:xs(512.5),y:s0,width:R-xs(512.5),height:sh,class:'f-mirror',opacity:0.12},svg);
+  [0,-30,-60,-90].forEach(v=>{el('line',{x1:L,x2:R,y1:y(v),y2:y(v),class:'gl'},svg);el('text',{x:L-6,y:y(v)+3.5,'text-anchor':'end'},svg,v);});
+  let d1='',d2='';
+  for(let k=0;k<=512;k++) d1+=(k?'L':'M')+xs(k).toFixed(1)+' '+y(db[k]).toFixed(1);
+  for(let k=512;k<N;k++) d2+=(k>512?'L':'M')+xs(k).toFixed(1)+' '+y(db[k]).toFixed(1);
+  el('path',{d:d1,class:'f-none s-fft','stroke-width':1.2},svg);
+  el('path',{d:d2,class:'f-none s-ship','stroke-width':1.2},svg);
+  el('line',{x1:xs(512),x2:xs(512),y1:s0-4,y2:s0+sh,class:'s-ink2','stroke-dasharray':'4 3'},svg);
+  el('text',{x:xs(512),y:s0-4+ -2,'text-anchor':'middle',class:'t-muted'},svg,'mirror line: bin 512');
+  [[0,'0'],[128,'6k'],[256,'12k'],[384,'18k'],[512,'24k'],[640,'−18k'],[768,'−12k'],[896,'−6k'],[1023,'−47']].forEach(([k,f])=>{
+    el('line',{x1:xs(k),x2:xs(k),y1:s0+sh,y2:s0+sh+4,class:'ax'},svg);
+    el('text',{x:xs(k),y:s0+sh+16,'text-anchor':'middle'},svg,String(k));
+    el('text',{x:xs(k),y:s0+sh+30,'text-anchor':'middle',class:'t-muted'},svg,f+(k===1023?' Hz':''));
+  });
+  el('text',{x:L-6,y:s0+sh+16,'text-anchor':'end',class:'t-muted'},svg,'bin');
+  el('text',{x:L-6,y:s0+sh+30,'text-anchor':'end',class:'t-muted'},svg,'Hz');
+})();
+
+// --- pipeline ------------------------------------------------------------------
+(function(){
+  const svg=document.getElementById('c-pipe');
+  const L=200,R=730, xs=k=>L+k/1024*(R-L), h=34;
+  const rows=[
+    {y:30,name:'forward FFT',sub:'input block → spectrum',a:['f-need','bins 0–512 computed'],b:['f-mirror','copied as conjugates']},
+    {y:110,name:'multiply-add',sub:'× 15 partitions',a:['f-need','513 × 15 multiply-adds'],b:['f-waste','511 × 15 multiply-adds']},
+    {y:190,name:'inverse FFT',sub:'spectrum → 1024 samples',a:['f-need','reads bins 0–512'],b:['f-waste','never read']},
+  ];
+  rows.forEach(r=>{
+    el('text',{x:10,y:r.y+15,class:'t-ink'},svg,r.name);
+    el('text',{x:10,y:r.y+30,class:'t-muted'},svg,r.sub);
+    el('rect',{x:xs(0),y:r.y,width:xs(513)-xs(0)-1,height:h,class:r.a[0]},svg);
+    el('rect',{x:xs(513)+1,y:r.y,width:xs(1024)-xs(513)-1,height:h,class:r.b[0],opacity:r.b[0]==='f-mirror'?0.9:0.85},svg);
+    el('text',{x:(xs(0)+xs(513))/2,y:r.y+h/2+4,'text-anchor':'middle',style:'fill:var(--page);font-weight:600'},svg,r.a[1]);
+    el('text',{x:(xs(513)+xs(1024))/2,y:r.y+h/2+4,'text-anchor':'middle',style:'fill:var('+(r.b[0]==='f-mirror'?'--ink':'--page')+');font-weight:600'},svg,r.b[1]);
+  });
+  [0,512,1023].forEach(k=>el('text',{x:xs(k+(k===1023?1:k===512?0.5:0)),y:250,'text-anchor':k===0?'start':k===1023?'end':'middle',class:'t-muted'},svg,'bin '+k));
+  el('text',{x:(L+R)/2,y:275,'text-anchor':'middle',class:'t-muted'},svg,'each strip is the 1024 bins of the spectrum, to scale');
+})();
+
+// --- measurement -----------------------------------------------------------------
+(function(){
+  const svg=document.getElementById('c-meas');
+  const L=200,R=700, x=v=>L+v/32*(R-L);
+  const rows=[['all 1024 bins (branch today)',29.3,'f-waste'],['bins 0–512 only',20.4,'f-need']];
+  el('text',{x:10,y:20,class:'t-ink'},svg,'transform callback, 8192 taps');
+  [0,10,20,30].forEach(v=>{el('line',{x1:x(v),x2:x(v),y1:30,y2:130,class:'gl'},svg);el('text',{x:x(v),y:146,'text-anchor':'middle'},svg,v+' µs');});
+  rows.forEach(([n,v,c],i)=>{const y=40+i*44;
+    el('text',{x:L-10,y:y+19,'text-anchor':'end'},svg,n);
+    el('rect',{x:L,y,width:x(v)-L,height:28,class:c},svg);
+    el('text',{x:x(v)+8,y:y+19,class:'t-ink'},svg,v.toFixed(1)+' µs');});
+  el('text',{x:L,y:164,class:'t-muted'},svg,'quiet callbacks: 2.7 µs either way');
+})();
+</script>

@@ -209,7 +209,10 @@ It reports a worst-case block alongside the average, which `core_percent` cannot
 give: partitioned FFT convolution does a whole partition's transform in one
 callback, so an implementation can improve the average and worsen the worst
 case, and a plugin that misses one callback clicks. See
-[BENCHMARKING.md](BENCHMARKING.md#impulse-responses).
+[BENCHMARKING.md](BENCHMARKING.md#impulse-responses) for the protocol, and
+[IR-PATH.md](IR-PATH.md) for the investigation around these numbers: the
+per-callback traces, the half-spectrum change, the threshold, what trimming an
+IR would cost, and what was left alone.
 
 ## What it measures, and why it is built this way
 
@@ -313,6 +316,7 @@ Sources/BenchCore/        the protocol, shared by app and CLI
 Sources/App/              SwiftUI, macOS + iOS
 Sources/CLI/              headless macOS runner
 charts/                   presentation graphics, and the script that builds them
+ir-study/                 the tools and pages behind IR-PATH.md
 benchmark-results/        the reports behind every published number
 audio-input/              the input DI, bundled as a resource
 nam-files/                where you put a capture — see its README

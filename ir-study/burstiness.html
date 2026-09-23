@@ -1,0 +1,288 @@
+<meta charset="utf-8">
+<title>Partitioned FFT Burstiness</title>
+<style>
+:root{
+  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7;
+  --ship:#86b6ef; --fft:#1c5cab; --spike:#d4442f; --rule:#e8e7e0;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835;
+    --ship:#256abf; --fft:#b7d3f6; --spike:#f07a5f; --rule:#262624;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835;
+  --ship:#256abf; --fft:#b7d3f6; --spike:#f07a5f; --rule:#262624;
+}
+body{background:var(--page);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;}
+.wrap{max-width:780px;margin:0 auto;padding-inline:20px;padding-block:40px 64px;}
+h1{font-size:30px;line-height:1.15;margin:0 0 10px;text-wrap:balance;letter-spacing:-.01em}
+h2{font-size:19px;line-height:1.3;margin:0 0 8px;text-wrap:balance}
+p{margin:0 0 12px;max-width:66ch;color:var(--ink2)}
+p strong{color:var(--ink)}
+.lede{font-size:17px;color:var(--ink2);max-width:62ch}
+.meta{font-size:12.5px;color:var(--muted);letter-spacing:.02em;margin-bottom:22px}
+section{padding-block:30px;border-top:1px solid var(--rule)}
+.fig{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px 14px 8px;margin:14px 0 8px;}
+.fig svg{display:block;width:100%;height:auto;overflow:visible}
+.cap{font-size:12.5px;color:var(--muted);margin:6px 2px 0;max-width:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--ink2);margin:0 0 6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:11px;height:11px;border-radius:2px;display:inline-block}
+.sw.ship{background:var(--ship)} .sw.fft{background:var(--fft)} .sw.spike{background:var(--spike)}
+.row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.seg{display:inline-flex;border:1px solid var(--axis);border-radius:5px;overflow:hidden}
+.seg button{font:inherit;font-size:12.5px;padding:4px 10px;background:transparent;color:var(--ink2);border:0;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--page)}
+.seg button:focus-visible{outline:2px solid var(--fft);outline-offset:-2px}
+text{fill:var(--ink2);font:11px system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums}
+text.t-muted{fill:var(--muted)} text.t-ink{fill:var(--ink);font-weight:600} text.t-spike{fill:var(--spike);font-weight:600}
+.gl{stroke:var(--grid);stroke-width:1} .ax{stroke:var(--axis);stroke-width:1}
+.f-ship{fill:var(--ship)} .f-fft{fill:var(--fft)} .f-spike{fill:var(--spike)}
+.s-ship{stroke:var(--ship)} .s-fft{stroke:var(--fft)} .s-spike{stroke:var(--spike)}
+table{border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums;width:100%}
+th,td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--rule)}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--ink2);font-size:12px;letter-spacing:.03em}
+.tbl{overflow-x:auto;margin:10px 0}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:16px 0 4px}
+.fact{padding:12px 14px;border:1px solid var(--rule);border-radius:6px;background:var(--surface)}
+.fact b{display:block;font-size:22px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.fact b.ship{color:var(--ship)} .fact b.fft{color:var(--fft)} .fact b.spike{color:var(--spike)}
+.fact span{font-size:12.5px;color:var(--ink2)}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--rule);padding:1px 4px;border-radius:3px}
+</style>
+<div class="wrap">
+<h1>Where the FFT path spends its time</h1>
+<p class="lede">An 8192-tap impulse response on the partitioned-ir branch, timed one audio callback at a time. The FFT path doesn't do a little work on every callback. It does almost nothing on seven callbacks, then all of its transform work on the eighth.</p>
+<div class="meta">Apple M2 · 48 kHz · 64-frame callbacks (1.33 ms each) · Release build of the benchmark's own shim libraries · every callback's time measured</div>
+
+<div class="facts">
+  <div class="fact"><b class="ship">56 µs</b><span>shipping (direct), <em>every</em> callback: 64 samples × 8192 taps</span></div>
+  <div class="fact"><b class="fft">2.7 µs</b><span>FFT path, 7 callbacks out of 8: just the 512-tap direct head</span></div>
+  <div class="fact"><b class="spike">30 µs</b><span>FFT path, every 8th callback: the head plus one full FFT block</span></div>
+</div>
+
+<section>
+<h2>64 callbacks in a row</h2>
+<p>Each bar is one callback's CPU time as a share of its 1.33 ms deadline. Shipping costs about the same every time. The FFT path gathers input for 512 samples, which is eight callbacks, then transforms it, multiplies it against all 15 partitions of the tail, and transforms it back, all inside the callback that completes the 512 samples.</p>
+<div class="fig">
+  <div class="row">
+    <div class="legend"><span><i class="sw ship"></i>shipping (direct)</span><span><i class="sw fft"></i>FFT path, quiet callback</span><span><i class="sw spike"></i>FFT path, transform callback</span></div>
+    <div class="seg" role="group" aria-label="Which trace"><button id="tl-med" aria-pressed="true">Median of 30 runs</button><button id="tl-raw" aria-pressed="false">One raw run</button></div>
+  </div>
+  <svg id="c-timeline" viewBox="0 0 740 330" role="img" aria-label="Per-callback CPU time, shipping versus FFT path"></svg>
+  <p class="cap">Callbacks 400–463 of a 2-second run, taken from steady state. "Median of 30 runs" takes each callback position's median across 30 runs, which removes stray OS interruptions. "One raw run" is a single run, noise included.</p>
+</div>
+</section>
+
+<section>
+<h2>The same thing as a histogram</h2>
+<p>45,000 callbacks per subject. Shipping forms one cluster near 4.2%. The FFT path forms two: about 7/8 of its callbacks near 0.2%, and 1/8 near 2.2%. That second cluster is why <code>block_p99_percent</code> exists. The 99th percentile falls inside the transform cluster, so the FFT path's p99 (2.24%) is simply what a transform callback costs, not a rare outlier.</p>
+<div class="fig">
+  <div class="row">
+    <div class="legend"><span><i class="sw ship"></i>shipping</span><span><i class="sw fft"></i>FFT path</span><span>solid line = mean · dashed = p99</span></div>
+    <div class="seg" role="group" aria-label="Vertical scale"><button id="h-lin" aria-pressed="true">Linear</button><button id="h-log" aria-pressed="false">Log (shows the tails)</button></div>
+  </div>
+  <svg id="c-hist" viewBox="0 0 740 380" role="img" aria-label="Histogram of callback cost"></svg>
+  <p class="cap">Bins are 0.1% of the deadline wide. The last bin collects everything above 8%. The log view shows the thin tails to the right: OS interruptions, which hit both paths about equally.</p>
+</div>
+</section>
+
+<section>
+<h2>Is it predictable? Completely.</h2>
+<p>Nothing in the FFT path branches on sample values. It does the same transforms and multiply-adds whether the input is silence or white noise, and whatever the impulse response contains. Denormals are flushed to zero, so near-silence has no slow path either. The spike always lands on the callback that completes 512 samples, which here means callbacks 8, 16, 24 and so on after a reset.</p>
+<div class="fig">
+  <div class="legend"><span><i class="sw ship"></i>shipping (direct), per callback</span><span><i class="sw fft"></i>FFT, quiet callback</span><span><i class="sw spike"></i>FFT, transform callback</span></div>
+  <svg id="c-content" viewBox="0 0 740 440" role="img" aria-label="Per-callback cost across different inputs and impulse responses"></svg>
+  <p class="cap">Medians, 8192 taps. The top four rows change the audio going in and use the benchmark's synthetic IR. The bottom six change the IR (the first 8192 samples of real 48 kHz cabinet IRs from your library, plus a single click with 8191 zeros after it) and feed in the guitar DI. The IR rows call the branch's convolver directly, so their direct row is the branch's direct path, which is bit-identical to shipping.</p>
+</div>
+</section>
+
+<section>
+<h2>How the spike grows with IR length</h2>
+<p>The quiet callbacks cost the same at every length, because they only run the direct head (256 taps up to 2048, then 512). The transform callback grows with the number of partitions. At 1024 taps and below it costs <strong>more</strong> than a shipping callback, even though the FFT path's average is lower. That's why the p99 was worse than shipping's at 512 taps on every machine, and at 1024 on the ARM boards.</p>
+<div class="fig">
+  <div class="legend"><span><i class="sw ship"></i>shipping, every callback</span><span><i class="sw fft"></i>FFT, quiet callback</span><span><i class="sw spike"></i>FFT, transform callback</span><span>◆ FFT average</span></div>
+  <svg id="c-ladder" viewBox="0 0 740 350" role="img" aria-label="Callback cost by impulse-response length"></svg>
+  <p class="cap">Medians of each callback type, 64-frame callbacks, guitar input. The FFT block is 256 samples up to 2048 taps (a transform every 4th callback) and 512 samples above that (every 8th). The jump at 4096 is the switch to the larger FFT block, not the extra taps.</p>
+</div>
+</section>
+
+<section>
+<h2>Larger callbacks flatten it</h2>
+<p>The spike comes from the ratio between the FFT block (512 samples at 8192 taps) and the host's callback size. With 32-frame callbacks the transform lands once in 16, and costs 4.4% of a deadline that is half as long. At 512 frames or more every callback runs a transform, so every callback costs the same and the p99 sits right on the average. Shipping doesn't care about callback size.</p>
+<div class="fig">
+  <div class="legend"><span><i class="sw ship"></i>shipping</span><span><i class="sw fft"></i>FFT path</span><span>dot = median callback · bar top = p99</span></div>
+  <svg id="c-block" viewBox="0 0 740 320" role="img" aria-label="Median and p99 callback cost by callback size"></svg>
+  <p class="cap">8192 taps, 12 runs of 2 s at each callback size, as a share of that size's own deadline. The shipping p99 spike at 256 frames is noise from one run.</p>
+</div>
+</section>
+
+<section>
+<h2>The same shape on the ARM boards</h2>
+<p>These traces are from the M2. The boards' published results show the same pattern, just higher: at 8192 taps the FFT path's p99 is 4.6–5.1× its average on all three machines, because in every case the p99 is measuring the transform callback.</p>
+<div class="tbl"><table>
+<thead><tr><th>8192 taps, 64 frames</th><th>shipping avg</th><th>shipping p99</th><th>FFT avg</th><th>FFT p99</th><th>FFT p99 ÷ avg</th></tr></thead>
+<tbody>
+<tr><td>M2 MacBook Air</td><td>4.27%</td><td>5.18%</td><td>0.46%</td><td>2.26%</td><td>4.9×</td></tr>
+<tr><td>Raspberry Pi 500</td><td>6.62%</td><td>6.91%</td><td>0.88%</td><td>4.48%</td><td>5.1×</td></tr>
+<tr><td>Tinker Board</td><td>42.04%</td><td>47.33%</td><td>6.10%</td><td>28.26%</td><td>4.6×</td></tr>
+</tbody></table></div>
+<p>On the Tinker Board, 28% of a deadline every 8th callback is comfortable, and still about half of what shipping spends on <em>every</em> callback there.</p>
+</section>
+
+<section>
+<h2>What a transform callback actually does</h2>
+<p>At 8192 taps the branch uses 512-sample blocks and a 1024-point FFT. The first 512 taps run directly, which keeps latency at zero. The remaining 7680 are split into 15 partitions. When these traces were taken, each transform callback ran one forward FFT, 15 × 1024 complex multiply-adds, one inverse FFT, and added 1023 samples into the output ring. Two things could lower or flatten the spike:</p>
+<p><strong>Only half the spectrum is needed.</strong> The input is real, so bins 513–1023 mirror bins 1–511, and the multiply-add loop was doing roughly twice the work it needed. <em>Since done:</em> <code>partitioned-ir</code> commit <code>a09e360</code> multiplies and stores only bins 0–512. Output is bit-identical, and at 8192 taps the transform callback dropped from 29.3 to 20.4 µs on the M2. The p99 fell 28–29% on the M2 and the Pi 500, and 23% on the Tinker Board.</p>
+<p><strong>The work could be spread out.</strong> Fourteen of the 15 partition multiplies use input blocks that arrived earlier. They could run during the seven quiet callbacks, leaving only the two FFTs and one multiply for the eighth. Some convolution engines do this, at the cost of extra code. <em>Not done.</em></p>
+</section>
+</div>
+<script>
+const D = {"timeline":{"upstream":[4.172,4.098,4.152,4.148,4.108,4.1,4.098,4.1,4.1,4.098,4.1,4.098,4.098,4.098,4.097,4.102,4.105,4.1,4.102,4.156,4.155,4.103,4.1,4.156,4.152,4.097,4.102,4.205,4.097,4.202,4.206,4.208,4.206,4.155,4.147,4.153,4.103,4.097,4.105,4.105,4.109,4.128,4.131,4.159,4.167,4.186,4.212,4.231,4.102,4.102,4.1,4.098,4.172,4.203,4.098,4.098,4.095,4.097,4.095,4.103,4.097,4.1,4.1,4.097],"upstream_raw":[4.094,4.094,4.094,4.094,4.097,4.094,4.091,4.091,4.094,4.094,4.094,4.094,4.088,4.097,4.094,4.094,4.091,4.097,4.091,4.097,4.091,4.094,4.094,4.094,4.094,4.091,4.097,4.091,4.091,4.094,4.094,4.091,4.094,4.103,4.091,4.338,4.088,4.094,4.094,4.1,4.103,4.116,4.128,4.138,4.156,4.178,4.203,4.231,4.091,4.094,4.094,4.094,4.091,4.094,4.094,4.094,4.094,4.094,4.094,4.094,4.094,4.094,4.091,4.097],"fft":[0.203,0.2,0.2,0.2,0.2,0.2,0.2,2.17,0.203,0.2,0.2,0.2,0.2,0.2,0.2,2.172,0.203,0.2,0.2,0.2,0.2,0.2,0.2,2.169,0.203,0.2,0.2,0.2,0.2,0.2,0.2,2.169,0.203,0.2,0.2,0.2,0.2,0.2,0.2,2.169,0.203,0.2,0.2,0.2,0.2,0.2,0.2,2.169,0.203,0.2,0.2,0.2,0.2,0.2,0.2,2.172,0.203,0.2,0.2,0.2,0.2,0.2,0.2,2.172],"fft_raw":[0.203,0.2,0.203,0.2,0.2,0.2,0.2,2.166,0.203,0.2,0.203,0.2,0.2,0.206,0.2,2.181,0.2,0.2,0.2,0.2,0.2,0.203,0.2,3.328,0.2,0.209,0.209,0.2,0.203,0.2,0.2,2.169,0.2,0.2,0.203,0.203,0.2,0.2,0.2,2.162,0.209,0.2,0.2,0.2,0.2,0.209,0.209,2.156,0.203,0.2,0.2,0.2,0.2,0.203,0.2,3.375,0.275,0.216,0.206,0.209,0.206,0.203,0.206,2.506]},"hist":{"upstream":{"bins":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,16536,9217,12286,2473,725,444,503,358,371,223,205,293,224,174,168,152,122,73,66,51,50,42,29,26,14,41,14,12,8,12,10,7,7,5,6,4,5,3,4,4,33],"n":45000,"mean":4.242,"p50":4.109,"p99":5.806,"max":12.403},"fft":{"bins":[0,11599,27628,28,6,10,34,11,46,6,3,4,1,5,0,2,1,0,3,0,552,2269,2522,52,39,30,24,16,19,17,13,8,7,12,5,4,5,4,4,2,1,0,1,1,0,2,0,0,0,0,1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":45000,"mean":0.455,"p50":0.2,"p99":2.241,"max":5.753}},"ladder":[{"taps":512,"fftBlock":256,"period":4,"partitions":1,"up":0.194,"up_mean":0.2,"quiet":0.091,"heavy":0.388,"fft_mean":0.17},{"taps":1024,"fftBlock":256,"period":4,"partitions":3,"up":0.441,"up_mean":0.467,"quiet":0.091,"heavy":0.472,"fft_mean":0.189},{"taps":2048,"fftBlock":256,"period":4,"partitions":7,"up":0.966,"up_mean":0.994,"quiet":0.091,"heavy":0.638,"fft_mean":0.233},{"taps":4096,"fftBlock":512,"period":8,"partitions":7,"up":2.053,"up_mean":2.149,"quiet":0.2,"heavy":1.562,"fft_mean":0.377},{"taps":8192,"fftBlock":512,"period":8,"partitions":15,"up":4.213,"up_mean":4.281,"quiet":0.2,"heavy":2.222,"fft_mean":0.458}],"content":[{"group":"input","label":"guitar","ship":4.213,"quiet":0.2,"heavy":2.225},{"group":"input","label":"white noise","ship":4.213,"quiet":0.2,"heavy":2.228},{"group":"input","label":"silence","ship":4.213,"quiet":0.2,"heavy":2.225},{"group":"input","label":"110 Hz sine","ship":4.213,"quiet":0.2,"heavy":2.222},{"group":"ir","label":"synthetic","ship":4.203,"quiet":0.2,"heavy":2.225},{"group":"ir","label":"single click","ship":4.203,"quiet":0.2,"heavy":2.225},{"group":"ir","label":"Ampeg 4x10","ship":4.203,"quiet":0.2,"heavy":2.222},{"group":"ir","label":"Marshall 4x12","ship":4.203,"quiet":0.2,"heavy":2.222},{"group":"ir","label":"Mesa 4x12","ship":4.203,"quiet":0.2,"heavy":2.222},{"group":"ir","label":"Orange 4x12","ship":4.203,"quiet":0.2,"heavy":2.222}],"blocksize":[{"block":32,"ms":0.667,"period":16,"up_p50":4.219,"up_p99":6.0,"up_mean":4.289,"fft_p50":0.206,"fft_p99":4.381,"fft_mean":0.47},{"block":64,"ms":1.333,"period":8,"up_p50":4.213,"up_p99":5.678,"up_mean":4.298,"fft_p50":0.2,"fft_p99":2.3,"fft_mean":0.463},{"block":128,"ms":2.667,"period":4,"up_p50":4.212,"up_p99":5.448,"up_mean":4.297,"fft_p50":0.202,"fft_p99":1.491,"fft_mean":0.463},{"block":256,"ms":5.333,"period":2,"up_p50":4.277,"up_p99":6.523,"up_mean":4.462,"fft_p50":0.424,"fft_p99":0.947,"fft_mean":0.468},{"block":512,"ms":10.667,"period":1,"up_p50":4.223,"up_p99":5.077,"up_mean":4.283,"fft_p50":0.454,"fft_p99":0.611,"fft_mean":0.462},{"block":1024,"ms":21.333,"period":1,"up_p50":4.243,"up_p99":4.822,"up_mean":4.286,"fft_p50":0.454,"fft_p99":0.553,"fft_mean":0.459}]};
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text){ const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); if(text!=null) e.textContent=text; if(parent) parent.appendChild(e); return e; }
+function clear(svg){ while(svg.firstChild) svg.removeChild(svg.firstChild); }
+const fmt = v => (v>=10? v.toFixed(0) : v>=1 ? v.toFixed(1) : v.toFixed(2)).replace(/\.0$/,'');
+function yAxis(svg, x0, x1, y, ticks, label, fmtT){
+  for(const t of ticks){ const yy=y(t); el('line',{x1:x0,x2:x1,y1:yy,y2:yy,class:'gl'},svg); el('text',{x:x0-6,y:yy+3.5,'text-anchor':'end'},svg,(fmtT||(v=>v+'%'))(t)); }
+  if(label) el('text',{x:x0-6,y:y(ticks[ticks.length-1])-12,'text-anchor':'start',class:'t-muted',transform:''},svg,label);
+}
+
+// 1. timeline -----------------------------------------------------------------
+function drawTimeline(mode){
+  const svg=document.getElementById('c-timeline'); clear(svg);
+  const up = mode==='raw'? D.timeline.upstream_raw : D.timeline.upstream;
+  const ff = mode==='raw'? D.timeline.fft_raw : D.timeline.fft;
+  const L=46,R=730, panels=[{name:'shipping (direct)',v:up,top:26},{name:'partitioned FFT',v:ff,top:178}];
+  const H=118, max=5;
+  const n=up.length, bw=(R-L)/n;
+  panels.forEach((p,pi)=>{
+    const y=v=>p.top+H-Math.min(v,max)/max*H;
+    el('text',{x:L,y:p.top-10,class:'t-ink'},svg,p.name);
+    yAxis(svg,L,R,y,[0,1,2,3,4,5]);
+    p.v.forEach((v,i)=>{
+      const spike = pi===1 && (i+400)%8===7;
+      const cls = pi===0?'f-ship':(spike?'f-spike':'f-fft');
+      const h=Math.max(0.8,Math.min(v,max)/max*H);
+      el('rect',{x:L+i*bw+0.8,y:p.top+H-h,width:bw-1.6,height:h,class:cls},svg);
+      if(v>max) el('text',{x:L+i*bw+bw/2,y:p.top-1,'text-anchor':'middle',class:'t-muted'},svg,fmt(v)+'%');
+    });
+    el('line',{x1:L,x2:R,y1:p.top+H,y2:p.top+H,class:'ax'},svg);
+  });
+  // spike labels on FFT panel
+  const y2=v=>178+H-Math.min(v,max)/max*H;
+  const first = ff.findIndex((v,i)=>(i+400)%8===7);
+  el('text',{x:L+first*bw+bw/2+6,y:y2(ff[first])-6,class:'t-spike'},svg,'transform: ~30 µs');
+  el('text',{x:L+(first+2)*bw,y:y2(1.2),class:"t-muted"},svg,"head only: ~2.7 µs");
+  // x ticks
+  for(let i=0;i<=n;i+=8){ const x=L+i*bw; el('line',{x1:x,x2:x,y1:178+H,y2:178+H+4,class:'ax'},svg); el('text',{x,y:178+H+16,'text-anchor':'middle'},svg,String(400+i)); }
+  el('text',{x:(L+R)/2,y:178+H+32,'text-anchor':'middle',class:'t-muted'},svg,'callback number (64 samples each) · share of the 1.33 ms deadline');
+}
+
+// 2. histogram ----------------------------------------------------------------
+function drawHist(scale){
+  const svg=document.getElementById('c-hist'); clear(svg);
+  const L=46,R=730,xmax=8.1;
+  const x=v=>L+v/xmax*(R-L);
+  const rows=[{k:'upstream',name:'shipping (direct)',cls:'f-ship',scls:'s-ship',top:28},{k:'fft',name:'partitioned FFT',cls:'f-fft',scls:'s-fft',top:188}];
+  const H=120;
+  rows.forEach(r=>{
+    const h=D.hist[r.k], tot=h.n;
+    const pc=h.bins.map(c=>c/tot*100);
+    let y, ticks;
+    if(scale==='log'){ const lo=Math.log10(0.002), hi=Math.log10(100); y=v=> v<=0? r.top+H : r.top+H-(Math.max(Math.log10(v),lo)-lo)/(hi-lo)*H; ticks=[0.01,0.1,1,10,100]; }
+    else { y=v=>r.top+H-v/65*H; ticks=[0,20,40,60]; }
+    el('text',{x:L,y:r.top-12,class:'t-ink'},svg,r.name);
+    yAxis(svg,L,R,y,ticks,null,v=>v+'%');
+    pc.forEach((v,i)=>{ if(v<=0) return; const yy=y(v); const w=(R-L)/xmax*0.1; el('rect',{x:x(i*0.1)+0.3,y:yy,width:Math.max(0.6,w-0.6),height:r.top+H-yy,class: (r.k==='fft' && i>=15 && i<30)?'f-spike':r.cls},svg); });
+    el('line',{x1:L,x2:R,y1:r.top+H,y2:r.top+H,class:'ax'},svg);
+    [['mean',h.mean,''],['p99',h.p99,'5 4']].forEach(([lab,v,dash])=>{
+      el('line',{x1:x(v),x2:x(v),y1:r.top-2,y2:r.top+H,class:r.scls,'stroke-width':1.5,'stroke-dasharray':dash},svg);
+      el('text',{x:x(v)+4,y:r.top+8 + (lab==='p99'?12:0),class:'t-ink'},svg,lab+' '+v.toFixed(2)+'%');
+    });
+  });
+  el('text',{x:L-6,y:20,'text-anchor':'end',class:'t-muted'},svg,'');
+  for(let t=0;t<=8;t++){ el('text',{x:x(t),y:188+H+16,'text-anchor':'middle'},svg,t+'%'); el('line',{x1:x(t),x2:x(t),y1:188+H,y2:188+H+4,class:'ax'},svg); el('text',{x:x(t),y:28+H+16,'text-anchor':'middle'},svg,t+'%'); }
+  el('text',{x:(L+R)/2,y:188+H+34,'text-anchor':'middle',class:'t-muted'},svg,'callback cost, share of the 1.33 ms deadline · bar height = share of all callbacks');
+}
+
+// 3. content dot plot -----------------------------------------------------------
+function drawContent(){
+  const svg=document.getElementById('c-content');
+  const L=150,R=720,xmax=4.5, x=v=>L+v/xmax*(R-L);
+  const rows=D.content; const top=30, rh=32;
+  const yOf=i=> top + i*rh + (i>=4?26:0) + 14;
+  el('text',{x:10,y:top-6,class:'t-ink'},svg,'audio in');
+  el('text',{x:10,y:yOf(4)-22,class:'t-ink'},svg,'impulse response');
+  const bottom=yOf(rows.length-1)+18;
+  for(let t=0;t<=4;t++){ el('line',{x1:x(t),x2:x(t),y1:top,y2:bottom,class:'gl'},svg); el('text',{x:x(t),y:bottom+16,'text-anchor':'middle'},svg,t+'%'); }
+  rows.forEach((r,i)=>{
+    const y=yOf(i);
+    el('text',{x:L-10,y:y+4,'text-anchor':'end'},svg,r.label);
+    el('line',{x1:x(r.quiet),x2:x(r.ship),y1:y,y2:y,class:'gl','stroke-width':2},svg);
+    el('circle',{cx:x(r.quiet),cy:y,r:6,class:'f-fft'},svg);
+    el('circle',{cx:x(r.heavy),cy:y,r:6,class:'f-spike'},svg);
+    el('circle',{cx:x(r.ship),cy:y,r:6,class:'f-ship'},svg);
+    if(i===0||i===4){ el('text',{x:x(r.quiet),y:y-11,'text-anchor':'middle',class:'t-muted'},svg,r.quiet.toFixed(2)+'%'); el('text',{x:x(r.heavy),y:y-11,'text-anchor':'middle',class:'t-muted'},svg,r.heavy.toFixed(2)+'%'); el('text',{x:x(r.ship),y:y-11,'text-anchor':'middle',class:'t-muted'},svg,r.ship.toFixed(2)+'%'); }
+  });
+  el('text',{x:(L+R)/2,y:bottom+34,'text-anchor':'middle',class:'t-muted'},svg,'median callback cost, share of the 1.33 ms deadline');
+}
+
+// 4. ladder ---------------------------------------------------------------------
+function drawLadder(){
+  const svg=document.getElementById('c-ladder');
+  const L=46,R=730,top=20,H=240,ymax=4.5, y=v=>top+H-v/ymax*H;
+  yAxis(svg,L,R,y,[0,1,2,3,4]);
+  const n=D.ladder.length, gw=(R-L)/n, bw=Math.min(34,gw/4.2);
+  D.ladder.forEach((r,i)=>{
+    const cx=L+gw*i+gw/2;
+    [['up','f-ship'],['quiet','f-fft'],['heavy','f-spike']].forEach(([k,cls],j)=>{
+      const v=r[k], bx=cx+(j-1.5)*bw+2;
+      el('rect',{x:bx,y:y(v),width:bw-4,height:top+H-y(v),class:cls},svg);
+      el('text',{x:bx+(bw-4)/2,y:y(v)-4,'text-anchor':'middle'},svg,v.toFixed(2));
+    });
+    const dx=cx+1.5*bw+8, dy=y(r.fft_mean);
+    el('path',{d:`M${dx} ${dy-6}L${dx+6} ${dy}L${dx} ${dy+6}L${dx-6} ${dy}Z`,class:'f-fft'},svg);
+    el('text',{x:cx,y:top+H+17,'text-anchor':'middle',class:'t-ink'},svg,r.taps+' taps');
+    el('text',{x:cx,y:top+H+32,'text-anchor':'middle',class:'t-muted'},svg,`${r.partitions} partition${r.partitions>1?"s":""}`);
+    el("text",{x:cx,y:top+H+46,"text-anchor":"middle",class:"t-muted"},svg,`FFT every ${r.period}th`);
+  });
+  el('line',{x1:L,x2:R,y1:top+H,y2:top+H,class:'ax'},svg);
+}
+
+// 5. block size -----------------------------------------------------------------
+function drawBlock(){
+  const svg=document.getElementById('c-block');
+  const L=46,R=730,top=20,H=230,ymax=7, y=v=>top+H-v/ymax*H;
+  yAxis(svg,L,R,y,[0,1,2,3,4,5,6,7]);
+  const n=D.blocksize.length, gw=(R-L)/n;
+  D.blocksize.forEach((r,i)=>{
+    const cx=L+gw*i+gw/2;
+    [['up','ship',-16],['fft','fft',16]].forEach(([k,c,off])=>{
+      const p50=r[k+'_p50'], p99=r[k+'_p99'], xx=cx+off;
+      el('rect',{x:xx-7,y:y(p99),width:14,height:y(p50)-y(p99),class:'f-'+c,opacity:0.35},svg);
+      el('line',{x1:xx-9,x2:xx+9,y1:y(p99),y2:y(p99),class:'s-'+c,'stroke-width':2.5},svg);
+      el('circle',{cx:xx,cy:y(p50),r:5,class:'f-'+c},svg);
+      if(k==='fft') el('text',{x:xx+11,y:y(p99)+4,class:'t-muted'},svg,p99.toFixed(1));
+    });
+    el('text',{x:cx,y:top+H+17,'text-anchor':'middle',class:'t-ink'},svg,r.block+' frames');
+    el('text',{x:cx,y:top+H+32,'text-anchor':'middle',class:'t-muted'},svg,r.period>1?`FFT every ${r.period}`:'FFT every callback');
+  });
+  el('line',{x1:L,x2:R,y1:top+H,y2:top+H,class:'ax'},svg);
+}
+
+function seg(aId,bId,fn,a,b){ const A=document.getElementById(aId),B=document.getElementById(bId);
+  A.addEventListener('click',()=>{A.setAttribute('aria-pressed','true');B.setAttribute('aria-pressed','false');fn(a);});
+  B.addEventListener('click',()=>{B.setAttribute('aria-pressed','true');A.setAttribute('aria-pressed','false');fn(b);}); }
+drawTimeline('med'); seg('tl-med','tl-raw',drawTimeline,'med','raw');
+drawHist('lin'); seg('h-lin','h-log',drawHist,'lin','log');
+drawContent(); drawLadder(); drawBlock();
+</script>

@@ -253,63 +253,63 @@ load, not an arbitrary ceiling.
 
 ### Results
 
-64-frame blocks, mono IR, all eighteen points accepted on every machine. `core%`
-is the average cost of keeping up with real time; `p99` is the 99th-percentile
-block against its own deadline.
+64-frame blocks, mono IR, all eighteen points accepted on every machine, with
+the branch at `a09e360`. `core%` is the average cost of keeping up with real
+time; `p99` is the 99th-percentile block against its own deadline.
 
-**M2 MacBook Air** (spread 0.4-1.6%)
-
-| taps | ms of IR | shipping | | partitioned FFT | | |
-|---:|---:|---:|---:|---:|---:|---:|
-| | | core% | p99 | core% | p99 | |
-| 256 | 5.3 | 0.086% | 0.12% | 0.091% | 0.12% | 0.95x |
-| 512 | 10.7 | 0.200% | 0.29% | **0.168%** | 0.40% | 1.19x |
-| 1024 | 21.3 | 0.437% | 0.59% | **0.188%** | 0.48% | 2.33x |
-| 2048 | 42.7 | 0.985% | 1.34% | **0.229%** | 0.65% | 4.29x |
-| 4096 | 85.3 | 2.220% | 2.94% | **0.378%** | 1.75% | 5.87x |
-| 8192 | 170.7 | 4.268% | 5.18% | **0.459%** | 2.26% | **9.30x** |
-
-**Raspberry Pi 500, Cortex-A76** (spread 0.02-0.21%)
+**M2 MacBook Air** (spread 0.5-2.9%)
 
 | taps | ms of IR | shipping | | partitioned FFT | | |
 |---:|---:|---:|---:|---:|---:|---:|
 | | | core% | p99 | core% | p99 | |
-| 256 | 5.3 | 0.190% | 0.21% | 0.201% | 0.22% | 0.95x |
-| 512 | 10.7 | **0.357%** | 0.39% | 0.407% | 1.02% | 0.88x |
-| 1024 | 21.3 | 0.687% | 0.73% | **0.448%** | 1.18% | 1.53x |
-| 2048 | 42.7 | 1.359% | 1.51% | **0.535%** | 1.52% | 2.54x |
-| 4096 | 85.3 | 2.719% | 2.89% | **0.718%** | 3.16% | 3.79x |
-| 8192 | 170.7 | 6.621% | 6.91% | **0.883%** | 4.48% | **7.50x** |
+| 256 | 5.3 | **0.087%** | 0.12% | 0.090% | 0.11% | 0.96x |
+| 512 | 10.7 | 0.199% | 0.29% | **0.159%** | 0.37% | 1.25x |
+| 1024 | 21.3 | 0.434% | 0.58% | **0.169%** | 0.41% | 2.56x |
+| 2048 | 42.7 | 0.988% | 1.49% | **0.191%** | 0.49% | 5.18x |
+| 4096 | 85.3 | 2.075% | 2.70% | **0.338%** | 1.28% | 6.14x |
+| 8192 | 170.7 | 4.295% | 5.42% | **0.380%** | 1.61% | **11.29x** |
 
-**Tinker Board, Cortex-A17 at 1.416 GHz** (spread 0.06-0.36%)
+**Raspberry Pi 500, Cortex-A76** (spread 0.05-0.32%)
 
 | taps | ms of IR | shipping | | partitioned FFT | | |
 |---:|---:|---:|---:|---:|---:|---:|
 | | | core% | p99 | core% | p99 | |
-| 256 | 5.3 | **1.428%** | 2.03% | 1.810% | 2.43% | 0.79x |
-| 512 | 10.7 | **2.653%** | 3.24% | 3.276% | 8.29% | 0.81x |
-| 1024 | 21.3 | 5.122% | 5.71% | **3.495%** | 9.19% | 1.47x |
-| 2048 | 42.7 | 10.059% | 10.65% | **3.920%** | 10.89% | 2.57x |
-| 4096 | 85.3 | 20.855% | 21.57% | **5.211%** | 21.11% | 4.00x |
-| 8192 | 170.7 | 42.042% | 47.33% | **6.102%** | 28.26% | **6.89x** |
+| 256 | 5.3 | **0.189%** | 0.21% | 0.201% | 0.22% | 0.94x |
+| 512 | 10.7 | **0.357%** | 0.39% | 0.391% | 0.96% | 0.91x |
+| 1024 | 21.3 | 0.687% | 0.73% | **0.413%** | 1.04% | 1.66x |
+| 2048 | 42.7 | 1.357% | 1.51% | **0.455%** | 1.21% | 2.98x |
+| 4096 | 85.3 | 2.721% | 2.88% | **0.645%** | 2.56% | 4.22x |
+| 8192 | 170.7 | 6.630% | 6.91% | **0.727%** | 3.22% | **9.13x** |
+
+**Tinker Board, Cortex-A17 at 1.416 GHz** (spread 0.07-0.45%)
+
+| taps | ms of IR | shipping | | partitioned FFT | | |
+|---:|---:|---:|---:|---:|---:|---:|
+| | | core% | p99 | core% | p99 | |
+| 256 | 5.3 | **1.428%** | 2.03% | 1.808% | 2.43% | 0.79x |
+| 512 | 10.7 | **2.653%** | 3.24% | 3.207% | 8.01% | 0.83x |
+| 1024 | 21.3 | 5.122% | 5.71% | **3.312%** | 8.44% | 1.55x |
+| 2048 | 42.7 | 10.060% | 10.65% | **3.557%** | 9.41% | 2.83x |
+| 4096 | 85.3 | 21.023% | 22.95% | **4.851%** | 18.18% | 4.33x |
+| 8192 | 170.7 | 41.864% | 47.47% | **5.295%** | 21.74% | **7.91x** |
 
 The branch's own direct path, measured alongside and not shown above, is
-bit-identical to upstream at every length on every machine, and within 1-7% of
-it in time. The FFT path lands 136-138 dB below the signal.
+bit-identical to upstream at every length on every machine, and within about
+3% of it in time. The FFT path lands 136-138 dB below the signal.
 
 At 8192 taps the FFT path is both cheaper on average *and* calmer in its worst
 block everywhere. On the Tinker Board that is the difference that matters:
-shipping's slowest single block there reached 123% of its deadline, a click,
-where the FFT path's never passed 34%. Below that, the burstiness that
-`block_p99_percent` exists to catch is real: a partition's transform lands in
-one callback, so on the ARM boards the FFT path's p99 is *worse* than shipping's
-at 512 and 1024 taps, and roughly level at 2048-4096, even where its average is
-far better. On the M2 it is only worse at 512.
+shipping's slowest single block there reached 92% of its deadline, one bad
+scheduling moment from a click, where the FFT path's never passed 28%. Below
+that, the burstiness that `block_p99_percent` exists to catch is real: a
+partition's transform lands in one callback, so on the ARM boards the FFT path's
+p99 is *worse* than shipping's at 512 and 1024 taps, even where its average is
+far better, and better from 2048 up. On the M2 it is only worse at 512.
 
 **The 256-tap row is not measuring FFT.** At exactly 256 taps the whole impulse
 response fits inside the direct head, so no transform runs and the subject is a
 plain FIR — which is why it comes out bit-identical to upstream there, and
-slower (5% on the M2 and the Pi, 27% on the Tinker Board), that cost being the
+slower (3% on the M2, 6% on the Pi, 27% on the Tinker Board), that cost being the
 ring buffer it carries for a tail it does not have. The driver says so on the
 line it prints, and `fftPartitions` in the report is 0. It is the real
 configuration at the shortest length `Auto` ever chooses the FFT path for, so it
@@ -317,10 +317,19 @@ is worth being able to see rather than worth hiding.
 
 **The crossover depends on the machine.** On the M2 it is just above 256 taps,
 where `kAutoDirectMaxTaps` puts it. On both ARM boards it is between 512 and
-1024: at 512 taps `Auto` picks FFT and pays 12% more on the Pi 500 and 23% more
-on the Tinker Board, with a p99 two to three times shipping's. Raising the
-threshold to 512 would give up the M2's 1.19x at that one length to stop the
+1024: at 512 taps `Auto` picks FFT and pays 10% more on the Pi 500 and 21% more
+on the Tinker Board, with a p99 about two and a half times shipping's. Raising
+the threshold to 512 would give up the M2's 1.25x at that one length to stop the
 loss on both boards — the boards being where CPU is scarce.
+
+**Only half of each spectrum is multiplied.** Audio and impulse responses are
+real, so every spectrum the FFT path forms is conjugate-symmetric: bin
+`N - k` is the conjugate of bin `k`, and the real-output inverse transform
+only reads bins `0..N/2`. Until `a09e360` the branch multiplied all `N` bins for
+every partition anyway. Stopping at `N/2` changes no output bit and makes the
+transform callback cheaper, which is why it shows most in the p99: at 8192
+taps, 2.26% to 1.61% on the M2, 4.48% to 3.22% on the Pi 500, 28.26% to 21.74%
+on the Tinker Board. No length got slower on any machine.
 
 ### Three subjects, not two
 

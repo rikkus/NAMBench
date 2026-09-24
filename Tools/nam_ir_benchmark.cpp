@@ -508,7 +508,14 @@ int main(int argc, char** argv)
           return subject.api->process(ir, audio.samples.data(), audio.samples.size(), nullptr,
                                       nullptr, scratch.data());
         };
-        hooks.onTimedPass = [&](size_t) { passBlocks.push_back(scratch); };
+        // measure() retries, and each attempt's pass indices restart at 0.
+        // Starting over at pass 0 keeps passBlocks aligned with the attempt
+        // whose acceptedIndices are reported, not with a rejected one before it.
+        hooks.onTimedPass = [&](size_t passIndex) {
+          if (passIndex == 0)
+            passBlocks.clear();
+          passBlocks.push_back(scratch);
+        };
 
         IrResult record;
         record.timing = measure(subject.name, config, audio.durationSeconds(), hooks, &counters);

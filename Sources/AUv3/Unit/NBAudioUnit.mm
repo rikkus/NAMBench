@@ -39,6 +39,13 @@ struct Kernel
   // generous number of calls, so the render thread never allocates.
   std::vector<NbAUStamp> stamps;
   std::atomic<size_t> stampCount{0};
+
+  // Arm F: how the render thread is scheduled, and whether the host has told
+  // the unit about its workgroup.
+  NbThreadInfo renderThread{};
+  std::atomic<bool> renderThreadCaptured{false};
+  std::atomic<uint32_t> contextObserverCalls{0};
+  std::atomic<bool> workgroupSeen{false};
 };
 
 constexpr size_t kStampCapacity = 1u << 20; // ~33 passes of 16-frame blocks over the input
@@ -186,6 +193,7 @@ constexpr size_t kStampCapacity = 1u << 20; // ~33 passes of 16-frame blocks ove
   _kernel.input.assign(static_cast<size_t>(frames), 0.0f);
   _kernel.output.assign(static_cast<size_t>(frames), 0.0f);
   _kernel.stampCount.store(0);
+  _kernel.renderThreadCaptured.store(false);
   return YES;
 }
 
@@ -202,6 +210,12 @@ constexpr size_t kStampCapacity = 1u << 20; // ~33 passes of 16-frame blocks ove
                             AUAudioFrameCount frameCount, NSInteger outputBusNumber, AudioBufferList* outputData,
                             const AURenderEvent* realtimeEventListHead, AURenderPullInputBlock pullInputBlock) {
     const uint64_t entry = mach_absolute_time();
+
+    if (!kernel->renderThreadCaptured.load(std::memory_order_relaxed))
+    {
+      nb_capture_thread(&kernel->renderThread);
+      kernel->renderThreadCaptured.store(true, std::memory_order_release);
+    }
 
     if (kernel->model == nullptr || frameCount > static_cast<AUAudioFrameCount>(kernel->maxFrames) ||
         pullInputBlock == nullptr)
@@ -243,9 +257,26 @@ constexpr size_t kStampCapacity = 1u << 20; // ~33 passes of 16-frame blocks ove
       s.kernelStart = kernelStart;
       s.kernelEnd = kernelEnd;
       s.exit = mach_absolute_time();
+      s.frames = frameCount;
+      size_t cpu = 0;
+      pthread_cpu_number_np(&cpu);
+      s.cpu = static_cast<uint32_t>(cpu);
       kernel->stampCount.store(slot + 1, std::memory_order_release);
     }
     return noErr;
+  };
+}
+
+// Called by the host (on the render thread) with its render context. The
+// workgroup in it is what a unit joins its own helper threads to; whether one
+// arrives at all, in and out of process, is part of what arm F records.
+- (AURenderContextObserver)renderContextObserver
+{
+  Kernel* kernel = &_kernel;
+  return ^(const AudioUnitRenderContext* context) {
+    kernel->contextObserverCalls.fetch_add(1, std::memory_order_relaxed);
+    if (context != nullptr && context->workgroup != nullptr)
+      kernel->workgroupSeen.store(true, std::memory_order_relaxed);
   };
 }
 
@@ -300,6 +331,24 @@ static NSDictionary* nb_fail(NSString* why)
       @"sampleRate" : @(_modelSampleRate),
       @"busSampleRate" : @(_outputBus.format.sampleRate),
       @"blockSize" : @(_kernel.maxFrames),
+    };
+  }
+
+  if ([command isEqualToString:kNbAUCmdThread])
+  {
+    const bool captured = _kernel.renderThreadCaptured.load(std::memory_order_acquire);
+    const NbThreadInfo& t = _kernel.renderThread;
+    return @{
+      kNbAUStatus : @0,
+      @"captured" : @(captured),
+      @"timeConstraint" : @(captured ? t.timeConstraint : 0),
+      @"periodTicks" : @(t.periodTicks),
+      @"computationTicks" : @(t.computationTicks),
+      @"constraintTicks" : @(t.constraintTicks),
+      @"qos" : @(t.qos),
+      @"priority" : @(t.priority),
+      @"contextObserverCalls" : @(_kernel.contextObserverCalls.load()),
+      @"workgroup" : @(_kernel.workgroupSeen.load()),
     };
   }
 

@@ -438,7 +438,11 @@ out of process, on macOS and on an iOS device. It is a one-off measurement and
 is not tracked on Bencher: what it measures belongs to the OS more than to this
 code. [AUV3-PATH.md](AUV3-PATH.md) has the results, the method and how to
 rerun it. In short: the AU API costs about 0.1 µs per render call, and the
-process boundary about 3 µs, fixed per call.
+process boundary about 3 µs, fixed per call. Under a real IO thread (arm F) the
+boundary costs 2–21 µs per cycle. The kernel runs no slower in the extension
+than in the host. Nothing missed a deadline except standard at 32 frames on the
+iPhone. But the kernel itself runs 1.2–8× slower than the published
+back-to-back numbers, because of the cores and clocks the IO thread gets.
 
 ## The planar gate
 

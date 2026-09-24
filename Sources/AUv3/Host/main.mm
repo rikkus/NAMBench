@@ -58,6 +58,8 @@ bool parse_args(const std::vector<std::string>& args, HostOptions& options)
       options.warmupSeconds = std::atof(next().c_str());
     else if (a == "--window")
       options.windowSeconds = std::atof(next().c_str());
+    else if (a == "--rt-seconds")
+      options.rtSeconds = std::atof(next().c_str());
     else if (a == "--blocks")
     {
       options.blockSizes.clear();
@@ -78,7 +80,7 @@ bool parse_args(const std::vector<std::string>& args, HostOptions& options)
         int arm = 0;
         if (!nb_au_parse_arm(s, arm))
         {
-          std::fprintf(stderr, "unknown arm %s (A, A1, B, C, D)\n", s.c_str());
+          std::fprintf(stderr, "unknown arm %s (A, A1, B, C, D, F, Fi)\n", s.c_str());
           return false;
         }
         options.arms.push_back(arm);
@@ -90,8 +92,8 @@ bool parse_args(const std::vector<std::string>& args, HostOptions& options)
     {
       std::fprintf(stderr,
                    "usage: NAMBenchAUHost --model file.nam [--input in.wav] [--json out.json]\n"
-                   "       [--arms A,A1,B,C,D] [--submodels nano,standard] [--blocks 16,32,64,128,256]\n"
-                   "       [--warmup s] [--window s]\n");
+                   "       [--arms A,A1,B,C,D,F,Fi] [--submodels nano,standard] [--blocks 16,32,64,128,256]\n"
+                   "       [--warmup s] [--window s] [--rt-seconds s]\n");
       return false;
     }
   }

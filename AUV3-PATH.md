@@ -91,9 +91,131 @@ offline setup nothing joins it to an audio workgroup. This is why arm D on the
 M2 costs more in `core %` than its per-call hop alone accounts for.
 
 Don't read it as an AUv3 cost. Under a real host's real-time IO thread, the
-extension's thread is expected to join the host's workgroup, and it may then
-run at full speed. Whether it does is the question for arm F (real-time
-scheduling), which was deliberately left out of this round.
+kernel runs as fast in the extension as in the host. That is arm F, below.
+
+## Arm F: under a real IO thread
+
+Arms A–D run offline and measure CPU cost. Arm F asks whether the deadline is
+met: the unit runs in an `AVAudioEngine` whose output is the device's real IO,
+at 48 kHz, with the IO buffer set to 32, 64, 128 and 256 frames in turn, 20 s
+per subject. **Fi** is the unit registered in the host (arm B's). **F** is the
+extension, out of process. The main mixer is muted but still pulled: every
+subject's render-call count equals its IO-cycle count.
+
+A miss is counted three ways: a gap in the output's sample time between
+consecutive IO cycles, a HAL processor-overload notification (macOS only), and
+an IO cycle whose render took longer than its period.
+
+### Deadlines
+
+| | M2 | iPhone 17 |
+|---|---|---|
+| Missed, nano, any buffer, Fi or F | 0 | 0 |
+| Missed, standard, 64–256 frames, Fi or F | 0 | 0 |
+| Missed, standard, 32 frames | 0 | **Fi: 41 gaps (1968 frames); F: 101 gaps (5092 frames)** |
+| Worst IO cycle, % of period (standard, 32 frames, F) | 14.7% | 23.4% |
+| IO cycles longer than their period | 0 | 0 |
+
+The iPhone's 32-frame standard gaps are real dropouts, but this setup does not
+explain them. No cycle's render came near its period (the longest took 156 µs
+out of 667 µs), so the IO cycle was skipped outside the span the render notify
+times: a late wake-up of the IO thread, or the device side of the IO. They are
+worse out of process (101 against 41) and absent at every other size.
+
+### The cost of out of process, per IO cycle
+
+F's median IO cycle minus Fi's, in µs:
+
+| IO frames | M2 nano | M2 standard | iPhone nano | iPhone standard |
+|---:|---:|---:|---:|---:|
+| 32 | 4.4 | 4.7 | 11.9 | 10.3 |
+| 64 | 15.4 | 2.3 | 15.9 | 15.8 |
+| 128 | 9.9 | 4.4 | 11.3 | 15.3 |
+| 256 | 8.4 | 6.5 | 20.6 | 16.4 |
+
+This is 3–7 times the offline hop (3–3.7 µs per call), and it isn't a fixed
+cost per call. The two hops wait on a thread in another process being woken,
+and under real time that thread is woken from idle every cycle rather than
+kept busy. The M2 standard figures are smaller than nano's because the
+extension's kernel ran faster than the host's there (next section), not
+because the hops were cheaper.
+
+### The kernel is as fast in the extension
+
+Median kernel time per render call, µs, Fi / F:
+
+| IO frames | M2 nano | M2 standard | iPhone nano | iPhone standard |
+|---:|---:|---:|---:|---:|
+| 32 | 2.8 / 2.7 | 12.1 / 11.8 | 10.4 / 10.5 | 40.5 / 41.2 |
+| 64 | 18.1 / 18.3 | 63.3 / 53.9 | 23.4 / 23.0 | 125.0 / 124.3 |
+| 128 | 33.5 / 32.4 | 82.5 / 73.9 | 46.0 / 41.9 | 241.8 / 239.7 |
+| 256 | 37.6 / 32.0 | 163.2 / 155.0 | 77.0 / 77.8 | 476.4 / 472.9 |
+
+In no pairing is the extension's kernel meaningfully slower than the host's. The
+10–40% offline slowdown on the M2 does not survive a real IO thread. The
+extension's render thread has the time-constraint (real-time) policy in every
+subject on both machines, although the unit's `renderContextObserver` is never
+called out of process, so the extension is never handed a workgroup. In process
+it is called once and a workgroup arrives.
+
+### The kernel is not as fast as the published numbers
+
+Under real time the kernel takes longer than bare, back-to-back calls to the
+same entry point on the same input:
+
+| IO frames | M2 nano | M2 standard | iPhone nano | iPhone standard |
+|---:|---:|---:|---:|---:|
+| 32 | 1.4× | 1.2× | 6.6× | 5.0× |
+| 64 | 4.8× | 3.3× | 7.0× | 8.1× |
+| 128 | 4.5× | 2.2× | 6.9× | 7.8× |
+| 256 | 2.6× | 2.2× | 5.4× | 7.8× |
+
+(Fi's median over the bare median. F is similar.)
+
+The cause is where and how fast the render runs, not the AU:
+
+- **Which cores.** Each render call records its CPU number, and the host
+  classifies CPUs by timing a fixed chunk of work on every one (0–3 are E and
+  4–7 P on the M2; 0–3 E and 4–5 P on the iPhone). On the M2 every render call
+  ran on a P core. On the iPhone nearly every call ran on an E core. Standard at
+  32 frames is the exception: 5–14% of its calls were on a P core.
+- **How fast those cores run.** On the M2 the calls are on P cores and still
+  2–5× slower at 64 frames and above. A light, periodic load does not raise the
+  cluster's clock. At 32 frames the IO thread wakes 1500 times a second, and the
+  kernel runs within 1.2–1.4× of bare. This was confirmed by accident: straight
+  after a second of all-core load, the same 64-frame nano subject's kernel took
+  5.2 µs instead of 18. So the host now idles for 15 s after its cluster probe
+  before timing anything.
+- **Not AudioToolbox.** A paced reference runs the bare kernel on a thread of the
+  host's own, one block per period with the IO thread's time-constraint policy.
+  Joined to an audio work interval (`AudioWorkIntervalCreate`, each block marked
+  as an interval), it roughly matches the engine on the M2 at 64 and 128 frames
+  (nano 18.5 against 18.1, standard 65 against 63). Without the work interval it
+  is slower, and it moves by up to 4× between runs. Neither reference matches
+  at 32 or 256 frames, so they only bound the answer.
+
+So the offline core % understates the real-time cost, most of all on the
+iPhone, where the render runs on E cores. What counts for headroom is the
+real-time cycle: standard at 64 frames uses 5.4% of the period on the M2 and
+11.1% on the iPhone, out of process, against the 2.3% and 1.9% the offline
+numbers imply.
+
+### Method
+
+- `Sources/AUv3/Host/NBAURealtime.mm`. Chain: `AVAudioSourceNode` (the input
+  file, looped) → the unit → main mixer (volume 0) → the default output. The
+  host checks that the output format is 48 kHz before starting, so no converter
+  can be inserted. On macOS the device buffer is set through the output unit's
+  `kAudioDevicePropertyBufferFrameSize`. On iOS it is the audio session's
+  preferred IO buffer duration, and the observed frames per cycle are what is
+  reported.
+- A render notify on the output unit stamps each IO cycle's start and end and
+  its output sample time. The unit stamps each render call as in arm D, plus
+  its CPU number.
+- The unit captures its render thread's scheduling policy once, on its first
+  call. That is the only syscall the render thread makes.
+- The first 2 s of each subject are discarded. The references run after the
+  engine has stopped.
 
 ## Limits found
 
@@ -158,3 +280,8 @@ On iOS, build the same scheme for the device, install it, and launch it with
 The same options can follow the bundle ID. It writes `auv3-overhead.json` to
 its Documents folder. `Scripts/auv3-summary.py` turns either JSON into the
 tables above.
+
+Arm F: add `--arms Fi,F --blocks 32,64,128,256 --rt-seconds 20` to either
+command. On macOS it plays (silently) to the default output device, which must
+be at 48 kHz. On iOS put the same options after the bundle ID. Results are in
+`benchmark-results/auv3rt_20260925_{m2,mu17}.*`.

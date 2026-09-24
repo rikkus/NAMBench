@@ -425,6 +425,8 @@ targets:
         PRODUCT_NAME: NAMBenchAUHost
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: NAM AU Bench
+        # Arm F's device buffer size and overload listener (macOS only).
+        "OTHER_LDFLAGS[sdk=macosx*]": ["$(inherited)", "-framework", "CoreAudio"]
         # Without inter-app-audio, iOS lists no extension AUs to this app at
         # all (AUM and friends carry it too): every arm D fails with -3000.
         "CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]": Sources/AUv3/Host/NAMBenchAUHost-iOS.entitlements

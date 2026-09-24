@@ -35,6 +35,7 @@
 #include "nb_shim_timing.h"
 
 #include "NBAUHost.h"
+#include "NBAURealtime.h"
 
 namespace
 {
@@ -608,8 +609,8 @@ void write_dist(std::string& j, const char* name, const Dist& d)
   j += buf;
 }
 
-std::string to_json(const std::vector<SubjectResult>& results, const nbp::Environment& env,
-                    const HostOptions& options)
+std::string to_json(const std::vector<SubjectResult>& results, const std::string& realtime,
+                    const nbp::Environment& env, const HostOptions& options)
 {
   std::string j = "{\n";
   j += "\"environment\":{\"deviceModel\":\"" + json_escape(env.deviceModel) + "\",\"cpu\":\"" + json_escape(env.cpu) +
@@ -649,7 +650,10 @@ std::string to_json(const std::vector<SubjectResult>& results, const nbp::Enviro
     write_dist(j, "hopOutNs", r.hopOutNs);
     j += (i + 1 < results.size()) ? "},\n" : "}\n";
   }
-  j += "]}\n";
+  j += "]";
+  if (!realtime.empty())
+    j += ",\n\"realtime\":" + realtime;
+  j += "}\n";
   return j;
 }
 
@@ -689,7 +693,8 @@ int nb_au_host_run(const HostOptions& options)
   inproc.componentType = kAudioUnitType_Effect;
   inproc.componentSubType = NB_AU_SUBTYPE_INPROC;
   inproc.componentManufacturer = NB_AU_MANUFACTURER;
-  if (std::find(options.arms.begin(), options.arms.end(), 2) != options.arms.end())
+  auto has_arm = [&](int a) { return std::find(options.arms.begin(), options.arms.end(), a) != options.arms.end(); };
+  if (has_arm(2) || has_arm(6))
     [AUAudioUnit registerSubclass:NBAudioUnit.class
            asComponentDescription:inproc
                              name:@"Hmsl: NAMBench AU (in host)"
@@ -726,22 +731,27 @@ int nb_au_host_run(const HostOptions& options)
 
   const nbp::Environment env = nbp::capture_environment();
   logf("NAMBench AUv3 overhead — %s, %s, %s\n", env.deviceModel.c_str(), env.cpu.c_str(), env.osVersion.c_str());
+  std::vector<int> offlineArms;
   for (int armIndex : options.arms)
-    logf("  arm %-2s %s\n", arm_name(static_cast<Arm>(armIndex)), arm_description(static_cast<Arm>(armIndex)));
+    if (armIndex <= 4)
+    {
+      offlineArms.push_back(armIndex);
+      logf("  arm %-2s %s\n", arm_name(static_cast<Arm>(armIndex)), arm_description(static_cast<Arm>(armIndex)));
+    }
   logf("input %zu frames @ %.0f Hz (%.2f s); warm-up %.1f s, window %.1f s\n", audio.samples.size(),
        audio.sampleRate, audio.durationSeconds(), options.warmupSeconds, options.windowSeconds);
 
   Runner runner(options, audio, model);
   std::vector<SubjectResult> results;
 
-  for (NbSubmodel submodel : options.submodels)
+  for (NbSubmodel submodel : offlineArms.empty() ? std::vector<NbSubmodel>{} : options.submodels)
   {
     for (int blockSize : options.blockSizes)
     {
       logf("%s, %d frames:\n", submodel == NbSubmodelNarrowest ? "nano" : "standard", blockSize);
       // A1 first: its output is the reference every AU arm must reproduce.
       std::vector<float> reference;
-      for (int armIndex : options.arms)
+      for (int armIndex : offlineArms)
       {
         const Arm arm = static_cast<Arm>(armIndex);
         if (arm == Arm::A1)
@@ -750,7 +760,7 @@ int nb_au_host_run(const HostOptions& options)
           print_row(results.back());
         }
       }
-      for (int armIndex : options.arms)
+      for (int armIndex : offlineArms)
       {
         const Arm arm = static_cast<Arm>(armIndex);
         if (arm == Arm::A1)
@@ -761,7 +771,29 @@ int nb_au_host_run(const HostOptions& options)
     }
   }
 
-  const std::string json = to_json(results, env, options);
+  // Arm F, after the offline arms so that nothing else is running.
+  std::vector<RtResult> rtResults;
+  if (has_arm(5) || has_arm(6))
+  {
+    RtOptions rt;
+    rt.submodels = options.submodels;
+    rt.blockSizes.clear();
+    for (int b : options.blockSizes)
+      if (b >= 24) // the out-of-process allocation floor
+        rt.blockSizes.push_back(b);
+    rt.modes.clear();
+    if (has_arm(6))
+      rt.modes.push_back(false);
+    if (has_arm(5))
+      rt.modes.push_back(true);
+    rt.warmupSeconds = options.warmupSeconds;
+    rt.seconds = options.rtSeconds;
+    std::vector<float> inputF(audio.samples.begin(), audio.samples.end());
+    rtResults = nb_au_realtime_run(rt, model, inputF, g_log);
+  }
+
+  const std::string json = to_json(results, rtResults.empty() ? std::string() : nb_au_realtime_json(rtResults), env,
+                                   options);
   if (!options.jsonPath.empty())
   {
     if (FILE* f = std::fopen(options.jsonPath.c_str(), "w"))
@@ -775,7 +807,9 @@ int nb_au_host_run(const HostOptions& options)
   int failures = 0;
   for (const SubjectResult& r : results)
     failures += r.ok ? 0 : 1;
-  logf("done: %zu subjects, %d failed\n", results.size(), failures);
+  for (const RtResult& r : rtResults)
+    failures += r.ok ? 0 : 1;
+  logf("done: %zu subjects, %d failed\n", results.size() + rtResults.size(), failures);
   if (g_log != stdout)
     std::fclose(g_log);
   return failures == 0 ? 0 : 2;
@@ -783,8 +817,8 @@ int nb_au_host_run(const HostOptions& options)
 
 bool nb_au_parse_arm(const std::string& s, int& out)
 {
-  static const char* names[] = {"A", "A1", "B", "C", "D"};
-  for (int i = 0; i < 5; i++)
+  static const char* names[] = {"A", "A1", "B", "C", "D", "F", "Fi"};
+  for (int i = 0; i < 7; i++)
   {
     if (s == names[i])
     {

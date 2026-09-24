@@ -37,7 +37,8 @@
 # Usage:
 #   Scripts/track-benchmark.sh [options] [-- <extra driver arguments>]
 #
-#   --project SLUG      Bencher project (default: $BENCHER_PROJECT)
+#   --project SLUG      Bencher project (default: $BENCHER_PROJECT, or with
+#                       --ir $BENCHER_IR_PROJECT, else nam-ir)
 #   --testbed NAME      this machine's testbed (default: detected, see below)
 #   --board HOST        measure on an ARMv7 board reachable at HOST over ssh,
 #                       cross-built here, instead of measuring this machine.
@@ -75,7 +76,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INVOKED_FROM="${PWD}"
 cd "${REPO_ROOT}"
 
-PROJECT="${BENCHER_PROJECT:-}"
+PROJECT=""
 TESTBED=""
 BRANCH=""
 HASH=""
@@ -206,7 +207,16 @@ done
 
 load_dotenv "${INVOKED_FROM}/.env"
 [ "${INVOKED_FROM}" = "${REPO_ROOT}" ] || load_dotenv "${REPO_ROOT}/.env"
-[ -n "${PROJECT}" ] || PROJECT="${BENCHER_PROJECT:-}"
+# Impulse responses have a project of their own. Split into the WaveNet
+# project's per-model plots they made a dashboard too crowded to read, so
+# BENCHER_PROJECT, which names that project, is deliberately not used for them.
+if [ -z "${PROJECT}" ]; then
+	if [ "${IR}" -eq 1 ]; then
+		PROJECT="${BENCHER_IR_PROJECT:-nam-ir}"
+	else
+		PROJECT="${BENCHER_PROJECT:-}"
+	fi
+fi
 
 # --- Which driver, and which machine? ---------------------------------------
 #
@@ -674,6 +684,7 @@ bencher run \
 if [ "${SYNC}" -eq 1 ]; then
 	log "syncing thresholds and plots"
 	SYNC_ARGS=(--project "${PROJECT}" --branch "${BRANCH}")
+	[ "${IR}" -eq 1 ] && SYNC_ARGS+=(--ir)
 	# Plots are pinned, project-wide, and capped at 64, so they follow main
 	# only; a branch still gets thresholds, and its data can be plotted ad hoc.
 	[ "${BRANCH}" = "main" ] || SYNC_ARGS+=(--skip-plots)

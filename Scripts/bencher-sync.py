@@ -49,6 +49,13 @@ Benchmark names are `<model>/<kernel>`, per Scripts/bencher-report.py. A name
 without a `/` is left out of the plots — it is not one of ours, and guessing
 which axis it belongs on would be worse than omitting it.
 
+Impulse responses live in a project of their own and get `--ir`: one plot per
+testbed, titled by architecture, with the mean and the p99 of upstream and the
+FFT path at 8192 taps on it. Split per IR length and per measure like the
+WaveNet plots they were unreadable. For the same reason the ordinary sync
+leaves any `ir_*` benchmark out of its plots, which keeps a project that still
+holds old impulse-response data from growing those plots back.
+
 Nothing here deletes anything. A plot this script does not recognise is left
 alone, and so is a testbed or benchmark that has been archived. A plot is
 recognised by its measure, testbed and model, not its title, so renaming one on
@@ -57,6 +64,7 @@ the dashboard is safe.
 Usage:
     BENCHER_PROJECT=nambench BENCHER_API_KEY=bencher_user_... \\
         Scripts/bencher-sync.py [--branch main] [--dry-run]
+    BENCHER_API_KEY=... Scripts/bencher-sync.py --project nam-ir --ir
 """
 
 from __future__ import annotations
@@ -351,7 +359,9 @@ def sync_plots(
         for testbed in testbeds:
             for benchmark in benchmarks:
                 parts = split_name(benchmark["name"])
-                if not parts or (testbed["slug"], benchmark["name"]) not in measured:
+                if not parts or parts[0].startswith("ir_"):
+                    continue
+                if (testbed["slug"], benchmark["name"]) not in measured:
                     continue
                 wanted.setdefault((measure_name, testbed["slug"], parts[0]), []).append(benchmark)
 
@@ -490,6 +500,95 @@ def sync_plots(
 
 
 
+# The impulse-response plots: titled as the WaveNet project's are, by
+# architecture, and in that order.
+IR_PLOT_TITLES = {"m2-air": "Apple M2", "pi500": "Cortex-A76", "tinker": "ARMv7"}
+IR_PLOT_BENCHMARKS = ("ir_8192/adt_upstream", "ir_8192/adt_partitioned_fft")
+
+
+def sync_ir_plots(
+    project: str,
+    branch: dict[str, Any],
+    testbeds: list[dict[str, Any]],
+    benchmarks: list[dict[str, Any]],
+    measures: dict[str, str],
+    dry_run: bool,
+) -> None:
+    """Pin one plot per testbed: mean and p99, upstream and FFT, 8192 taps.
+
+    No error bars. The p99 has no interval to draw, and a plot styles every
+    series alike, so bars for the mean would be the odd one out on a chart
+    that is about the gap between two lines.
+    """
+    wanted_measures = [measures[m] for m in MEASURES if m in measures]
+    uuid_of_name = {b["name"]: b["uuid"] for b in benchmarks}
+    wanted_benchmarks = [uuid_of_name[n] for n in IR_PLOT_BENCHMARKS if n in uuid_of_name]
+    if not wanted_benchmarks:
+        print(f"no plots: {project} has none of {', '.join(IR_PLOT_BENCHMARKS)} yet")
+        return
+
+    by_slug = {t["slug"]: t for t in testbeds}
+    order = [slug for slug in IR_PLOT_TITLES if slug in by_slug]
+    order += sorted(slug for slug in by_slug if slug not in IR_PLOT_TITLES)
+
+    # Recognised by the one testbed it draws, so a plot renamed on the
+    # dashboard is updated in place rather than joined by a duplicate.
+    plots = listing(project, "plot", "--sort", "index", "--direction", "asc")
+    existing = {}
+    for plot in plots:
+        if len(plot.get("testbeds", [])) == 1 and set(plot.get("benchmarks", [])) <= set(wanted_benchmarks):
+            existing.setdefault(plot["testbeds"][0], plot)
+
+    style = P99_PLOT_STYLE
+    for index, slug in enumerate(order):
+        testbed_uuid = by_slug[slug]["uuid"]
+        current = existing.get(testbed_uuid)
+        title = current["title"] if current and current.get("title") else IR_PLOT_TITLES.get(slug, slug)
+        desired = {
+            "title": title,
+            "window": PLOT_WINDOW_SECONDS,
+            "branches": [branch["uuid"]],
+            "testbeds": [testbed_uuid],
+            "measures": wanted_measures,
+            "benchmarks": wanted_benchmarks,
+            **style,
+        }
+        if current and all(
+            sorted(current.get(k, [])) == sorted(v) if isinstance(v, list) else current.get(k) == v
+            for k, v in desired.items()
+        ):
+            print(f"plot {title!r}: up to date")
+            continue
+
+        flags: list[str] = [
+            "--title", title,
+            "--index", str(index),
+            "--window", str(PLOT_WINDOW_SECONDS),
+            "--x-axis", style["x_axis"],
+            "--y-axis", style["y_axis"],
+        ]
+        for k in ("lower_value", "upper_value", "lower_boundary", "upper_boundary"):
+            flag = "--" + k.replace("_", "-")
+            if current:
+                flags += [flag, "true" if style[k] else "false"]
+            elif style[k]:
+                flags += [flag]
+        flags += ["--branches", branch["uuid"], "--testbeds", testbed_uuid]
+        for uuid in wanted_measures:
+            flags += ["--measures", uuid]
+        for uuid in wanted_benchmarks:
+            flags += ["--benchmarks", uuid]
+
+        if current:
+            print(f"plot {title!r}: updating")
+            action = ["plot", "update", project, current["uuid"], *flags]
+        else:
+            print(f"plot {title!r}: creating")
+            action = ["plot", "create", project, *flags]
+        if not dry_run:
+            bencher(*action)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", default=os.environ.get("BENCHER_PROJECT", ""))
@@ -501,6 +600,11 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="say what would change, change nothing")
     parser.add_argument("--skip-thresholds", action="store_true")
     parser.add_argument("--skip-plots", action="store_true")
+    parser.add_argument(
+        "--ir",
+        action="store_true",
+        help="an impulse-response project: one plot per testbed at 8192 taps",
+    )
     args = parser.parse_args()
 
     # The working directory, then the checkout — the same two places
@@ -549,7 +653,7 @@ def main() -> int:
         sync_thresholds(args.project, args.branch, testbeds, measures, args.dry_run)
 
     if not args.skip_plots:
-        sync_plots(
+        (sync_ir_plots if args.ir else sync_plots)(
             args.project, branch, testbeds, listing(args.project, "benchmark"),
             measures, args.dry_run,
         )

@@ -20,14 +20,13 @@ Three machines throughout: an M2 MacBook Air, a Raspberry Pi 500 (Cortex-A76,
 | Multiply and store only the half of each spectrum the inverse reads | **Adopted.** Bit-identical output; FFT path's p99 at 8192 taps down 23-29% | `partitioned-ir` [`a09e360`](https://github.com/rikkus/AudioDSPTools/commit/a09e360c374e2774e2906ac8f1a4e90113528390) |
 | Raise `kAutoDirectMaxTaps` from 256 to 512 | **Adopted.** FFT lost at 512 taps on both ARM boards | `partitioned-ir` [`e2dc6bc`](https://github.com/rikkus/AudioDSPTools/commit/e2dc6bcaa1cffe6708f93935218829b61eefbf92) |
 | Trim IR tails below some threshold to save CPU | **Rejected.** A per-sample -60 dB cut is audible room sound, not silence, and the FFT path already makes full length cheap | [below](#is-a-shorter-ir-good-enough) |
-| Spread the partition multiplies across the quiet callbacks | **Not done.** Would flatten the spike; more code than it is currently worth | [below](#the-fft-path-is-bursty-and-predictably-so) |
+| Spread the partition multiplies across the quiet callbacks | **Adopted.** FFT path's p99 at 8192 taps down 39-55%; output independent of callback size, 145 dB from before | `partitioned-ir` [`b505422`](https://github.com/rikkus/AudioDSPTools/commit/b50542244c2a6c40602eac58a80823c13fb2678d), [below](#spreading-the-multiplies-b505422) |
 | Free the three 32 KiB buffers the FFT path never uses (96 KiB) | **Declined for now.** Not worth the effort | [below](#memory) |
 | Stop keeping a copy of the raw IR file (94 KiB for a 500 ms file) | **Not pursued.** It is how a sample-rate change rebuilds the convolver; dropping it is a behaviour change | [below](#memory) |
 | Aim this convolver at Pico-class boards (264 KiB SRAM, no FPU) | **Out of scope.** Neither the memory nor the arithmetic fits | [below](#memory) |
 
-NAMBench pins the branch at `e2dc6bc`. The published numbers were measured at
-`a09e360`; `e2dc6bc` changes only which path `Auto` picks, and every benchmark
-subject forces its path, so no number moves.
+NAMBench pins the branch at `b505422`, and the published numbers were
+measured there.
 
 ## Taps, and what `kAutoDirectMaxTaps` chooses
 
@@ -144,7 +143,7 @@ callback that completes the 512. With 64-frame callbacks that is every 8th:
 Two ways to lower the spike were identified: multiply only half the spectrum,
 which was done (next section), and spread 14 of the 15 partition multiplies
 across the seven quiet callbacks, since they use input blocks that arrived
-earlier. The second was not done.
+earlier. The second was done [later](#spreading-the-multiplies-b505422).
 
 ## Listening
 
@@ -266,6 +265,73 @@ at least one partition. The benchmark's 256-tap FFT row, which runs no
 transform, is now purely a forced configuration; it stays so the ladder starts
 in the same place on every machine.
 
+## Spreading the multiplies (`b505422`)
+
+The plan is [`plans/spread-transform.md`](plans/spread-transform.md). First,
+what the transform callback is made of. `ir-study/spread_ab.cpp` times an
+instrumented copy of `e2dc6bc` with a clock read between the phases; 8192 taps,
+64 frames, share of the transform callback's median:
+
+| | transform callback | forward FFT | multiplies | inverse FFT | overlap-add | rest |
+|---|---:|---:|---:|---:|---:|---:|
+| M2 | 20.9 µs | 22% | 40% | 21% | 3% | 13% |
+| Pi 500 | 42.6 µs | 22% | 39% | 21% | 6% | 12% |
+| Tinker Board | 265 µs | 16% | 32% | 16% | 22% | 15% |
+
+The overlap-add costs the Tinker Board a fifth of the spike: its output ring
+was indexed with a 64-bit `%`, which 32-bit ARM does as a library call, once
+per output sample. Three commits followed:
+
+1. [`78fdf96`](https://github.com/rikkus/AudioDSPTools/commit/78fdf96) tests
+   that the FFT path's output is identical, bit for bit, whatever the callback
+   sizes: fixed sizes from 1 to 1024, a mixed pattern and 200 random ones, at
+   1000, 2049, 4096 and 8192 taps.
+2. [`40e2329`](https://github.com/rikkus/AudioDSPTools/commit/40e2329) adds the
+   overlap-add one output sample at a time from the current and previous
+   inverse transforms, with no ring. Byte-identical output on every machine and
+   on four real cabinet IRs; the transform callback 3% cheaper on the M2, 6% on
+   the Pi 500 and 23% on the Tinker Board.
+3. [`b505422`](https://github.com/rikkus/AudioDSPTools/commit/b505422) spreads
+   the multiplies for partitions 1 to P-1 evenly across the callbacks between
+   transforms, since their input spectra are already known. The transform
+   callback keeps the forward FFT, partition 0 and the inverse. The order of
+   additions into the accumulator changes, so output is no longer
+   byte-identical to `e2dc6bc`: 145 dB below the signal in `spread_ab`,
+   142-145 dBFS on the four cabinet IRs. The callback-size test still holds
+   exactly.
+
+Median cost at each position in the 8-callback cycle, 8192 taps, 64 frames, µs:
+
+| | positions 1-7 | transform (8th) | mean |
+|---|---:|---:|---:|
+| M2, `e2dc6bc` | 2.67 | 21.25 | 5.00 |
+| M2, `b505422` | 3.75 | 12.88 | 4.92 |
+| Pi 500, `e2dc6bc` | 4.85 | 42.43 | 9.53 |
+| Pi 500, `b505422` | 7.11 | 24.65 | 9.30 |
+| Tinker Board, `e2dc6bc` | 39.1 | 258.1 | 65.8 |
+| Tinker Board, `b505422` | 47.0 | 123.4 | 56.6 |
+
+In the benchmark, at 8192 taps (64-frame blocks, the published runs at `b505422`
+against those at `a09e360`; see [Records](#records)):
+
+| | p99 before | p99 after | core% change |
+|---|---:|---:|---:|
+| M2 | 1.61% | 0.99% | -0.4% to -2.4% across the ladder |
+| Pi 500 | 3.22% | 1.87% | -2% to -6% |
+| Tinker Board | 21.74% | 9.89% | -18% to -31% |
+
+At 32-frame blocks, the pedal case, the Tinker Board's p99 at 8192 taps went
+from 40.0% of the deadline to 16.0%. Accuracy against upstream is unchanged at
+136-138 dB. The Tinker Board's forced-FFT 256-tap row, which runs no transform
+and so only paid the ring's `%`, went from 26% above direct to 2%; the M2's 7%
+gap there did not move, so it is not the modulo.
+
+What is left in the spike is the forward FFT, partition 0 and the inverse, all
+of which need the block that has just completed: about 60% of the old
+transform callback on the M2 and Pi 500, under half on the Tinker Board. Only
+a smaller first FFT partition (non-uniform partitioning) would lower it
+further.
+
 ## Memory
 
 Heap held after building one mono `ImpulseResponse` from a 500 ms, 48 kHz IR and
@@ -311,11 +377,14 @@ Bencher reports behind the published tables, all 64-frame blocks:
 | | Branch at | M2 | Pi 500 | Tinker Board |
 |---|---|---|---|---|
 | Before | `ba646f4` | `M2-20260921T014503Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cb33-f63a-75f1-b387-a56758166161), `piv-20260922T220743Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cb4e-8e3b-7f90-9c49-dd841b336c34), `tinkerboard-20260922T223553Z` |
-| After | `a09e360` | [report](https://bencher.dev/perf/nambench/reports/01a0cd74-9fea-76a1-b422-89b40229b09b), `M2-20260923T083527Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cd72-8369-7280-97d0-e5bd48fb1f68), `piv-20260923T083526Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cd7e-b03a-70f1-9fea-85e73875d876), `tinkerboard-20260923T084743Z` |
+| Half spectrum | `a09e360` | [report](https://bencher.dev/perf/nambench/reports/01a0cd74-9fea-76a1-b422-89b40229b09b), `M2-20260923T083527Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cd72-8369-7280-97d0-e5bd48fb1f68), `piv-20260923T083526Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cd7e-b03a-70f1-9fea-85e73875d876), `tinkerboard-20260923T084743Z` |
+| Spread multiplies | `b505422` | [report](https://bencher.dev/perf/nam-ir/reports/01a0d4fd-09d6-7920-aa49-1041bb162e71), `M2-20260924T194343Z` | [report](https://bencher.dev/perf/nam-ir/reports/01a0d511-f686-7480-aff7-5dd93d00068a), `piv-20260924T200645Z` | [report](https://bencher.dev/perf/nam-ir/reports/01a0d53f-d194-7810-9cd3-a08c8ef97a66), `tinkerboard-20260924T205600Z` |
 
-The six JSON reports are in `benchmark-results/`, each named as above with
+The first six runs are in the `nambench` Bencher project, the last three in
+`nam-ir`, which has one plot per machine of p99 and core% at 8192 taps. The nine
+JSON reports are in `benchmark-results/`, each named as above with
 `-ir-block64.json` appended. `ir-study/docs_tables.py` prints the README's
-tables from them.
+tables from them; the README shows the last row.
 
 Everything used to produce the rest of this file is in
 [`ir-study/`](ir-study/README.md), with how to run it.

@@ -20,6 +20,8 @@ Commands are run from the repository root, after `Scripts/fetch-vendor.sh` and a
 | `data/ab-samples-README.txt` | The note that went with the A/B samples |
 | `make_storage_variants.py` | Generates the three convolvers `spectrum_storage_ab.cpp` compares |
 | `spectrum_storage_ab.cpp` | Separates the half-spectrum change's storage saving from its arithmetic saving |
+| `make_spread_variants.py` | Generates the convolvers `spread_ab.cpp` compares, one per AudioDSPTools revision, plus `e2dc6bc` with the transform's phases timed |
+| `spread_ab.cpp` | Per-position callback profile, transform p99 and output comparison for each revision, and the transform callback's attribution; build commands in its header |
 | `heap_footprint.cpp` | Heap held by one `ImpulseResponse`, per version and path (macOS) |
 | `ir_survey.py` | Inventory of an IR folder, and how much energy a shorter cut would discard |
 | `docs_tables.py` | Prints the README's IR tables from `nam_ir_benchmark` reports |

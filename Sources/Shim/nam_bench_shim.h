@@ -140,7 +140,17 @@ typedef struct NbModel NbModel;
    * the optimiser cannot elide the work.                                                         \
    */                                                                                             \
   NB_EXPORT uint64_t P##_process(NbModel* model, const double* in, size_t frames, double* out,    \
-                                 double* outChecksum);
+                                 double* outChecksum);                                           \
+                                                                                                  \
+  /**                                                                                             \
+   * Run exactly one block of float32 audio, the way a plugin's render callback                   \
+   * does. Untimed, and leaves FPCR alone: the caller owns both, because here the                 \
+   * caller *is* the thing being measured. `frames` must not exceed the blockSize                 \
+   * the model was created or last reset with. Converts to and from NAM_SAMPLE                     \
+   * (double in these builds), which is the conversion the shipping plugin pays                   \
+   * too. 0 on success.                                                                           \
+   */                                                                                             \
+  NB_EXPORT int P##_process_block(NbModel* model, const float* in, float* out, int32_t frames);
 
 /// The extra API of a kernel-lab framework, declared separately so the
 /// `upstream` and `planar` frameworks do not grow symbols they have no

@@ -275,6 +275,9 @@ struct NbModel
   double sampleRate = 0.0;
   int32_t blockSize = 64;
   std::vector<NAM_SAMPLE> scratch;
+  // Input side of _process_block's float -> NAM_SAMPLE conversion. Sized with
+  // scratch, so a block never allocates.
+  std::vector<NAM_SAMPLE> inScratch;
 };
 
 // --- Exported API ------------------------------------------------------------
@@ -455,6 +458,7 @@ NB_EXPORT NbModel* NB_FN(_create)(const uint8_t* namBytes, size_t len, NbSubmode
       handle->sampleRate = 48000.0;
     handle->blockSize = blockSize;
     handle->scratch.assign(static_cast<size_t>(blockSize), NAM_SAMPLE(0));
+    handle->inScratch.assign(static_cast<size_t>(blockSize), NAM_SAMPLE(0));
 
     handle->dsp->SetPrewarmOnReset(false);
     handle->dsp->Reset(handle->sampleRate, blockSize);
@@ -496,6 +500,8 @@ NB_EXPORT void NB_FN(_reset)(NbModel* model, double sampleRate, int32_t blockSiz
   model->blockSize = blockSize;
   if (model->scratch.size() != static_cast<size_t>(blockSize))
     model->scratch.assign(static_cast<size_t>(blockSize), NAM_SAMPLE(0));
+  if (model->inScratch.size() != static_cast<size_t>(blockSize))
+    model->inScratch.assign(static_cast<size_t>(blockSize), NAM_SAMPLE(0));
 
   // SetPrewarmOnReset(false) was set at construction, so this only rewinds
   // state and buffer sizes — no prewarm cost, and callers keep it outside the
@@ -548,6 +554,27 @@ NB_EXPORT uint64_t NB_FN(_process)(NbModel* model, const double* in, size_t fram
     *outChecksum = checksum;
 
   return elapsed;
+}
+
+NB_EXPORT int NB_FN(_process_block)(NbModel* model, const float* in, float* out, int32_t frames)
+{
+  if (model == nullptr || !model->dsp || in == nullptr || out == nullptr || frames <= 0 ||
+      frames > model->blockSize)
+    return -1;
+
+  const size_t count = static_cast<size_t>(frames);
+  NAM_SAMPLE* inputChannel = model->inScratch.data();
+  NAM_SAMPLE* outputChannel = model->scratch.data();
+  for (size_t i = 0; i < count; i++)
+    inputChannel[i] = static_cast<NAM_SAMPLE>(in[i]);
+
+  NAM_SAMPLE* input[1] = {inputChannel};
+  NAM_SAMPLE* output[1] = {outputChannel};
+  model->dsp->process(input, output, frames);
+
+  for (size_t i = 0; i < count; i++)
+    out[i] = static_cast<float>(outputChannel[i]);
+  return 0;
 }
 
 #if defined(NB_ENABLE_SLIM_LAB)

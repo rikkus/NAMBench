@@ -430,6 +430,16 @@ part of a Bencher benchmark name and two of them in one upload would overwrite
 each other; `--bmf` with more than one is refused up front rather than after
 the measurement has been spent.
 
+## AUv3 wrapper overhead
+
+Everything above times the kernel alone. `NAMBenchAUHost` times the same
+`a2_planar` kernel bare, as an in-process AU, and as an AUv3 extension in and
+out of process, on macOS and on an iOS device. It is a one-off measurement and
+is not tracked on Bencher: what it measures belongs to the OS more than to this
+code. [AUV3-PATH.md](AUV3-PATH.md) has the results, the method and how to
+rerun it. In short: the AU API costs about 0.1 µs per render call, and the
+process boundary about 3 µs, fixed per call.
+
 ## The planar gate
 
 `a2_planar.h` defines `NAM_A2_PLANAR` wherever `__aarch64__` is defined, and on

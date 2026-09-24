@@ -1,0 +1,16 @@
+# Pico SDK checkout (git clone of raspberrypi/pico-sdk, tag 2.2.0)
+sdk/
+
+# Arm GNU toolchain extracted from the official .pkg (no root needed)
+toolchain/
+
+# Build output
+build/
+build-*/
+
+# .uf2/.elf/.bin etc. are build products
+*.uf2
+*.elf
+*.bin
+*.dis
+*.map

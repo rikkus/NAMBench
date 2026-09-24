@@ -432,3 +432,24 @@ inside `a2_fast`:
 ```bash
 xcodebuild -project NAMBench.xcodeproj -scheme nambench-cli -configuration Release OTHER_CPLUSPLUSFLAGS="-DNAM_A2_RING_MODE=0" build
 ```
+
+## Where this went next
+
+Two of the rules above were later re-tested on a much smaller target — an RP2350
+board, dual Cortex-M33 at 150 MHz, where the M33 has half the SIMD width and a
+far smaller register file than the M2. Both held, and one of them came back
+stronger than this study could show:
+
+- **Instructions are not the currency; memory traffic is.** The M33 port removed
+  27% of its kernel's instructions and 22% of its loads — every wrap fixup in the
+  inner loop — and came out 9.5% *slower*, because the change added 138 stores per
+  sample. The linear-ring result above (a cheap branch traded for real traffic) is
+  the same rule seen from the other side.
+- **Planning beats recomputing.** Address planning and gathering to contiguous
+  operands was worth 1.46× there, and the wide-tile result inverted for the same
+  reason it does here: too little register file for the live state a tile needs.
+
+That work is in [`docs/fpi/README.md`](docs/fpi/README.md). It was a
+curiosity-driven experiment rather than a port — there is no intention of running
+NAM on a microcontroller in reality — but the two rules transferred unchanged,
+which is the useful part.

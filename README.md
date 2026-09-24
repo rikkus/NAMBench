@@ -387,3 +387,37 @@ Two structural differences from the other labs, both forced by the target:
   `vmlaq_f32` and `a2_fast`'s own C=8 output changes. The armhf CI entry exists
   for that regression specifically, and `Scripts/a32-codegen-check.sh` fails any
   build where a kernel claiming exactness emits `vmla`.
+
+## The microcontroller experiment (for fun)
+
+`fpi/` and `docs/fpi/` are a side project with no bearing on the benchmarks
+above: an RP2350A board — dual Cortex-M33 at 150 MHz, 520 kB of SRAM — and the
+question of what a NAM A2-Lite kernel actually costs on one core of it.
+
+**It was for fun, and it is not a plan.** There is no intention of running NAM on
+a microcontroller in reality; a laptop, a phone or a pedal SoC is the right home
+for it, and that is what the rest of this repository measures. Nothing here should
+be read as a proposal, and the experiment's own answer is that an MCU at stock
+clock is not close.
+
+It is kept because the *method* transferred: the ARMv7 lab above exists because
+the answers do not survive a change of target, and this one is the same lesson
+taken to a part three tiers smaller. What it produced:
+
+- a hand-written Q15 kernel with SMLAD over packed tap pairs at **6,362
+  cycles/sample, 204% of one core** against a 3,125-cycle budget — about 1.5×
+  better per cycle than the tuned `a2_fast` on the same silicon;
+- a two-core layer split at 118% of real time, with the finding that the
+  second core's ~11% cost is not reachable by moving data, moving code, or doing
+  less work per core;
+- two rules that transferred intact from the M2 lab — planning beats recomputing,
+  and instructions are not the currency (memory traffic is) — plus one that is
+  its own: fp32 state is 2.8x slower than fixed point here, because the M33
+  retires two integer MACs per instruction and one float MAC;
+- and a set of hardware facts worth having: RP2350's SRAM is single-cycle and
+  cannot be beaten, cache-as-SRAM is real but 60% slower in practice, and the
+  XIP cache is not a second memory, only a second port.
+
+[kernel-progress.png](docs/fpi/kernel-progress.png) plots the whole progression
+in measurement order. [docs/fpi/README.md](docs/fpi/README.md) is the analysis and
+[TOOLCHAIN.md](docs/fpi/TOOLCHAIN.md) is what had to be installed to get there.

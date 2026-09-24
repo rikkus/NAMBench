@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1075" viewBox="0 0 1500 1075">
+<rect width="1500" height="1075" fill="white"/>
+<text x="30" y="50" font-family="Helvetica" font-size="26" font-weight="bold">fpi: NAM A2-Lite kernel performance, in order of measurement</text>
+<text x="30" y="78" font-family="Helvetica" font-size="15" fill="#555">150 MHz, one Cortex-M33, stock clock. 48 kHz budget = 3125 cycles/sample = 100%.</text>
+<rect x="150" y="120" width="1290" height="350" fill="#fafafa" stroke="#bbb"/>
+<line x1="150" y1="470" x2="1440" y2="470" stroke="#ddd"/>
+<text x="140" y="475" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">0%</text>
+<line x1="150" y1="447" x2="1440" y2="447" stroke="#ddd"/>
+<text x="140" y="452" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">50%</text>
+<line x1="150" y1="423" x2="1440" y2="423" stroke="#ddd"/>
+<text x="140" y="428" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">100%</text>
+<line x1="150" y1="400" x2="1440" y2="400" stroke="#ddd"/>
+<text x="140" y="405" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">150%</text>
+<line x1="150" y1="377" x2="1440" y2="377" stroke="#ddd"/>
+<text x="140" y="382" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">200%</text>
+<line x1="150" y1="353" x2="1440" y2="353" stroke="#ddd"/>
+<text x="140" y="358" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">250%</text>
+<line x1="150" y1="330" x2="1440" y2="330" stroke="#ddd"/>
+<text x="140" y="335" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">300%</text>
+<line x1="150" y1="307" x2="1440" y2="307" stroke="#ddd"/>
+<text x="140" y="312" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">350%</text>
+<line x1="150" y1="283" x2="1440" y2="283" stroke="#ddd"/>
+<text x="140" y="288" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">400%</text>
+<line x1="150" y1="260" x2="1440" y2="260" stroke="#ddd"/>
+<text x="140" y="265" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">450%</text>
+<line x1="150" y1="237" x2="1440" y2="237" stroke="#ddd"/>
+<text x="140" y="242" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">500%</text>
+<line x1="150" y1="213" x2="1440" y2="213" stroke="#ddd"/>
+<text x="140" y="218" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">550%</text>
+<line x1="150" y1="190" x2="1440" y2="190" stroke="#ddd"/>
+<text x="140" y="195" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">600%</text>
+<line x1="150" y1="167" x2="1440" y2="167" stroke="#ddd"/>
+<text x="140" y="172" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">650%</text>
+<line x1="150" y1="143" x2="1440" y2="143" stroke="#ddd"/>
+<text x="140" y="148" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">700%</text>
+<line x1="150" y1="120" x2="1440" y2="120" stroke="#ddd"/>
+<text x="140" y="125" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">750%</text>
+<text x="150" y="110" font-family="Helvetica" font-size="14" font-weight="bold">Full history (% of one core)</text>
+<line x1="150" y1="423" x2="1440" y2="423" stroke="#1a8c3c" stroke-width="2" stroke-dasharray="10 7"/>
+<text x="1434" y="415" font-family="Helvetica" font-size="13" fill="#1a8c3c" text-anchor="end">100% = real time</text>
+<path d="M199.6,144.8 L298.8,331.0 L398.1,319.7 L497.3,336.9 L596.5,357.0 L695.8,373.7 L795.0,370.3 L894.2,373.5 L993.5,372.4 L1092.7,373.7 L1191.9,371.9 L1291.2,373.7 L1390.4,375.0" fill="none" stroke="#1e5ac8" stroke-width="3"/>
+<circle cx="199.6" cy="144.8" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="199.6" y="130.8" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">697%</text>
+<circle cx="298.8" cy="331.0" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="298.8" y="317.0" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">298%</text>
+<circle cx="398.1" cy="319.7" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="398.1" y="305.7" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">322%</text>
+<circle cx="497.3" cy="336.9" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="497.3" y="322.9" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">285%</text>
+<circle cx="596.5" cy="357.0" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="596.5" y="343.0" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">242%</text>
+<circle cx="695.8" cy="373.7" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="695.8" y="359.7" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">206%</text>
+<circle cx="795.0" cy="370.3" r="6" fill="white" stroke="#c82828" stroke-width="3"/>
+<text x="795.0" y="356.3" font-family="Helvetica" font-size="13" fill="#c82828" text-anchor="middle">214%</text>
+<circle cx="894.2" cy="373.5" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="894.2" y="359.5" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">207%</text>
+<circle cx="993.5" cy="372.4" r="6" fill="white" stroke="#c82828" stroke-width="3"/>
+<text x="993.5" y="358.4" font-family="Helvetica" font-size="13" fill="#c82828" text-anchor="middle">209%</text>
+<circle cx="1092.7" cy="373.7" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="1092.7" y="359.7" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">206%</text>
+<circle cx="1191.9" cy="371.9" r="6" fill="white" stroke="#c82828" stroke-width="3"/>
+<text x="1191.9" y="357.9" font-family="Helvetica" font-size="13" fill="#c82828" text-anchor="middle">210%</text>
+<circle cx="1291.2" cy="373.7" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="1291.2" y="359.7" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">206%</text>
+<circle cx="1390.4" cy="375.0" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="1390.4" y="361.0" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">204%</text>
+<text x="199.6" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">1</text>
+<text x="298.8" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">2</text>
+<text x="398.1" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">3</text>
+<text x="497.3" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">4</text>
+<text x="596.5" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">5</text>
+<text x="695.8" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">6</text>
+<text x="795.0" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">7</text>
+<text x="894.2" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">8</text>
+<text x="993.5" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">9</text>
+<text x="1092.7" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">10</text>
+<text x="1191.9" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">11</text>
+<text x="1291.2" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">12</text>
+<text x="1390.4" y="490" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">13</text>
+<rect x="150" y="610" width="1290" height="280" fill="#fafafa" stroke="#bbb"/>
+<line x1="150" y1="890" x2="1440" y2="890" stroke="#ddd"/>
+<text x="140" y="895" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">190%</text>
+<line x1="150" y1="855" x2="1440" y2="855" stroke="#ddd"/>
+<text x="140" y="860" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">195%</text>
+<line x1="150" y1="820" x2="1440" y2="820" stroke="#ddd"/>
+<text x="140" y="825" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">200%</text>
+<line x1="150" y1="785" x2="1440" y2="785" stroke="#ddd"/>
+<text x="140" y="790" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">205%</text>
+<line x1="150" y1="750" x2="1440" y2="750" stroke="#ddd"/>
+<text x="140" y="755" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">210%</text>
+<line x1="150" y1="715" x2="1440" y2="715" stroke="#ddd"/>
+<text x="140" y="720" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">215%</text>
+<line x1="150" y1="680" x2="1440" y2="680" stroke="#ddd"/>
+<text x="140" y="685" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">220%</text>
+<line x1="150" y1="645" x2="1440" y2="645" stroke="#ddd"/>
+<text x="140" y="650" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">225%</text>
+<line x1="150" y1="610" x2="1440" y2="610" stroke="#ddd"/>
+<text x="140" y="615" font-family="Helvetica" font-size="13" fill="#666" text-anchor="end">230%</text>
+<text x="150" y="600" font-family="Helvetica" font-size="14" font-weight="bold">The plateau after the winner emerged</text>
+<path d="M199.6,-2658.3 L298.8,135.0 L398.1,-34.1 L497.3,223.0 L596.5,525.2 L695.8,775.0 L795.0,725.2 L894.2,773.0 L993.5,755.3 L1092.7,775.0 L1191.9,749.0 L1291.2,775.0 L1390.4,794.9" fill="none" stroke="#1e5ac8" stroke-width="3"/>
+<circle cx="199.6" cy="-2658.3" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="199.6" y="-2672.3" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">697%</text>
+<circle cx="298.8" cy="135.0" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="298.8" y="121.0" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">298%</text>
+<circle cx="398.1" cy="-34.1" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="398.1" y="-48.1" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">322%</text>
+<circle cx="497.3" cy="223.0" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="497.3" y="209.0" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">285%</text>
+<circle cx="596.5" cy="525.2" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="596.5" y="511.2" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">242%</text>
+<circle cx="695.8" cy="775.0" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="695.8" y="761.0" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">206%</text>
+<circle cx="795.0" cy="725.2" r="6" fill="white" stroke="#c82828" stroke-width="3"/>
+<text x="795.0" y="711.2" font-family="Helvetica" font-size="13" fill="#c82828" text-anchor="middle">214%</text>
+<circle cx="894.2" cy="773.0" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="894.2" y="759.0" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">207%</text>
+<circle cx="993.5" cy="755.3" r="6" fill="white" stroke="#c82828" stroke-width="3"/>
+<text x="993.5" y="741.3" font-family="Helvetica" font-size="13" fill="#c82828" text-anchor="middle">209%</text>
+<circle cx="1092.7" cy="775.0" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="1092.7" y="761.0" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">206%</text>
+<circle cx="1191.9" cy="749.0" r="6" fill="white" stroke="#c82828" stroke-width="3"/>
+<text x="1191.9" y="735.0" font-family="Helvetica" font-size="13" fill="#c82828" text-anchor="middle">210%</text>
+<circle cx="1291.2" cy="775.0" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="1291.2" y="761.0" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">206%</text>
+<circle cx="1390.4" cy="794.9" r="6" fill="white" stroke="#1e5ac8" stroke-width="3"/>
+<text x="1390.4" y="780.9" font-family="Helvetica" font-size="13" fill="#1e5ac8" text-anchor="middle">204%</text>
+<text x="199.6" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">1</text>
+<text x="298.8" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">2</text>
+<text x="398.1" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">3</text>
+<text x="497.3" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">4</text>
+<text x="596.5" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">5</text>
+<text x="695.8" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">6</text>
+<text x="795.0" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">7</text>
+<text x="894.2" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">8</text>
+<text x="993.5" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">9</text>
+<text x="1092.7" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">10</text>
+<text x="1191.9" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">11</text>
+<text x="1291.2" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">12</text>
+<text x="1390.4" y="910" font-family="Helvetica" font-size="13" fill="#666" text-anchor="middle">13</text>
+<text x="150" y="960" font-family="Helvetica" font-size="14" fill="#555">Measurement number (see table). Blue = the best kernel at that point.</text>
+<text x="150" y="985" font-family="Helvetica" font-size="14" fill="#555">Red = a regression from harness or layout changes, every one reverted.</text>
+<text x="150" y="1010" font-family="Helvetica" font-size="14" fill="#555">The last point, 204%, is where the session ended.</text>
+</svg>

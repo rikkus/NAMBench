@@ -112,15 +112,35 @@ an IO cycle whose render took longer than its period.
 |---|---|---|
 | Missed, nano, any buffer, Fi or F | 0 | 0 |
 | Missed, standard, 64–256 frames, Fi or F | 0 | 0 |
-| Missed, standard, 32 frames | 0 | **Fi: 41 gaps (1968 frames); F: 101 gaps (5092 frames)** |
+| Missed, standard, 32 frames | 0 | **Fi: 41 gaps (1968 frames); F: 101 gaps (5092 frames)**; on a 60 s rerun, 5 and 6 |
 | Worst IO cycle, % of period (standard, 32 frames, F) | 14.7% | 23.4% |
 | IO cycles longer than their period | 0 | 0 |
 
-The iPhone's 32-frame standard gaps are real dropouts, but this setup does not
-explain them. No cycle's render came near its period (the longest took 156 µs
-out of 667 µs), so the IO cycle was skipped outside the span the render notify
-times: a late wake-up of the IO thread, or the device side of the IO. They are
-worse out of process (101 against 41) and absent at every other size.
+The iPhone's 32-frame standard gaps are real dropouts, and they are not the
+render's fault. A second run of that subject, 60 s per arm, recorded the
+context of each gap (`benchmark-results/auv3rt_gaps_mu17.*`):
+
+| | Fi | F |
+|---|---:|---:|
+| Gaps in 60 s | 5 (248 frames) | 6 (276 frames) |
+| Time from the previous cycle's start, at each gap | 1.50–1.78 ms | 1.50–1.64 ms |
+| The previous cycle's render | 95–109 µs | 121–139 µs |
+| Frames skipped per gap | 48–56 | 44–52 |
+
+The IO period is 0.667 ms. Before every gap the IO thread began its cycle
+0.9–1.1 ms late, the output's sample time jumped by exactly the lost time
+(1 ms is 48 frames), and the render before it had taken a fifth of its
+period. The gaps come in bursts, two to four within 40 ms, with many seconds
+between bursts. They are the same in and out of process. The rate varies a lot
+between runs: 41 and 101 in 20 s the first time, 5 and 6 in 60 s the second.
+
+The thread isn't short of buffer when this happens. Each cycle starts about
+2.48 ms before its output plays (the output timestamp's host time minus the
+cycle's start), and never less than 2.25 ms, late cycles included. The device
+drops the late frames to stay on wall-clock time. So on the iPhone at 32
+frames, the dropouts come from how the OS schedules AudioToolbox's IO thread,
+which a plugin cannot change, and the extension neither causes nor worsens
+them. Nothing like it happens at 64 frames or above, or on the M2.
 
 ### The cost of out of process, per IO cycle
 

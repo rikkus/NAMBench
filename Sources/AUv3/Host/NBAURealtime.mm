@@ -168,6 +168,7 @@ struct Cycle
   uint64_t end = 0;    // output unit post-render
   uint64_t source = 0; // the source node's render block, last call in the cycle
   double sampleTime = 0;
+  uint64_t hostTime = 0; // the output timestamp's host time: when this buffer plays
   uint32_t frames = 0;
   uint32_t sourceCalls = 0;
 };
@@ -201,6 +202,7 @@ OSStatus render_notify(void* ctx, AudioUnitRenderActionFlags* flags, const Audio
   {
     c.start = mach_absolute_time();
     c.sampleTime = ts->mSampleTime;
+    c.hostTime = (ts->mFlags & kAudioTimeStampHostTimeValid) ? ts->mHostTime : 0;
     c.frames = frames;
     c.source = 0;
     c.sourceCalls = 0;
@@ -585,7 +587,7 @@ RtResult run_subject(const RtOptions& options, bool outOfProcess, NbSubmodel sub
   r.expectedCycles = ticks_ns(measureEnd - measureStart) / periodNs;
   r.overloads = overloadsAtEnd - overloadsAtStart;
 
-  std::vector<double> cycleNs, startJitterNs, sourceNs;
+  std::vector<double> cycleNs, startJitterNs, sourceNs, slackNs;
   double prevStartNs = 0;
   for (size_t i = 0; i < window.size(); i++)
   {
@@ -600,6 +602,8 @@ RtResult run_subject(const RtOptions& options, bool outOfProcess, NbSubmodel sub
       r.oddFrameCycles++;
     if (c.source != 0)
       sourceNs.push_back(ticks_ns(c.source - c.start));
+    if (c.hostTime != 0)
+      slackNs.push_back(static_cast<double>(static_cast<int64_t>(c.hostTime - c.start)) * g_ticksToNs);
     const double startNs = ticks_ns(c.start);
     if (i > 0)
     {
@@ -609,6 +613,17 @@ RtResult run_subject(const RtOptions& options, bool outOfProcess, NbSubmodel sub
       {
         r.discontinuities++;
         r.framesSkipped += std::max(0.0, c.sampleTime - expected);
+        if (r.gaps.size() < 200)
+        {
+          RtGap g;
+          g.atSeconds = ticks_ns(c.start - measureStart) / 1e9;
+          g.frames = c.sampleTime - expected;
+          g.startToStartNs = ticks_ns(c.start - p.start);
+          g.prevCycleNs = ticks_ns(p.end - p.start);
+          g.prevSlackNs = p.hostTime ? static_cast<double>(static_cast<int64_t>(p.hostTime - p.start)) * g_ticksToNs : 0;
+          g.slackNs = c.hostTime ? static_cast<double>(static_cast<int64_t>(c.hostTime - c.start)) * g_ticksToNs : 0;
+          r.gaps.push_back(g);
+        }
       }
       startJitterNs.push_back(startNs - prevStartNs - periodNs);
     }
@@ -617,6 +632,9 @@ RtResult run_subject(const RtOptions& options, bool outOfProcess, NbSubmodel sub
   r.cycleNs = dist_of(cycleNs);
   r.cycleStartJitterNs = dist_of(startJitterNs);
   r.sourceAfterStartNs = dist_of(sourceNs);
+  r.slackNs = dist_of(slackNs);
+  if (!slackNs.empty())
+    r.slackMinNs = *std::min_element(slackNs.begin(), slackNs.end());
 
   // --- Render calls inside the window, matched to their cycles -----------------------------
   NSData* stampBytes = stampsReply[@"stamps"];
@@ -823,6 +841,19 @@ std::string nb_au_realtime_json(const std::vector<RtResult>& results)
                   r.pacedWgMedianOnP);
     j += buf;
     j += ",\"callsByCpu\":" + r.callsByCpu;
+    j += "," + dist_json("slackNs", r.slackNs);
+    std::snprintf(buf, sizeof(buf), ",\"slackMinNs\":%.0f,\"gaps\":[", r.slackMinNs);
+    j += buf;
+    for (size_t g = 0; g < r.gaps.size(); g++)
+    {
+      const RtGap& x = r.gaps[g];
+      std::snprintf(buf, sizeof(buf),
+                    "%s{\"at\":%.4f,\"frames\":%.0f,\"startToStartNs\":%.0f,\"prevCycleNs\":%.0f,"
+                    "\"prevSlackNs\":%.0f,\"slackNs\":%.0f}",
+                    g ? "," : "", x.atSeconds, x.frames, x.startToStartNs, x.prevCycleNs, x.prevSlackNs, x.slackNs);
+      j += buf;
+    }
+    j += "]";
     j += (i + 1 < results.size()) ? "},\n" : "}\n";
   }
   j += "]";

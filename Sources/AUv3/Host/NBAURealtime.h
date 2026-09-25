@@ -40,6 +40,17 @@ struct RtThread
   int priority = 0;
 };
 
+/// One sample-time discontinuity, with what surrounded it.
+struct RtGap
+{
+  double atSeconds = 0;      // since the measurement window opened
+  double frames = 0;         // sample-time jump beyond the expected
+  double startToStartNs = 0; // wall time between this cycle's start and the last
+  double prevCycleNs = 0;    // how long the previous cycle's render took
+  double prevSlackNs = 0;    // previous cycle: start to when its buffer plays
+  double slackNs = 0;        // this cycle, the same
+};
+
 struct RtResult
 {
   bool outOfProcess = false;
@@ -73,6 +84,11 @@ struct RtResult
   size_t oddFrameCycles = 0;
 
   RtDist cycleNs, cycleStartJitterNs, sourceAfterStartNs;
+  /// Cycle start to the output timestamp's host time: how long before its
+  /// buffer plays each render began.
+  RtDist slackNs;
+  double slackMinNs = 0;
+  std::vector<RtGap> gaps;
   RtDist kernelNs, wrapperNs, entryAfterCycleStartNs, exitBeforeCycleEndNs;
   double bareKernelMedianNs = 0;
 

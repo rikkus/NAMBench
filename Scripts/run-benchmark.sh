@@ -32,10 +32,12 @@
 #                      each and the pair can be read together.
 #
 #   --ir               measure impulse-response convolution instead of the
-#                      WaveNet engines: nam_ir_benchmark, AudioDSPTools main
-#                      against the partitioned-ir branch. Everything this script
-#                      does to the machine is the same, which is the point of
-#                      putting it here rather than in a script of its own.
+#                      WaveNet engines: nam_ir_benchmark, Core's Linear against
+#                      linearplus. Everything this script does to the machine is
+#                      the same, which is the point of putting it here rather
+#                      than in a script of its own.
+#   --variants LIST    --ir only: the line-up, baseline first (default
+#                      linear,linearplus). See nam_ir_benchmark --help.
 #   --taps LIST        --ir only: IR lengths (default 256,512,1024,2048,4096,8192)
 #   --blocks LIST      --ir only: block sizes, one report each (default 64).
 #                      One report per size because block size is not part of a
@@ -60,6 +62,7 @@ MODEL=""
 AUDIO="${REPO_ROOT}/audio-input/input.wav"
 SUBMODELS="widest,narrowest"
 IR=0
+VARIANTS=""
 TAPS="256,512,1024,2048,4096,8192"
 BLOCKS="64"
 OUTPUT_DIR="${REPO_ROOT}/benchmark-results"
@@ -84,6 +87,7 @@ while [ $# -gt 0 ]; do
 		--audio) AUDIO="$2"; shift 2 ;;
 		--submodels) SUBMODELS="$2"; shift 2 ;;
 		--ir) IR=1; shift ;;
+		--variants) VARIANTS="$2"; shift 2 ;;
 		--taps) TAPS="$2"; shift 2 ;;
 		--blocks) BLOCKS="$2"; shift 2 ;;
 		--output-dir) OUTPUT_DIR="$2"; shift 2 ;;
@@ -93,7 +97,7 @@ while [ $# -gt 0 ]; do
 		--no-governor) TOUCH_GOVERNOR=0; shift ;;
 		--keep-governor) RESTORE_GOVERNOR=0; shift ;;
 		--) shift; EXTRA=("$@"); break ;;
-		-h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}"; exit 0 ;;
+		-h|--help) sed -n '2,56p' "${BASH_SOURCE[0]}"; exit 0 ;;
 		*) die "unknown option $1" ;;
 	esac
 done
@@ -221,7 +225,13 @@ restore_governor() {
 		write_governor "${SAVED_GOVERNOR}" || warn "could not restore the governor"
 	fi
 }
-trap restore_machine EXIT INT TERM
+# The EXIT trap does the restoring. INT and TERM only have to end the script:
+# a handler that restored and returned would let the loop go on to the next
+# block size or submodel with the governor already put back, measuring exactly
+# the biased run this script exists to prevent.
+trap restore_machine EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if [ "${MAX_FREQ}" != "none" ]; then
 	[ -r "${MAXFREQ_FILES[0]}" ] || die "--max-freq given but this machine has no cpufreq scaling_max_freq"
@@ -437,6 +447,7 @@ for ITEM in ${LOOP}; do
 		log "measuring impulse responses, ${ITEM}-frame blocks"
 		${RUNNER[@]+"${RUNNER[@]}"} "${BINARY}" \
 			--audio "${AUDIO}" \
+			${VARIANTS:+--variants "${VARIANTS}"} \
 			--taps "${TAPS}" \
 			--blocks "${ITEM}" \
 			--output "${REPORT}" \
@@ -514,8 +525,8 @@ done
 # Whether one rejection should sink the whole upload depends on what the run is.
 # The WaveNet run measures two variants and the thing wanted from it is the
 # ratio between them, so half of it is worth little — it stays all-or-nothing.
-# The IR run is an eighteen-point ladder of independent series, where losing
-# seventeen good measurements to one noisy point buys nothing.
+# The IR run is a ladder of independent series, one per length and variant,
+# where losing every good measurement to one noisy point buys nothing.
 #
 # A run the clock moved under is refused either way. That is not one subject
 # being hard to measure; it is every number here describing a machine that was

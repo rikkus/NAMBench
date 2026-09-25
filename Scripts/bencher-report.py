@@ -67,7 +67,7 @@ both A2 submodels becomes a single Bencher report.
 A benchmark name is `<model>/<kernel>` — `a2_standard/a2_planar`, `a2_nano/a2_fast`
 — because Bencher has exactly one free-text dimension per series and two things
 to say with it. Impulse-response runs use the same shape, with the IR length
-where the model goes: `ir_8192/adt_partitioned_fft`. Length belongs in the name
+where the model goes: `ir_8192/linearplus`. Length belongs in the name
 because it is the independent variable of that benchmark — the whole question is
 where the FFT path starts to pay — and because two lengths are no more
 comparable to each other than two submodels are.
@@ -148,9 +148,9 @@ def convert_ir(report: dict[str, Any], prefix: str) -> tuple[dict[str, Any], lis
     """Convert an `nam_ir_benchmark` report.
 
     One entry per (IR length, variant), carrying both measures. The variant
-    names arrive as `adt_partitioned:fft`; the colon becomes an underscore so
-    that a benchmark name is punctuated the same way everywhere and survives
-    being put in a URL.
+    names arrive as `linearplus:fft` when a convolution was forced; the colon
+    becomes an underscore so that a benchmark name is punctuated the same way
+    everywhere and survives being put in a URL.
     """
     bmf: dict[str, Any] = {}
     skipped: list[str] = []

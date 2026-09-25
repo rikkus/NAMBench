@@ -50,8 +50,8 @@ without a `/` is left out of the plots — it is not one of ours, and guessing
 which axis it belongs on would be worse than omitting it.
 
 Impulse responses live in a project of their own and get `--ir`: one plot per
-testbed, titled by architecture, with the mean and the p99 of upstream and the
-FFT path at 8192 taps on it. Split per IR length and per measure like the
+testbed, titled by architecture, with the mean and the p99 of Core's `linear`
+and `linearplus` at 8192 taps on it. Split per IR length and per measure like the
 WaveNet plots they were unreadable. For the same reason the ordinary sync
 leaves any `ir_*` benchmark out of its plots, which keeps a project that still
 holds old impulse-response data from growing those plots back.
@@ -503,7 +503,7 @@ def sync_plots(
 # The impulse-response plots: titled as the WaveNet project's are, by
 # architecture, and in that order.
 IR_PLOT_TITLES = {"m2-air": "Apple M2", "pi500": "Cortex-A76", "tinker": "ARMv7"}
-IR_PLOT_BENCHMARKS = ("ir_8192/adt_upstream", "ir_8192/adt_partitioned_fft")
+IR_PLOT_BENCHMARKS = ("ir_8192/linear", "ir_8192/linearplus")
 
 
 def sync_ir_plots(

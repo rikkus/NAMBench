@@ -1,5 +1,17 @@
 # Impulse-response convolution: partitioned FFT against direct
 
+> **Moved to NeuralAmpModelerCore (2026-09-25).** The AudioDSPTools patch is
+> shelved. Core already has a zero-latency FFT convolver, `Linear` (since #278,
+> with power-of-two tiers since #324), and since #337 it loads a `.wav` IR as a
+> `Linear` model. So the convolver now lives there: branch
+> [`linearplus`](https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore/tree/linearplus)
+> of the Core fork replaces `Linear`'s FFT path with this one, and NAMBench
+> measures upstream's `linear` against `linearplus`
+> ([BENCHMARKING.md](BENCHMARKING.md#impulse-responses),
+> [ir-study/linearplus.html](ir-study/linearplus.html)). NAMBench is back on
+> upstream AudioDSPTools, and no longer fetches the branch. Everything
+> below was measured on the AudioDSPTools branch, and says so where it matters.
+
 AudioDSPTools convolves the plugin's cabinet IR directly: one multiply-add per
 tap, per output sample. The
 [`partitioned-ir`](https://github.com/rikkus/AudioDSPTools/tree/partitioned-ir)
@@ -25,8 +37,8 @@ Three machines throughout: an M2 MacBook Air, a Raspberry Pi 500 (Cortex-A76,
 | Stop keeping a copy of the raw IR file (94 KiB for a 500 ms file) | **Not pursued.** It is how a sample-rate change rebuilds the convolver; dropping it is a behaviour change | [below](#memory) |
 | Aim this convolver at Pico-class boards (264 KiB SRAM, no FPU) | **Out of scope.** Neither the memory nor the arithmetic fits | [below](#memory) |
 
-NAMBench pins the branch at `b505422`, and the published numbers were
-measured there.
+NAMBench pinned the branch at `b505422` until the move, and the numbers here
+were measured there.
 
 ## Taps, and what `kAutoDirectMaxTaps` chooses
 
@@ -331,6 +343,46 @@ of which need the block that has just completed: about 60% of the old
 transform callback on the M2 and Pi 500, under half on the Tinker Board. Only
 a smaller first FFT partition (non-uniform partitioning) would lower it
 further.
+
+## Against NAM core's `Linear` (#324)
+
+Everything above compares with AudioDSPTools `main`'s direct convolver.
+Upstream has its own zero-latency FFT convolver: NAM core's `Linear` model
+(#278, made non-uniform in #324 at `2563c0f`, and able to load a .wav IR since
+#337). It uses a 128-tap direct head at 8192 taps, then power-of-two tiers up
+to 2048-sample partitions, with half spectra and multiplies spread over each
+tier's deadline. The plugin's IR slot does not use it yet.
+
+`ir-study/linear_ab.cpp` runs `b505422` and `Linear` head to head. It builds
+against `vendor/adt-partitioned`, which `fetch-vendor.sh` no longer fetches; the
+branch is still on GitHub at `b505422`. Both get the
+same synthetic 8192-tap IR at 48 kHz and the same noise input, with the FFT
+path forced on both. They alternate over 10 rounds of 10 s each, after a
+one-second warm-up, and every callback is timed. The Pi 500 was pinned to
+core 3 and built with `-mcpu=cortex-a76`. The outputs agree to −130 dB once
+ADT's gain normalisation is scaled out. The Tinker Board was unavailable.
+
+Per callback, in µs, with the share of the 48 kHz deadline in brackets:
+
+| Machine | Frames | ADT mean | ADT p99 | ADT max | `Linear` mean | `Linear` p99 | `Linear` max |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| M2 | 32 | 2.52 (0.38%) | 11.62 (1.74%) | 74.5 | 4.32 (0.65%) | 44.62 (6.69%) | 102.0 |
+| M2 | 64 | 4.99 (0.37%) | 13.25 (0.99%) | 52.8 | 8.69 (0.65%) | 49.38 (3.70%) | 110.5 |
+| Pi 500 | 32 | 4.79 (0.72%) | 22.67 (3.40%) | 27.1 | 11.40 (1.71%) | 112.50 (16.88%) | 126.4 |
+| Pi 500 | 64 | 9.48 (0.71%) | 25.30 (1.90%) | 28.5 | 22.68 (1.70%) | 116.72 (8.75%) | 122.5 |
+
+`partitioned-ir` beats `Linear` on every figure here. Its mean is 42% lower
+on the M2 and 58% lower on the Pi 500. Its p99 is 3.7x to 3.8x lower on the
+M2, and 4.6x to 5.0x lower on the Pi 500. `Linear`'s p99 is almost the same at
+32 and 64 frames. That points to one large per-block transform (probably the
+2048-sample tier) that its spreading does not break up. On the M2, `Linear`'s
+32-frame p99 of 44.6 µs is close to the 49.1 µs upstream reports for an M1 in
+`tools/BENCHMARK_LINEAR.md`.
+
+This comparison is what moved the work into Core: the convolver the plugin
+would adopt should be the one Core already ships, made faster, rather than a
+second one in AudioDSPTools. `linearplus` is that change; NAMBench's
+`nam_ir_benchmark` now measures it against upstream's `Linear` directly.
 
 ## Memory
 

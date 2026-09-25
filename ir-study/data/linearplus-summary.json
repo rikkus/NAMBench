@@ -1,0 +1,4212 @@
+{
+ "generated": "2026-09-25",
+ "baseline": "linear",
+ "candidate": "linearplus",
+ "also": [
+  "linear@4096"
+ ],
+ "pins": {
+  "upstream": {
+   "url": "https://github.com/sdatkinson/NeuralAmpModelerCore.git",
+   "sha": "0b3d3c97b0859a3a8c92a8628c4dd89a25eb5842"
+  },
+  "eigen": {
+   "url": "https://gitlab.com/libeigen/eigen.git",
+   "sha": "bc3b39870ecb690a623a3f49149a358b95c5781d",
+   "shared": true
+  },
+  "linearplus": {
+   "url": "https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore.git",
+   "sha": "79c8009adf1fca8a2dea6cf926dbe7c03cec878f",
+   "branch": "linearplus"
+  }
+ },
+ "machines": [
+  {
+   "label": "M2 MacBook Air",
+   "environment": {
+    "deviceModel": "Mac14,15",
+    "cpu": "Apple M2",
+    "platform": "macOS",
+    "architecture": "arm64",
+    "fpu": "neon+fma",
+    "osVersion": "27.0",
+    "totalCores": 8,
+    "cpuGovernor": ""
+   },
+   "runs": [
+    {
+     "file": "M2-20260925T141820Z-ir-block16.json",
+     "note": "M2",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": -1.0,
+     "socTemperatureEndC": -1.0,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "M2-20260925T141820Z-ir-block256.json",
+     "note": "M2",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": -1.0,
+     "socTemperatureEndC": -1.0,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "M2-20260925T141820Z-ir-block32.json",
+     "note": "M2",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": -1.0,
+     "socTemperatureEndC": -1.0,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "M2-20260925T141820Z-ir-block64.json",
+     "note": "M2",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": -1.0,
+     "socTemperatureEndC": -1.0,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "M2-20260925T145443Z-ir-block128.json",
+     "note": "M2",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": -1.0,
+     "socTemperatureEndC": -1.0,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "M2-20260925T172606Z-ir-block128.json",
+     "note": "M2 long IRs, tail tier",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": -1.0,
+     "socTemperatureEndC": -1.0,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "M2-20260925T172606Z-ir-block16.json",
+     "note": "M2 long IRs, tail tier",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": -1.0,
+     "socTemperatureEndC": -1.0,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "M2-20260925T172606Z-ir-block32.json",
+     "note": "M2 long IRs, tail tier",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": -1.0,
+     "socTemperatureEndC": -1.0,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "M2-20260925T172606Z-ir-block64.json",
+     "note": "M2 long IRs, tail tier",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": -1.0,
+     "socTemperatureEndC": -1.0,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "M2-20260925T183337Z-ir-block256.json",
+     "note": "M2 long IRs, tail tier, rerun",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": -1.0,
+     "socTemperatureEndC": -1.0,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "M2-20260925T184043Z-ir-block128.json",
+     "note": "M2 long IRs, tail tier, rerun",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": -1.0,
+     "socTemperatureEndC": -1.0,
+     "sampleRate": 48000.0
+    }
+   ],
+   "cells": [
+    {
+     "frames": 16,
+     "taps": 512,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.2001,
+       "p99Us": 0.667,
+       "meanUs": 0.49106999999999995,
+       "meanPercent": 0.147321,
+       "maxPercent": 20.2749,
+       "blocks": 41970116,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.1998,
+       "p99Us": 0.666,
+       "meanUs": 0.4946833333333333,
+       "meanPercent": 0.148405,
+       "maxPercent": 31.95,
+       "blocks": 40136788,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 16,
+     "taps": 1024,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.4125,
+       "p99Us": 1.375,
+       "meanUs": 1.0180333333333333,
+       "meanPercent": 0.30541,
+       "maxPercent": 25.3749,
+       "blocks": 19970180,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.4002,
+       "p99Us": 1.334,
+       "meanUs": 1.00992,
+       "meanPercent": 0.302976,
+       "maxPercent": 27.9249,
+       "blocks": 20297560,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 16,
+     "taps": 2048,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 512,
+       "p99Percent": 3.8625,
+       "p99Us": 12.875,
+       "meanUs": 1.3885933333333333,
+       "meanPercent": 0.416578,
+       "maxPercent": 39.675,
+       "blocks": 14863052,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 256,
+       "fftBlockSize": 256,
+       "p99Percent": 1.0875,
+       "p99Us": 3.6249999999999996,
+       "meanUs": 0.6396533333333333,
+       "meanPercent": 0.191896,
+       "maxPercent": 19.5126,
+       "blocks": 32639786,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.808329
+    },
+    {
+     "frames": 16,
+     "taps": 4096,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 1024,
+       "p99Percent": 5.5875,
+       "p99Us": 18.625,
+       "meanUs": 1.812113333333333,
+       "meanPercent": 0.543634,
+       "maxPercent": 38.55,
+       "blocks": 11327348,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 2.9625,
+       "p99Us": 9.874999999999998,
+       "meanUs": 0.9517166666666668,
+       "meanPercent": 0.285515,
+       "maxPercent": 22.6626,
+       "blocks": 21967198,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.870641
+    },
+    {
+     "frames": 16,
+     "taps": 8192,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 2048,
+       "p99Percent": 5.7375,
+       "p99Us": 19.124999999999996,
+       "meanUs": 2.2977966666666667,
+       "meanPercent": 0.689339,
+       "maxPercent": 38.0124,
+       "blocks": 9101164,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 3.1125,
+       "p99Us": 10.375,
+       "meanUs": 1.0821833333333335,
+       "meanPercent": 0.324655,
+       "maxPercent": 20.5374,
+       "blocks": 19249944,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.866496
+    },
+    {
+     "frames": 16,
+     "taps": 48000,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 11.8623,
+       "p99Us": 39.541,
+       "meanUs": 3.23092,
+       "meanPercent": 0.969276,
+       "maxPercent": 53.9499,
+       "blocks": 6482124,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 1024,
+       "p99Percent": 4.8123,
+       "p99Us": 16.041,
+       "meanUs": 1.9926366666666664,
+       "meanPercent": 0.597791,
+       "maxPercent": 25.275,
+       "blocks": 10410684,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 11.8875,
+       "p99Us": 39.62499999999999,
+       "meanUs": 3.1285766666666666,
+       "meanPercent": 0.938573,
+       "maxPercent": 308.2125,
+       "blocks": 6580338,
+       "overruns": 1,
+       "missesPerMinute": 0.02735421797482136
+      }
+     },
+     "parityDbBelowSignal": 136.857601
+    },
+    {
+     "frames": 16,
+     "taps": 240000,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 13.275,
+       "p99Us": 44.25,
+       "meanUs": 4.695133333333333,
+       "meanPercent": 1.40854,
+       "maxPercent": 1849.7877,
+       "blocks": 4354154,
+       "overruns": 64,
+       "missesPerMinute": 2.6457493235195635
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 8192,
+       "p99Percent": 5.0625,
+       "p99Us": 16.875,
+       "meanUs": 2.6888199999999998,
+       "meanPercent": 0.806646,
+       "maxPercent": 36.525,
+       "blocks": 7497002,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 12.8625,
+       "p99Us": 42.875,
+       "meanUs": 4.18301,
+       "meanPercent": 1.254903,
+       "maxPercent": 125.3874,
+       "blocks": 4910700,
+       "overruns": 1,
+       "missesPerMinute": 0.03665465208626061
+      }
+     },
+     "parityDbBelowSignal": 136.86291
+    },
+    {
+     "frames": 16,
+     "taps": 1200000,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 29.0874,
+       "p99Us": 96.95799999999998,
+       "meanUs": 10.923246666666666,
+       "meanPercent": 3.276974,
+       "maxPercent": 115.4499,
+       "blocks": 1866066,
+       "overruns": 5,
+       "missesPerMinute": 0.482298053766587
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 5.3874,
+       "p99Us": 17.958000000000002,
+       "meanUs": 3.98344,
+       "meanPercent": 1.195032,
+       "maxPercent": 23.8749,
+       "blocks": 4845224,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 14.4627,
+       "p99Us": 48.208999999999996,
+       "meanUs": 8.124913333333332,
+       "meanPercent": 2.437474,
+       "maxPercent": 146.2626,
+       "blocks": 2455350,
+       "overruns": 2,
+       "missesPerMinute": 0.14661860834504245
+      }
+     },
+     "parityDbBelowSignal": 136.85473
+    },
+    {
+     "frames": 16,
+     "taps": 2880000,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 65.3502,
+       "p99Us": 217.834,
+       "meanUs": 21.43107,
+       "meanPercent": 6.429321,
+       "maxPercent": 8870.8752,
+       "blocks": 949402,
+       "overruns": 211,
+       "missesPerMinute": 40.004128914832705
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 5.9001,
+       "p99Us": 19.666999999999998,
+       "meanUs": 5.55998,
+       "meanPercent": 1.667994,
+       "maxPercent": 14754.825,
+       "blocks": 3306538,
+       "overruns": 13,
+       "missesPerMinute": 0.7076888274080021
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 17.3751,
+       "p99Us": 57.916999999999994,
+       "meanUs": 14.619976666666666,
+       "meanPercent": 4.385993,
+       "maxPercent": 706.1001,
+       "blocks": 1309520,
+       "overruns": 42,
+       "missesPerMinute": 5.773107703586047
+      }
+     },
+     "parityDbBelowSignal": 136.85473
+    },
+    {
+     "frames": 32,
+     "taps": 512,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.1875,
+       "p99Us": 1.2499999999999998,
+       "meanUs": 0.9507133333333334,
+       "meanPercent": 0.142607,
+       "maxPercent": 10.13745,
+       "blocks": 21999936,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.2187,
+       "p99Us": 1.458,
+       "meanUs": 0.94552,
+       "meanPercent": 0.141828,
+       "maxPercent": 524.96865,
+       "blocks": 21950829,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 32,
+     "taps": 1024,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.39375,
+       "p99Us": 2.625,
+       "meanUs": 1.9830333333333334,
+       "meanPercent": 0.297455,
+       "maxPercent": 6.9,
+       "blocks": 10427053,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.3312,
+       "p99Us": 2.2079999999999997,
+       "meanUs": 1.9750866666666664,
+       "meanPercent": 0.296263,
+       "maxPercent": 10.14375,
+       "blocks": 10541636,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 32,
+     "taps": 2048,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 512,
+       "p99Percent": 2.1687,
+       "p99Us": 14.457999999999998,
+       "meanUs": 2.770013333333333,
+       "meanPercent": 0.415502,
+       "maxPercent": 15.7626,
+       "blocks": 7513371,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 256,
+       "fftBlockSize": 256,
+       "p99Percent": 0.62505,
+       "p99Us": 4.167,
+       "meanUs": 1.22598,
+       "meanPercent": 0.183897,
+       "maxPercent": 8836.41255,
+       "blocks": 17040129,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.808329
+    },
+    {
+     "frames": 32,
+     "taps": 4096,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 1024,
+       "p99Percent": 2.91255,
+       "p99Us": 19.416999999999998,
+       "meanUs": 3.5391666666666666,
+       "meanPercent": 0.530875,
+       "maxPercent": 15.4188,
+       "blocks": 5876471,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 1.6938,
+       "p99Us": 11.291999999999998,
+       "meanUs": 1.9034399999999998,
+       "meanPercent": 0.285516,
+       "maxPercent": 12.7563,
+       "blocks": 10999968,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.870641
+    },
+    {
+     "frames": 32,
+     "taps": 8192,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 2048,
+       "p99Percent": 6.7875,
+       "p99Us": 45.24999999999999,
+       "meanUs": 4.4950600000000005,
+       "meanPercent": 0.674259,
+       "maxPercent": 21.3375,
+       "blocks": 4665165,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 1.6938,
+       "p99Us": 11.291999999999998,
+       "meanUs": 2.15874,
+       "meanPercent": 0.323811,
+       "maxPercent": 11.9937,
+       "blocks": 9706817,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.866496
+    },
+    {
+     "frames": 32,
+     "taps": 48000,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 7.05615,
+       "p99Us": 47.041,
+       "meanUs": 6.270066666666666,
+       "meanPercent": 0.94051,
+       "maxPercent": 23.26875,
+       "blocks": 3290169,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 1024,
+       "p99Percent": 2.5626,
+       "p99Us": 17.084,
+       "meanUs": 3.9286066666666666,
+       "meanPercent": 0.589291,
+       "maxPercent": 14.4312,
+       "blocks": 5270818,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 7.05,
+       "p99Us": 46.99999999999999,
+       "meanUs": 6.1464533333333335,
+       "meanPercent": 0.921968,
+       "maxPercent": 25.22505,
+       "blocks": 3322907,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.857601
+    },
+    {
+     "frames": 32,
+     "taps": 240000,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 10.8249,
+       "p99Us": 72.166,
+       "meanUs": 8.789359999999999,
+       "meanPercent": 1.318404,
+       "maxPercent": 44.15625,
+       "blocks": 2340767,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 8192,
+       "p99Percent": 2.9937,
+       "p99Us": 19.958,
+       "meanUs": 5.351373333333334,
+       "meanPercent": 0.802706,
+       "maxPercent": 12.4125,
+       "blocks": 3813977,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 10.81875,
+       "p99Us": 72.12499999999999,
+       "meanUs": 8.272113333333333,
+       "meanPercent": 1.240817,
+       "maxPercent": 37.3125,
+       "blocks": 2488088,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.86291
+    },
+    {
+     "frames": 32,
+     "taps": 1200000,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 15.27495,
+       "p99Us": 101.833,
+       "meanUs": 18.87746,
+       "meanPercent": 2.831619,
+       "maxPercent": 37.82505,
+       "blocks": 1080354,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 3.3438,
+       "p99Us": 22.291999999999994,
+       "meanUs": 7.963480000000001,
+       "meanPercent": 1.194522,
+       "maxPercent": 12.98745,
+       "blocks": 2438981,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 12.04365,
+       "p99Us": 80.291,
+       "meanUs": 16.241666666666664,
+       "meanPercent": 2.43625,
+       "maxPercent": 68.18115,
+       "blocks": 1211306,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.85473
+    },
+    {
+     "frames": 32,
+     "taps": 2880000,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 35.55,
+       "p99Us": 236.99999999999997,
+       "meanUs": 35.88677333333333,
+       "meanPercent": 5.383016,
+       "maxPercent": 3694.71255,
+       "blocks": 572915,
+       "overruns": 130,
+       "missesPerMinute": 20.42187759091663
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 3.6501,
+       "p99Us": 24.333999999999996,
+       "meanUs": 10.950119999999998,
+       "meanPercent": 1.642518,
+       "maxPercent": 16.17495,
+       "blocks": 1669638,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 14.1,
+       "p99Us": 93.99999999999999,
+       "meanUs": 29.09847333333333,
+       "meanPercent": 4.364771,
+       "maxPercent": 65.1126,
+       "blocks": 687498,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.85473
+    },
+    {
+     "frames": 64,
+     "taps": 512,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.159375,
+       "p99Us": 2.1249999999999996,
+       "meanUs": 1.8703999999999996,
+       "meanPercent": 0.14028,
+       "maxPercent": 5.47185,
+       "blocks": 11213450,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.159375,
+       "p99Us": 2.1249999999999996,
+       "meanUs": 1.8692533333333334,
+       "meanPercent": 0.140194,
+       "maxPercent": 4.228125,
+       "blocks": 11115230,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 64,
+     "taps": 1024,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.33435,
+       "p99Us": 4.457999999999999,
+       "meanUs": 3.9271066666666665,
+       "meanPercent": 0.294533,
+       "maxPercent": 4.1781,
+       "blocks": 5336620,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.3375,
+       "p99Us": 4.5,
+       "meanUs": 3.9279733333333335,
+       "meanPercent": 0.294598,
+       "maxPercent": 4.740675,
+       "blocks": 5336620,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 64,
+     "taps": 2048,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 512,
+       "p99Percent": 1.171875,
+       "p99Us": 15.625,
+       "meanUs": 5.564266666666667,
+       "meanPercent": 0.41732,
+       "maxPercent": 8.60625,
+       "blocks": 3765100,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 256,
+       "fftBlockSize": 256,
+       "p99Percent": 0.34065,
+       "p99Us": 4.542,
+       "meanUs": 2.3929466666666666,
+       "meanPercent": 0.179471,
+       "maxPercent": 5.146875,
+       "blocks": 8757950,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.808329
+    },
+    {
+     "frames": 64,
+     "taps": 4096,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 1024,
+       "p99Percent": 1.575,
+       "p99Us": 21.0,
+       "meanUs": 7.116386666666666,
+       "meanPercent": 0.533729,
+       "maxPercent": 7.72185,
+       "blocks": 2946600,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 0.928125,
+       "p99Us": 12.374999999999998,
+       "meanUs": 3.7711866666666665,
+       "meanPercent": 0.282839,
+       "maxPercent": 6.98745,
+       "blocks": 5565800,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.870641
+    },
+    {
+     "frames": 64,
+     "taps": 8192,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 2048,
+       "p99Percent": 3.72495,
+       "p99Us": 49.666000000000004,
+       "meanUs": 9.000866666666667,
+       "meanPercent": 0.675065,
+       "maxPercent": 8.259375,
+       "blocks": 2324540,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 0.93435,
+       "p99Us": 12.457999999999998,
+       "meanUs": 4.258506666666666,
+       "meanPercent": 0.319388,
+       "maxPercent": 5.734425,
+       "blocks": 4902815,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.866496
+    },
+    {
+     "frames": 64,
+     "taps": 48000,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 5.499975,
+       "p99Us": 73.333,
+       "meanUs": 12.817626666666667,
+       "meanPercent": 0.961322,
+       "maxPercent": 14.203125,
+       "blocks": 1596075,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 1024,
+       "p99Percent": 1.453125,
+       "p99Us": 19.375,
+       "meanUs": 7.8733466666666665,
+       "meanPercent": 0.590501,
+       "maxPercent": 9.2844,
+       "blocks": 2635570,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 5.5062,
+       "p99Us": 73.416,
+       "meanUs": 12.683586666666667,
+       "meanPercent": 0.951269,
+       "maxPercent": 60.9531,
+       "blocks": 1628815,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.857601
+    },
+    {
+     "frames": 64,
+     "taps": 240000,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 6.36255,
+       "p99Us": 84.834,
+       "meanUs": 17.4926,
+       "meanPercent": 1.311945,
+       "maxPercent": 724.7625,
+       "blocks": 1170455,
+       "overruns": 7,
+       "missesPerMinute": 0.2691261090772392
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 8192,
+       "p99Percent": 2.046825,
+       "p99Us": 27.291,
+       "meanUs": 11.112386666666666,
+       "meanPercent": 0.833429,
+       "maxPercent": 622.74375,
+       "blocks": 1833440,
+       "overruns": 3,
+       "missesPerMinute": 0.07363207958809669
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 7.003125,
+       "p99Us": 93.375,
+       "meanUs": 16.899773333333332,
+       "meanPercent": 1.267483,
+       "maxPercent": 31.67505,
+       "blocks": 1203195,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.86291
+    },
+    {
+     "frames": 64,
+     "taps": 1200000,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 9.07815,
+       "p99Us": 121.04200000000002,
+       "meanUs": 35.53213333333333,
+       "meanPercent": 2.66491,
+       "maxPercent": 36.571875,
+       "blocks": 564765,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 2.390625,
+       "p99Us": 31.875,
+       "meanUs": 15.71245333333333,
+       "meanPercent": 1.178434,
+       "maxPercent": 9.52815,
+       "blocks": 1227750,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 8.2437,
+       "p99Us": 109.91600000000001,
+       "meanUs": 33.07645333333333,
+       "meanPercent": 2.480734,
+       "maxPercent": 28.21875,
+       "blocks": 605690,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.85473
+    },
+    {
+     "frames": 64,
+     "taps": 2880000,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 20.85315,
+       "p99Us": 278.042,
+       "meanUs": 65.42253333333333,
+       "meanPercent": 4.90669,
+       "maxPercent": 2889.399975,
+       "blocks": 311030,
+       "overruns": 13,
+       "missesPerMinute": 1.8808475066713823
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 3.13755,
+       "p99Us": 41.833999999999996,
+       "meanUs": 21.582759999999997,
+       "meanPercent": 1.618707,
+       "maxPercent": 113.6562,
+       "blocks": 826685,
+       "overruns": 1,
+       "missesPerMinute": 0.05443427665918699
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 10.337487,
+       "p99Us": 137.83316,
+       "meanUs": 59.033226666666664,
+       "meanPercent": 4.427492,
+       "maxPercent": 42.6,
+       "blocks": 335585,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.85473
+    },
+    {
+     "frames": 128,
+     "taps": 512,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.210938,
+       "p99Us": 5.6250133333333325,
+       "meanUs": 3.8337600000000003,
+       "meanPercent": 0.143766,
+       "maxPercent": 3.520313,
+       "blocks": 5455969,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.210938,
+       "p99Us": 5.6250133333333325,
+       "meanUs": 3.831333333333333,
+       "meanPercent": 0.143675,
+       "maxPercent": 3.579712,
+       "blocks": 5472341,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 128,
+     "taps": 1024,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.3906,
+       "p99Us": 10.416,
+       "meanUs": 8.036773333333333,
+       "meanPercent": 0.301379,
+       "maxPercent": 3.764063,
+       "blocks": 2611334,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.39375,
+       "p99Us": 10.5,
+       "meanUs": 8.049573333333333,
+       "meanPercent": 0.301859,
+       "maxPercent": 3.632813,
+       "blocks": 2607241,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 128,
+     "taps": 2048,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 512,
+       "p99Percent": 0.678113,
+       "p99Us": 18.08301333333333,
+       "meanUs": 11.070533333333334,
+       "meanPercent": 0.415145,
+       "maxPercent": 4.468763,
+       "blocks": 1899152,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 256,
+       "fftBlockSize": 256,
+       "p99Percent": 0.28125,
+       "p99Us": 7.499999999999999,
+       "meanUs": 5.073973333333333,
+       "meanPercent": 0.190274,
+       "maxPercent": 3.596888,
+       "blocks": 4138023,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.808329
+    },
+    {
+     "frames": 128,
+     "taps": 4096,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 1024,
+       "p99Percent": 0.965625,
+       "p99Us": 25.75,
+       "meanUs": 14.196880000000002,
+       "meanPercent": 0.532383,
+       "maxPercent": 4.978125,
+       "blocks": 1481666,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 0.564075,
+       "p99Us": 15.042,
+       "meanUs": 7.5952,
+       "meanPercent": 0.28482,
+       "maxPercent": 3.614063,
+       "blocks": 2762775,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.870641
+    },
+    {
+     "frames": 128,
+     "taps": 8192,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 2048,
+       "p99Percent": 2.0406,
+       "p99Us": 54.416,
+       "meanUs": 18.10352,
+       "meanPercent": 0.678882,
+       "maxPercent": 5.554688,
+       "blocks": 1162412,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 0.625013,
+       "p99Us": 16.667013333333333,
+       "meanUs": 9.057333333333334,
+       "meanPercent": 0.33965,
+       "maxPercent": 4.373438,
+       "blocks": 2312545,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.866496
+    },
+    {
+     "frames": 128,
+     "taps": 48000,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 3.059363,
+       "p99Us": 81.58301333333333,
+       "meanUs": 24.745413333333335,
+       "meanPercent": 0.927953,
+       "maxPercent": 10.110938,
+       "blocks": 843158,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 1024,
+       "p99Percent": 0.923438,
+       "p99Us": 24.62501333333333,
+       "meanUs": 15.807413333333335,
+       "meanPercent": 0.592778,
+       "maxPercent": 3.931275,
+       "blocks": 1322039,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 3.0594,
+       "p99Us": 81.58399999999999,
+       "meanUs": 24.627626666666664,
+       "meanPercent": 0.923536,
+       "maxPercent": 9.13125,
+       "blocks": 847251,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.857601
+    },
+    {
+     "frames": 128,
+     "taps": 240000,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 7.292175,
+       "p99Us": 194.458,
+       "meanUs": 33.57837333333333,
+       "meanPercent": 1.259189,
+       "maxPercent": 10.715625,
+       "blocks": 613950,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 8192,
+       "p99Percent": 1.450013,
+       "p99Us": 38.66701333333333,
+       "meanUs": 21.26856,
+       "meanPercent": 0.797571,
+       "maxPercent": 5.818725,
+       "blocks": 949576,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 7.346872,
+       "p99Us": 195.91658666666666,
+       "meanUs": 33.38634666666667,
+       "meanPercent": 1.251988,
+       "maxPercent": 20.196863,
+       "blocks": 618043,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.86291
+    },
+    {
+     "frames": 128,
+     "taps": 1200000,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 8.946863,
+       "p99Us": 238.58301333333333,
+       "meanUs": 68.23202666666667,
+       "meanPercent": 2.558701,
+       "maxPercent": 12.212475,
+       "blocks": 294696,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 1.868775,
+       "p99Us": 49.833999999999996,
+       "meanUs": 31.053946666666665,
+       "meanPercent": 1.164523,
+       "maxPercent": 4.753125,
+       "blocks": 622136,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 8.804672,
+       "p99Us": 234.79125333333332,
+       "meanUs": 65.20797333333333,
+       "meanPercent": 2.445299,
+       "maxPercent": 12.96405,
+       "blocks": 306975,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.85473
+    },
+    {
+     "frames": 128,
+     "taps": 2880000,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 11.59845,
+       "p99Us": 309.292,
+       "meanUs": 122.1588,
+       "meanPercent": 4.580955,
+       "maxPercent": 15.418763,
+       "blocks": 163720,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 2.553113,
+       "p99Us": 68.08301333333334,
+       "meanUs": 42.32744,
+       "meanPercent": 1.587279,
+       "maxPercent": 6.110963,
+       "blocks": 429765,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 10.949923,
+       "p99Us": 291.9979466666667,
+       "meanUs": 115.64864,
+       "meanPercent": 4.336824,
+       "maxPercent": 16.771875,
+       "blocks": 171906,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.85473
+    },
+    {
+     "frames": 256,
+     "taps": 512,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.19845,
+       "p99Us": 10.583999999999998,
+       "meanUs": 7.709973333333332,
+       "meanPercent": 0.144562,
+       "maxPercent": 1.832044,
+       "blocks": 2722510,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.198431,
+       "p99Us": 10.582986666666667,
+       "meanUs": 7.696479999999999,
+       "meanPercent": 0.144309,
+       "maxPercent": 1.78515,
+       "blocks": 2724557,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 256,
+     "taps": 1024,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.39375,
+       "p99Us": 21.0,
+       "meanUs": 16.08352,
+       "meanPercent": 0.301566,
+       "maxPercent": 2.162494,
+       "blocks": 1303939,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.381244,
+       "p99Us": 20.333013333333334,
+       "meanUs": 16.03648,
+       "meanPercent": 0.300684,
+       "maxPercent": 2.121094,
+       "blocks": 1310080,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 256,
+     "taps": 2048,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 512,
+       "p99Percent": 0.578137,
+       "p99Us": 30.833973333333333,
+       "meanUs": 22.147626666666667,
+       "meanPercent": 0.415268,
+       "maxPercent": 2.507813,
+       "blocks": 947761,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 256,
+       "fftBlockSize": 256,
+       "p99Percent": 0.204694,
+       "p99Us": 10.917013333333331,
+       "meanUs": 9.45968,
+       "meanPercent": 0.177369,
+       "maxPercent": 1.792969,
+       "blocks": 2216901,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.808329
+    },
+    {
+     "frames": 256,
+     "taps": 4096,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 1024,
+       "p99Percent": 0.696094,
+       "p99Us": 37.12501333333333,
+       "meanUs": 28.17776,
+       "meanPercent": 0.528333,
+       "maxPercent": 2.635144,
+       "blocks": 738967,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 0.371081,
+       "p99Us": 19.790986666666665,
+       "meanUs": 14.954826666666667,
+       "meanPercent": 0.280403,
+       "maxPercent": 1.540613,
+       "blocks": 1404242,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.870641
+    },
+    {
+     "frames": 256,
+     "taps": 8192,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 2048,
+       "p99Percent": 1.259363,
+       "p99Us": 67.16602666666667,
+       "meanUs": 35.767466666666664,
+       "meanPercent": 0.67064,
+       "maxPercent": 2.546869,
+       "blocks": 587489,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 0.396881,
+       "p99Us": 21.166986666666663,
+       "meanUs": 16.943626666666667,
+       "meanPercent": 0.317693,
+       "maxPercent": 1.971881,
+       "blocks": 1238435,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.866496
+    },
+    {
+     "frames": 256,
+     "taps": 48000,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 1.85625,
+       "p99Us": 98.99999999999999,
+       "meanUs": 49.44853333333333,
+       "meanPercent": 0.92716,
+       "maxPercent": 5.183606,
+       "blocks": 423729,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 1024,
+       "p99Percent": 0.76875,
+       "p99Us": 41.0,
+       "meanUs": 31.263573333333333,
+       "meanPercent": 0.586192,
+       "maxPercent": 2.024212,
+       "blocks": 669369,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 2.158594,
+       "p99Us": 115.12501333333331,
+       "meanUs": 49.65407999999999,
+       "meanPercent": 0.931014,
+       "maxPercent": 4.8297,
+       "blocks": 421682,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.857601
+    },
+    {
+     "frames": 256,
+     "taps": 240000,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 4.332806,
+       "p99Us": 231.0829866666666,
+       "meanUs": 66.68064,
+       "meanPercent": 1.250262,
+       "maxPercent": 7.475775,
+       "blocks": 309097,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 8192,
+       "p99Percent": 1.154681,
+       "p99Us": 61.58298666666667,
+       "meanUs": 42.28816,
+       "meanPercent": 0.792903,
+       "maxPercent": 2.72505,
+       "blocks": 483092,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 4.3125,
+       "p99Us": 229.99999999999997,
+       "meanUs": 66.20181333333333,
+       "meanPercent": 1.241284,
+       "maxPercent": 6.667969,
+       "blocks": 311144,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.86291
+    },
+    {
+     "frames": 256,
+     "taps": 1200000,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 5.653898,
+       "p99Us": 301.5412266666666,
+       "meanUs": 132.43648,
+       "meanPercent": 2.483184,
+       "maxPercent": 7.178119,
+       "blocks": 151478,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 1.624988,
+       "p99Us": 86.66602666666667,
+       "meanUs": 60.96730666666667,
+       "meanPercent": 1.143137,
+       "maxPercent": 3.032812,
+       "blocks": 317285,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 5.636173,
+       "p99Us": 300.5958933333333,
+       "meanUs": 129.53295999999997,
+       "meanPercent": 2.428743,
+       "maxPercent": 6.958594,
+       "blocks": 155572,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.85473
+    },
+    {
+     "frames": 256,
+     "taps": 2880000,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 7.939069,
+       "p99Us": 423.41701333333333,
+       "meanUs": 239.04976,
+       "meanPercent": 4.482183,
+       "maxPercent": 9.2328,
+       "blocks": 83927,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 2.489063,
+       "p99Us": 132.75002666666666,
+       "meanUs": 84.22885333333333,
+       "meanPercent": 1.579291,
+       "maxPercent": 3.852356,
+       "blocks": 216982,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 7.64843,
+       "p99Us": 407.9162666666667,
+       "meanUs": 232.90917333333334,
+       "meanPercent": 4.367047,
+       "maxPercent": 9.735938,
+       "blocks": 85974,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 136.85473
+    }
+   ]
+  },
+  {
+   "label": "Raspberry Pi 500",
+   "environment": {
+    "deviceModel": "Raspberry Pi 500 Rev 1.0",
+    "cpu": "Cortex-A76",
+    "platform": "Linux",
+    "architecture": "arm64",
+    "fpu": "neon+fma",
+    "osVersion": "Ubuntu 26.04 LTS",
+    "totalCores": 4,
+    "cpuGovernor": "performance"
+   },
+   "runs": [
+    {
+     "file": "piv-20260925T135811Z-ir-block128.json",
+     "note": "piv cpus=3",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": 45.8,
+     "socTemperatureEndC": 45.2,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "piv-20260925T135811Z-ir-block16.json",
+     "note": "piv cpus=3",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": 38.6,
+     "socTemperatureEndC": 44.1,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "piv-20260925T135811Z-ir-block256.json",
+     "note": "piv cpus=3",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": 46.3,
+     "socTemperatureEndC": 45.8,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "piv-20260925T135811Z-ir-block32.json",
+     "note": "piv cpus=3",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": 44.1,
+     "socTemperatureEndC": 44.6,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "piv-20260925T135811Z-ir-block64.json",
+     "note": "piv cpus=3",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": 43.5,
+     "socTemperatureEndC": 45.8,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "piv-20260925T172600Z-ir-block128.json",
+     "note": "piv cpus=3 long IRs, tail tier",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": 46.3,
+     "socTemperatureEndC": 46.3,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "piv-20260925T172600Z-ir-block16.json",
+     "note": "piv cpus=3 long IRs, tail tier",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": 41.4,
+     "socTemperatureEndC": 44.1,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "piv-20260925T172600Z-ir-block256.json",
+     "note": "piv cpus=3 long IRs, tail tier",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": 45.8,
+     "socTemperatureEndC": 46.9,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "piv-20260925T172600Z-ir-block32.json",
+     "note": "piv cpus=3 long IRs, tail tier",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": 44.6,
+     "socTemperatureEndC": 44.6,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "piv-20260925T172600Z-ir-block64.json",
+     "note": "piv cpus=3 long IRs, tail tier",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": 44.6,
+     "socTemperatureEndC": 46.9,
+     "sampleRate": 48000.0
+    },
+    {
+     "file": "piv-20260925T184301Z-ir-block64.json",
+     "note": "piv cpus=3 long IRs, tail tier, rerun",
+     "config": {
+      "irChannels": 1,
+      "warmupSeconds": 5.0,
+      "timingWindowSeconds": 30.0,
+      "acceptFraction": 0.7,
+      "acceptTolerance": 0.03,
+      "minSamples": 15,
+      "maxAttempts": 5
+     },
+     "socTemperatureStartC": 36.4,
+     "socTemperatureEndC": 41.4,
+     "sampleRate": 48000.0
+    }
+   ],
+   "cells": [
+    {
+     "frames": 16,
+     "taps": 512,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.3888,
+       "p99Us": 1.2959999999999998,
+       "meanUs": 1.1817,
+       "meanPercent": 0.35451,
+       "maxPercent": 0.6999,
+       "blocks": 17743996,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.3888,
+       "p99Us": 1.2959999999999998,
+       "meanUs": 1.1828066666666666,
+       "meanPercent": 0.354842,
+       "maxPercent": 0.5721,
+       "blocks": 17743996,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 16,
+     "taps": 1024,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.7221,
+       "p99Us": 2.407,
+       "meanUs": 2.233246666666666,
+       "meanPercent": 0.669974,
+       "maxPercent": 0.8724,
+       "blocks": 9395806,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.7224,
+       "p99Us": 2.408,
+       "meanUs": 2.2361466666666665,
+       "meanPercent": 0.670844,
+       "maxPercent": 1.2555,
+       "blocks": 9395806,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 16,
+     "taps": 2048,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 512,
+       "p99Percent": 8.6166,
+       "p99Us": 28.722,
+       "meanUs": 3.54637,
+       "meanPercent": 1.063911,
+       "maxPercent": 10.7721,
+       "blocks": 5958316,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 256,
+       "fftBlockSize": 256,
+       "p99Percent": 2.8443,
+       "p99Us": 9.481,
+       "meanUs": 1.5481766666666665,
+       "meanPercent": 0.464453,
+       "maxPercent": 5.7333,
+       "blocks": 13553532,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 138.098542
+    },
+    {
+     "frames": 16,
+     "taps": 4096,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 1024,
+       "p99Percent": 15.2502,
+       "p99Us": 50.833999999999996,
+       "meanUs": 4.659549999999999,
+       "meanPercent": 1.397865,
+       "maxPercent": 15.5667,
+       "blocks": 4517844,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 6.2223,
+       "p99Us": 20.741,
+       "meanUs": 2.1561166666666667,
+       "meanPercent": 0.646835,
+       "maxPercent": 6.9945,
+       "blocks": 9723186,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.810806
+    },
+    {
+     "frames": 16,
+     "taps": 8192,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 2048,
+       "p99Percent": 15.45,
+       "p99Us": 51.5,
+       "meanUs": 5.867186666666667,
+       "meanPercent": 1.760156,
+       "maxPercent": 34.5054,
+       "blocks": 3601180,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 6.2445,
+       "p99Us": 20.814999999999998,
+       "meanUs": 2.4583066666666666,
+       "meanPercent": 0.737492,
+       "maxPercent": 8.8779,
+       "blocks": 8511880,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.809746
+    },
+    {
+     "frames": 16,
+     "taps": 48000,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 32.2221,
+       "p99Us": 107.40699999999998,
+       "meanUs": 8.602206666666666,
+       "meanPercent": 2.580662,
+       "maxPercent": 68.6115,
+       "blocks": 2455350,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 1024,
+       "p99Percent": 12.8889,
+       "p99Us": 42.963,
+       "meanUs": 4.707776666666667,
+       "meanPercent": 1.412333,
+       "maxPercent": 13.4946,
+       "blocks": 4452368,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 32.1501,
+       "p99Us": 107.167,
+       "meanUs": 8.38329,
+       "meanPercent": 2.514987,
+       "maxPercent": 64.0335,
+       "blocks": 2520826,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.043572
+    },
+    {
+     "frames": 16,
+     "taps": 240000,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 33.6444,
+       "p99Us": 112.14799999999998,
+       "meanUs": 12.611163333333332,
+       "meanPercent": 3.783349,
+       "maxPercent": 175.5507,
+       "blocks": 1636900,
+       "overruns": 3166,
+       "missesPerMinute": 348.1458855153033
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 8192,
+       "p99Percent": 13.8333,
+       "p99Us": 46.11099999999999,
+       "meanUs": 7.006773333333332,
+       "meanPercent": 2.102032,
+       "maxPercent": 22.0113,
+       "blocks": 2913682,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 32.967,
+       "p99Us": 109.88999999999999,
+       "meanUs": 11.290909999999998,
+       "meanPercent": 3.387273,
+       "maxPercent": 172.8396,
+       "blocks": 1833328,
+       "overruns": 3528,
+       "missesPerMinute": 346.3864622151628
+      }
+     },
+     "parityDbBelowSignal": 137.050993
+    },
+    {
+     "frames": 16,
+     "taps": 1200000,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 333.99,
+       "p99Us": 1113.3,
+       "meanUs": 54.52599,
+       "meanPercent": 16.357797,
+       "maxPercent": 554.1129,
+       "blocks": 392856,
+       "overruns": 13032,
+       "missesPerMinute": 5971.042824851855
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 14.85,
+       "p99Us": 49.49999999999999,
+       "meanUs": 10.77886,
+       "meanPercent": 3.233658,
+       "maxPercent": 25.4667,
+       "blocks": 1767852,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 36.5832,
+       "p99Us": 121.94399999999999,
+       "meanUs": 19.48341,
+       "meanPercent": 5.845023,
+       "maxPercent": 374.6955,
+       "blocks": 1047616,
+       "overruns": 2112,
+       "missesPerMinute": 362.88105565398007
+      }
+     },
+     "parityDbBelowSignal": 137.044081
+    },
+    {
+     "frames": 16,
+     "taps": 2880000,
+     "deadlineUs": 333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 1079.074482,
+       "p99Us": 3596.91494,
+       "meanUs": 146.07293333333334,
+       "meanPercent": 43.82188,
+       "maxPercent": 1616.2047,
+       "blocks": 360118,
+       "overruns": 11946,
+       "missesPerMinute": 5971.042824851855
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 15.9669,
+       "p99Us": 53.223,
+       "meanUs": 14.54394,
+       "meanPercent": 4.363182,
+       "maxPercent": 27.8724,
+       "blocks": 1244044,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 41.298966,
+       "p99Us": 137.66322,
+       "meanUs": 33.65942666666667,
+       "meanPercent": 10.097828,
+       "maxPercent": 826.0359,
+       "blocks": 622022,
+       "overruns": 1254,
+       "missesPerMinute": 362.88105565398007
+      }
+     },
+     "parityDbBelowSignal": 137.044081
+    },
+    {
+     "frames": 32,
+     "taps": 512,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.375,
+       "p99Us": 2.4999999999999996,
+       "meanUs": 2.3614866666666665,
+       "meanPercent": 0.354223,
+       "maxPercent": 0.5472,
+       "blocks": 8888367,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.36675,
+       "p99Us": 2.445,
+       "meanUs": 2.3216200000000002,
+       "meanPercent": 0.348243,
+       "maxPercent": 0.4917,
+       "blocks": 9052057,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 32,
+     "taps": 1024,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.6888,
+       "p99Us": 4.592,
+       "meanUs": 4.415993333333333,
+       "meanPercent": 0.662399,
+       "maxPercent": 0.8166,
+       "blocks": 4763379,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.6888,
+       "p99Us": 4.592,
+       "meanUs": 4.415086666666667,
+       "meanPercent": 0.662263,
+       "maxPercent": 0.84735,
+       "blocks": 4763379,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 32,
+     "taps": 2048,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 512,
+       "p99Percent": 4.54725,
+       "p99Us": 30.314999999999998,
+       "meanUs": 7.038706666666667,
+       "meanPercent": 1.055806,
+       "maxPercent": 4.9668,
+       "blocks": 2995527,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 256,
+       "fftBlockSize": 256,
+       "p99Percent": 1.54725,
+       "p99Us": 10.315,
+       "meanUs": 3.0433666666666666,
+       "meanPercent": 0.456505,
+       "maxPercent": 2.1972,
+       "blocks": 6874980,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 138.098542
+    },
+    {
+     "frames": 32,
+     "taps": 4096,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 1024,
+       "p99Percent": 7.92225,
+       "p99Us": 52.815,
+       "meanUs": 9.209853333333333,
+       "meanPercent": 1.381478,
+       "maxPercent": 8.0751,
+       "blocks": 2291660,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 3.32775,
+       "p99Us": 22.185,
+       "meanUs": 4.254866666666667,
+       "meanPercent": 0.63823,
+       "maxPercent": 4.1334,
+       "blocks": 4927069,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.810806
+    },
+    {
+     "frames": 32,
+     "taps": 8192,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 2048,
+       "p99Percent": 16.6917,
+       "p99Us": 111.278,
+       "meanUs": 11.595113333333332,
+       "meanPercent": 1.739267,
+       "maxPercent": 19.23615,
+       "blocks": 1816959,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 3.3306,
+       "p99Us": 22.204,
+       "meanUs": 4.81888,
+       "meanPercent": 0.722832,
+       "maxPercent": 3.53055,
+       "blocks": 4354154,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.809746
+    },
+    {
+     "frames": 32,
+     "taps": 48000,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 16.67505,
+       "p99Us": 111.16699999999999,
+       "meanUs": 16.802006666666664,
+       "meanPercent": 2.520301,
+       "maxPercent": 34.33065,
+       "blocks": 1260413,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 1024,
+       "p99Percent": 6.83055,
+       "p99Us": 45.53699999999999,
+       "meanUs": 9.245086666666666,
+       "meanPercent": 1.386763,
+       "maxPercent": 7.36125,
+       "blocks": 2258922,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 16.689,
+       "p99Us": 111.26,
+       "meanUs": 16.608726666666666,
+       "meanPercent": 2.491309,
+       "maxPercent": 35.53065,
+       "blocks": 1260413,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.043572
+    },
+    {
+     "frames": 32,
+     "taps": 240000,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 34.8585,
+       "p99Us": 232.39,
+       "meanUs": 24.147146666666668,
+       "meanPercent": 3.622072,
+       "maxPercent": 90.2697,
+       "blocks": 867557,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 8192,
+       "p99Percent": 7.8834,
+       "p99Us": 52.556,
+       "meanUs": 13.506206666666666,
+       "meanPercent": 2.025931,
+       "maxPercent": 11.0778,
+       "blocks": 1505948,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 32.6445,
+       "p99Us": 217.62999999999997,
+       "meanUs": 22.427559999999996,
+       "meanPercent": 3.364134,
+       "maxPercent": 85.8003,
+       "blocks": 916664,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.050993
+    },
+    {
+     "frames": 32,
+     "taps": 1200000,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 172.660404,
+       "p99Us": 1151.06936,
+       "meanUs": 74.18928,
+       "meanPercent": 11.128392,
+       "maxPercent": 224.2812,
+       "blocks": 278273,
+       "overruns": 8687,
+       "missesPerMinute": 2809.5790824118762
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 8.894373,
+       "p99Us": 59.29582,
+       "meanUs": 20.22237333333333,
+       "meanPercent": 3.033356,
+       "maxPercent": 14.3529,
+       "blocks": 949402,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 37.74179,
+       "p99Us": 251.61193333333333,
+       "meanUs": 38.99422,
+       "meanPercent": 5.849133,
+       "maxPercent": 154.8783,
+       "blocks": 523808,
+       "overruns": 96,
+       "missesPerMinute": 16.494593438817276
+      }
+     },
+     "parityDbBelowSignal": 137.044081
+    },
+    {
+     "frames": 32,
+     "taps": 2880000,
+     "deadlineUs": 666.6666666666666,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 557.402697,
+       "p99Us": 3716.01798,
+       "meanUs": 181.67736666666667,
+       "meanPercent": 27.251605,
+       "maxPercent": 798.7689,
+       "blocks": 180059,
+       "overruns": 5621,
+       "missesPerMinute": 2809.5790824118762
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 9.66675,
+       "p99Us": 64.445,
+       "meanUs": 27.300166666666662,
+       "meanPercent": 4.095025,
+       "maxPercent": 13.90005,
+       "blocks": 654760,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 41.402985,
+       "p99Us": 276.0199,
+       "meanUs": 66.52027333333332,
+       "meanPercent": 9.978041,
+       "maxPercent": 508.53465,
+       "blocks": 311011,
+       "overruns": 57,
+       "missesPerMinute": 16.494593438817276
+      }
+     },
+     "parityDbBelowSignal": 137.044081
+    },
+    {
+     "frames": 64,
+     "taps": 512,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.361125,
+       "p99Us": 4.8149999999999995,
+       "meanUs": 4.596759999999999,
+       "meanPercent": 0.344757,
+       "maxPercent": 0.4236,
+       "blocks": 4567230,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.361125,
+       "p99Us": 4.8149999999999995,
+       "meanUs": 4.601426666666667,
+       "meanPercent": 0.345107,
+       "maxPercent": 0.43335,
+       "blocks": 4567230,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 64,
+     "taps": 1024,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.69855,
+       "p99Us": 9.314,
+       "meanUs": 8.783653333333334,
+       "meanPercent": 0.658774,
+       "maxPercent": 0.83055,
+       "blocks": 2398205,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.6945,
+       "p99Us": 9.26,
+       "meanUs": 8.77056,
+       "meanPercent": 0.657792,
+       "maxPercent": 0.825,
+       "blocks": 2398205,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 64,
+     "taps": 2048,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 512,
+       "p99Percent": 2.502825,
+       "p99Us": 33.371,
+       "meanUs": 13.987786666666665,
+       "meanPercent": 1.049084,
+       "maxPercent": 2.665275,
+       "blocks": 1506040,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 256,
+       "fftBlockSize": 256,
+       "p99Percent": 0.890325,
+       "p99Us": 11.870999999999999,
+       "meanUs": 6.0247866666666665,
+       "meanPercent": 0.451859,
+       "maxPercent": 0.954225,
+       "blocks": 3486810,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 138.098542
+    },
+    {
+     "frames": 64,
+     "taps": 4096,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 1024,
+       "p99Percent": 4.24725,
+       "p99Us": 56.63,
+       "meanUs": 18.316146666666665,
+       "meanPercent": 1.373711,
+       "maxPercent": 4.597275,
+       "blocks": 1145900,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 1.852725,
+       "p99Us": 24.702999999999996,
+       "meanUs": 8.390106666666666,
+       "meanPercent": 0.629258,
+       "maxPercent": 1.947225,
+       "blocks": 2504610,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.810806
+    },
+    {
+     "frames": 64,
+     "taps": 8192,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 2048,
+       "p99Percent": 8.700075,
+       "p99Us": 116.00099999999999,
+       "meanUs": 23.094866666666665,
+       "meanPercent": 1.732115,
+       "maxPercent": 9.302775,
+       "blocks": 916720,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 1.856925,
+       "p99Us": 24.758999999999997,
+       "meanUs": 9.53176,
+       "meanPercent": 0.714882,
+       "maxPercent": 1.93335,
+       "blocks": 2201765,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.809746
+    },
+    {
+     "frames": 64,
+     "taps": 48000,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 15.9945,
+       "p99Us": 213.26,
+       "meanUs": 33.247479999999996,
+       "meanPercent": 2.493561,
+       "maxPercent": 17.268075,
+       "blocks": 630245,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 1024,
+       "p99Percent": 3.7764,
+       "p99Us": 50.352,
+       "meanUs": 18.381999999999998,
+       "meanPercent": 1.37865,
+       "maxPercent": 4.013925,
+       "blocks": 1137715,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 16.002825,
+       "p99Us": 213.371,
+       "meanUs": 33.07496,
+       "meanPercent": 2.480622,
+       "maxPercent": 18.650025,
+       "blocks": 638430,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.043572
+    },
+    {
+     "frames": 64,
+     "taps": 240000,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 18.555608,
+       "p99Us": 247.40810666666664,
+       "meanUs": 47.38354666666666,
+       "meanPercent": 3.553766,
+       "maxPercent": 49.2099,
+       "blocks": 441990,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 8192,
+       "p99Percent": 5.161125,
+       "p99Us": 68.815,
+       "meanUs": 26.469426666666664,
+       "meanPercent": 1.985207,
+       "maxPercent": 5.873625,
+       "blocks": 769390,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 17.5764,
+       "p99Us": 234.352,
+       "meanUs": 45.04312,
+       "meanPercent": 3.378234,
+       "maxPercent": 45.100125,
+       "blocks": 458360,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.050993
+    },
+    {
+     "frames": 64,
+     "taps": 1200000,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 100.740525,
+       "p99Us": 1343.207,
+       "meanUs": 116.55254666666666,
+       "meanPercent": 8.741441,
+       "maxPercent": 126.039225,
+       "blocks": 180070,
+       "overruns": 2884,
+       "missesPerMinute": 720.7197201088464
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 6.061125,
+       "p99Us": 80.815,
+       "meanUs": 40.31753333333333,
+       "meanPercent": 3.023815,
+       "maxPercent": 8.325,
+       "blocks": 474730,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 21.559544,
+       "p99Us": 287.46058666666664,
+       "meanUs": 77.13466666666666,
+       "meanPercent": 5.7851,
+       "maxPercent": 82.43085,
+       "blocks": 261920,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.044081
+    },
+    {
+     "frames": 64,
+     "taps": 2880000,
+     "deadlineUs": 1333.3333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 279.301281,
+       "p99Us": 3724.0170799999996,
+       "meanUs": 244.8746933333333,
+       "meanPercent": 18.365602,
+       "maxPercent": 404.231775,
+       "blocks": 90035,
+       "overruns": 2805,
+       "missesPerMinute": 1401.9547953573608
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 8.0541,
+       "p99Us": 107.38799999999999,
+       "meanUs": 55.34314666666666,
+       "meanPercent": 4.150736,
+       "maxPercent": 11.133225,
+       "blocks": 327400,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 26.380086,
+       "p99Us": 351.73447999999996,
+       "meanUs": 132.98341333333332,
+       "meanPercent": 9.973756,
+       "maxPercent": 205.235325,
+       "blocks": 155515,
+       "overruns": 57,
+       "missesPerMinute": 16.49358582773366
+      }
+     },
+     "parityDbBelowSignal": 137.044081
+    },
+    {
+     "frames": 128,
+     "taps": 512,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.361125,
+       "p99Us": 9.629999999999999,
+       "meanUs": 9.097813333333333,
+       "meanPercent": 0.341168,
+       "maxPercent": 0.443775,
+       "blocks": 2312545,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.362475,
+       "p99Us": 9.665999999999999,
+       "meanUs": 9.143306666666666,
+       "meanPercent": 0.342874,
+       "maxPercent": 0.4305,
+       "blocks": 2300266,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 128,
+     "taps": 1024,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.674288,
+       "p99Us": 17.981013333333333,
+       "meanUs": 17.447733333333336,
+       "meanPercent": 0.65429,
+       "maxPercent": 0.76665,
+       "blocks": 1207435,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.679875,
+       "p99Us": 18.13,
+       "meanUs": 17.470693333333333,
+       "meanPercent": 0.655151,
+       "maxPercent": 0.779175,
+       "blocks": 1203342,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 128,
+     "taps": 2048,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 512,
+       "p99Percent": 1.470825,
+       "p99Us": 39.222,
+       "meanUs": 27.857786666666666,
+       "meanPercent": 1.044667,
+       "maxPercent": 1.718063,
+       "blocks": 757205,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 256,
+       "fftBlockSize": 256,
+       "p99Percent": 0.567338,
+       "p99Us": 15.129013333333333,
+       "meanUs": 12.017706666666667,
+       "meanPercent": 0.450664,
+       "maxPercent": 0.62085,
+       "blocks": 1747711,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 138.098542
+    },
+    {
+     "frames": 128,
+     "taps": 4096,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 1024,
+       "p99Percent": 2.402062,
+       "p99Us": 64.05498666666666,
+       "meanUs": 36.47949333333333,
+       "meanPercent": 1.367981,
+       "maxPercent": 2.70555,
+       "blocks": 577113,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 1.131938,
+       "p99Us": 30.185013333333334,
+       "meanUs": 16.88042666666667,
+       "meanPercent": 0.633016,
+       "maxPercent": 1.48335,
+       "blocks": 1244272,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.810806
+    },
+    {
+     "frames": 128,
+     "taps": 8192,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 2048,
+       "p99Percent": 4.69725,
+       "p99Us": 125.25999999999999,
+       "meanUs": 45.963333333333324,
+       "meanPercent": 1.723625,
+       "maxPercent": 4.7646,
+       "blocks": 458416,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 1.129163,
+       "p99Us": 30.11101333333333,
+       "meanUs": 19.027066666666666,
+       "meanPercent": 0.713515,
+       "maxPercent": 1.156275,
+       "blocks": 1105110,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.809746
+    },
+    {
+     "frames": 128,
+     "taps": 48000,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 8.827687,
+       "p99Us": 235.40498666666664,
+       "meanUs": 66.2108,
+       "meanPercent": 2.482905,
+       "maxPercent": 9.2055,
+       "blocks": 315161,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 1024,
+       "p99Percent": 2.238863,
+       "p99Us": 59.70301333333333,
+       "meanUs": 36.510266666666666,
+       "meanPercent": 1.369135,
+       "maxPercent": 2.32845,
+       "blocks": 573020,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 8.820075,
+       "p99Us": 235.20199999999997,
+       "meanUs": 65.99037333333332,
+       "meanPercent": 2.474639,
+       "maxPercent": 9.522825,
+       "blocks": 319254,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.043572
+    },
+    {
+     "frames": 128,
+     "taps": 240000,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 22.603868,
+       "p99Us": 602.7698133333333,
+       "meanUs": 94.22928,
+       "meanPercent": 3.533598,
+       "maxPercent": 24.350513,
+       "blocks": 221022,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 8192,
+       "p99Percent": 3.944438,
+       "p99Us": 105.18501333333333,
+       "meanUs": 51.75949333333333,
+       "meanPercent": 1.940981,
+       "maxPercent": 4.3923,
+       "blocks": 392928,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 21.9165,
+       "p99Us": 584.4399999999999,
+       "meanUs": 89.70357333333334,
+       "meanPercent": 3.363884,
+       "maxPercent": 25.652625,
+       "blocks": 229208,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.050993
+    },
+    {
+     "frames": 128,
+     "taps": 1200000,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 56.348848,
+       "p99Us": 1502.6359466666665,
+       "meanUs": 198.16152,
+       "meanPercent": 7.431057,
+       "maxPercent": 81.34815,
+       "blocks": 106418,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 5.15205,
+       "p99Us": 137.38799999999998,
+       "meanUs": 77.95594666666666,
+       "meanPercent": 2.923348,
+       "maxPercent": 6.797888,
+       "blocks": 241487,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 25.59225,
+       "p99Us": 682.4599999999999,
+       "meanUs": 154.43229333333332,
+       "meanPercent": 5.791211,
+       "maxPercent": 52.503862,
+       "blocks": 130976,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.044081
+    },
+    {
+     "frames": 128,
+     "taps": 2880000,
+     "deadlineUs": 2666.6666666666665,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 144.477112,
+       "p99Us": 3852.722986666666,
+       "meanUs": 374.5211733333333,
+       "meanPercent": 14.044544,
+       "maxPercent": 174.6429,
+       "blocks": 57302,
+       "overruns": 1778,
+       "missesPerMinute": 698.1431712680186
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 7.781811,
+       "p99Us": 207.51495999999997,
+       "meanUs": 105.78266666666667,
+       "meanPercent": 3.96685,
+       "maxPercent": 9.3291,
+       "blocks": 167813,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 29.070955,
+       "p99Us": 775.2254666666668,
+       "meanUs": 267.2048533333333,
+       "meanPercent": 10.020182,
+       "maxPercent": 107.858625,
+       "blocks": 77767,
+       "overruns": 57,
+       "missesPerMinute": 16.491570974835085
+      }
+     },
+     "parityDbBelowSignal": 137.044081
+    },
+    {
+     "frames": 256,
+     "taps": 512,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.34965,
+       "p99Us": 18.648,
+       "meanUs": 18.12448,
+       "meanPercent": 0.339834,
+       "maxPercent": 0.41115,
+       "blocks": 1160649,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 512,
+       "fftBlockSize": 0,
+       "p99Percent": 0.352087,
+       "p99Us": 18.777973333333332,
+       "meanUs": 18.245386666666665,
+       "meanPercent": 0.342101,
+       "maxPercent": 0.39165,
+       "blocks": 1152461,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 256,
+     "taps": 1024,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.67785,
+       "p99Us": 36.151999999999994,
+       "meanUs": 34.924213333333334,
+       "meanPercent": 0.654829,
+       "maxPercent": 0.844088,
+       "blocks": 601818,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "direct",
+       "headTaps": 1024,
+       "fftBlockSize": 0,
+       "p99Percent": 0.662513,
+       "p99Us": 35.33402666666667,
+       "meanUs": 34.82005333333333,
+       "meanPercent": 0.652876,
+       "maxPercent": 0.73335,
+       "blocks": 603865,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": null
+    },
+    {
+     "frames": 256,
+     "taps": 2048,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 512,
+       "p99Percent": 1.250344,
+       "p99Us": 66.68501333333333,
+       "meanUs": 55.497386666666664,
+       "meanPercent": 1.040576,
+       "maxPercent": 1.316663,
+       "blocks": 380742,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 256,
+       "fftBlockSize": 256,
+       "p99Percent": 0.457988,
+       "p99Us": 24.426026666666665,
+       "meanUs": 23.904319999999995,
+       "meanPercent": 0.448206,
+       "maxPercent": 0.603825,
+       "blocks": 880210,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 138.098542
+    },
+    {
+     "frames": 256,
+     "taps": 4096,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 1024,
+       "p99Percent": 1.774313,
+       "p99Us": 94.63002666666665,
+       "meanUs": 72.66991999999999,
+       "meanPercent": 1.362561,
+       "maxPercent": 1.839938,
+       "blocks": 290674,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 0.754875,
+       "p99Us": 40.26,
+       "meanUs": 33.39573333333333,
+       "meanPercent": 0.62617,
+       "maxPercent": 0.768413,
+       "blocks": 630476,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.810806
+    },
+    {
+     "frames": 256,
+     "taps": 8192,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 128,
+       "fftBlockSize": 2048,
+       "p99Percent": 2.979525,
+       "p99Us": 158.90800000000002,
+       "meanUs": 91.57754666666668,
+       "meanPercent": 1.717079,
+       "maxPercent": 3.030225,
+       "blocks": 229264,
+       "overruns": null,
+       "missesPerMinute": null
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 512,
+       "fftBlockSize": 512,
+       "p99Percent": 0.756956,
+       "p99Us": 40.37098666666666,
+       "meanUs": 37.95381333333333,
+       "meanPercent": 0.711634,
+       "maxPercent": 0.820837,
+       "blocks": 554737,
+       "overruns": null,
+       "missesPerMinute": null
+      }
+     },
+     "parityDbBelowSignal": 137.809746
+    },
+    {
+     "frames": 256,
+     "taps": 48000,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 5.308313,
+       "p99Us": 283.11002666666667,
+       "meanUs": 131.97098666666665,
+       "meanPercent": 2.474456,
+       "maxPercent": 5.735063,
+       "blocks": 159666,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 1024,
+       "p99Percent": 1.470844,
+       "p99Us": 78.44501333333332,
+       "meanUs": 73.15696,
+       "meanPercent": 1.371693,
+       "maxPercent": 1.561444,
+       "blocks": 286580,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 4096,
+       "p99Percent": 5.3052,
+       "p99Us": 282.944,
+       "meanUs": 131.55754666666667,
+       "meanPercent": 2.466704,
+       "maxPercent": 5.569425,
+       "blocks": 159666,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.043572
+    },
+    {
+     "frames": 256,
+     "taps": 240000,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 12.468073,
+       "p99Us": 664.9638933333333,
+       "meanUs": 185.19104,
+       "meanPercent": 3.472332,
+       "maxPercent": 13.687106,
+       "blocks": 112585,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 8192,
+       "p99Percent": 3.082631,
+       "p99Us": 164.40698666666668,
+       "meanUs": 102.74602666666665,
+       "meanPercent": 1.926488,
+       "maxPercent": 4.35285,
+       "blocks": 196512,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 12.300208,
+       "p99Us": 656.0110933333333,
+       "meanUs": 179.00602666666663,
+       "meanPercent": 3.356363,
+       "maxPercent": 14.029125,
+       "blocks": 114632,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.050993
+    },
+    {
+     "frames": 256,
+     "taps": 1200000,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 30.834344,
+       "p99Us": 1644.4983466666667,
+       "meanUs": 347.34624,
+       "meanPercent": 6.512742,
+       "maxPercent": 33.327356,
+       "blocks": 57316,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 4.895569,
+       "p99Us": 261.09701333333334,
+       "meanUs": 156.13349333333332,
+       "meanPercent": 2.927503,
+       "maxPercent": 5.663531,
+       "blocks": 120773,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 15.069721,
+       "p99Us": 803.7184533333333,
+       "meanUs": 307.10293333333334,
+       "meanPercent": 5.75818,
+       "maxPercent": 26.350988,
+       "blocks": 65504,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.044081
+    },
+    {
+     "frames": 256,
+     "taps": 2880000,
+     "deadlineUs": 5333.333333333333,
+     "variants": {
+      "linear": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 76.209254,
+       "p99Us": 4064.4935466666666,
+       "meanUs": 636.9073066666666,
+       "meanPercent": 11.942012,
+       "maxPercent": 107.966456,
+       "blocks": 32752,
+       "overruns": 5,
+       "missesPerMinute": 1.7174523693209574
+      },
+      "linearplus": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 1024,
+       "fftBlockSize": 16384,
+       "p99Percent": 7.09359,
+       "p99Us": 378.3248,
+       "meanUs": 215.55226666666664,
+       "meanPercent": 4.041605,
+       "maxPercent": 8.074781,
+       "blocks": 81880,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      },
+      "linear@4096": {
+       "succeeded": true,
+       "implementation": "fft",
+       "headTaps": 64,
+       "fftBlockSize": 8192,
+       "p99Percent": 19.394867,
+       "p99Us": 1034.3929066666667,
+       "meanUs": 527.1915733333333,
+       "meanPercent": 9.884842,
+       "maxPercent": 65.442338,
+       "blocks": 38893,
+       "overruns": 0,
+       "missesPerMinute": 0.0
+      }
+     },
+     "parityDbBelowSignal": 137.044081
+    }
+   ]
+  }
+ ]
+}

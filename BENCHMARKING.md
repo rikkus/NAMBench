@@ -237,21 +237,185 @@ running is worth more than a fast one.
 ## Impulse responses
 
 A second subject, measured by the same protocol on the same machines:
-AudioDSPTools' impulse-response convolution, `main` against the
-`partitioned-ir` branch.
+impulse-response convolution, as Core does it. NeuralAmpModelerCore's `Linear`
+model is a zero-latency convolver — a direct FIR head, which is what holds
+latency at zero, and FFT convolution for the rest — and since Core 0.6 a
+`.wav` IR loads as one.
 
-Upstream convolves directly — one multiply-add per tap, per output sample — so
-its cost is linear in the length of the IR. The branch keeps a direct FIR head
-covering the first block, which is what holds latency at zero, and moves
-everything behind it into uniformly partitioned FFT convolution, whose cost
-barely grows with length at all. The longer the IR, the wider the gap.
+`nam_ir_benchmark` measures one Core tree's `Linear` against another's, in one
+process. The line-up is:
 
-"Taps" is that length in samples: at 48 kHz, 512 taps is about 11 ms of
-impulse response and 8192 is 170 ms. 8192 is where the ladder stops because
-that is where AudioDSPTools truncates, so it is the longest IR the plugin can
-load, not an arbitrary ceiling.
+| Bencher name | what it is |
+|---|---|
+| `ir_<taps>/linear` | upstream Core, at the `upstream` pin. FFT in power-of-two tiers that grow along the IR |
+| `ir_<taps>/linearplus` | the same commit with the FFT path replaced: uniform partitions, the multiplies spread across the callbacks between transforms |
+
+Both choose direct or FFT convolution themselves, as they would in a plugin,
+and both convolve directly up to 1024 taps, so at those lengths they run the
+same code. `linearplus` is the proposal to Core; it was an AudioDSPTools branch
+until the comparison in [IR-PATH.md](IR-PATH.md#against-nam-cores-linear-324)
+showed Core already had the convolver to improve.
+
+"Taps" is the IR's length in samples: at 48 kHz, 512 taps is about 11 ms of
+impulse response and 8192 is 170 ms. The ladder stops at 8192 because that is
+where AudioDSPTools truncates, so it is the longest IR the plugin's IR slot can
+load today. Core itself does not truncate.
 
 ### Results
+
+September 2026: `linear` at upstream `0b3d3c9` against `linearplus` at
+`79c8009`, 5 s of warm-up and 30 s timed per cell and implementation, every
+point accepted on both machines. The Pi 500 was pinned to CPU 3, and its clock
+held at 2.4 GHz throughout. [`ir-study/linearplus.html`](ir-study/linearplus.html)
+shows every cell as `linearplus`'s p99 minus `linear`'s, in points of the
+deadline, drawn from
+[`ir-study/data/linearplus-summary.json`](ir-study/data/linearplus-summary.json).
+
+At 8192 taps, the 99th-percentile callback as a share of its deadline:
+
+| frames | deadline | M2 `linear` | M2 `linearplus` | Pi 500 `linear` | Pi 500 `linearplus` |
+|---:|---:|---:|---:|---:|---:|
+| 16 | 333 µs | 5.74% | **3.11%** | 15.45% | **6.24%** |
+| 32 | 667 µs | 6.79% | **1.69%** | 16.69% | **3.33%** |
+| 64 | 1333 µs | 3.72% | **0.93%** | 8.70% | **1.86%** |
+| 128 | 2667 µs | 2.04% | **0.63%** | 4.70% | **1.13%** |
+| 256 | 5333 µs | 1.26% | **0.40%** | 2.98% | **0.76%** |
+
+- **Up to 1024 taps the two are the same.** Both convolve directly there, with
+  the same code, and their p99s agree to within 0.07 points.
+- **From 2048 taps `linearplus` is lower at every callback size on both
+  machines**: by 0.3 to 5.1 points of p99 on the M2 and 0.8 to 13.4 on the Pi
+  500, with a mean 46-57% lower on the M2 and 54-59% lower on the Pi 500.
+- **At 16 frames the p99 flatters `linear`.** Its largest transform runs once
+  every 2048 samples, which at 16-frame callbacks is fewer than 1% of them, so
+  the 99th percentile misses it: on the Pi 500 its worst callback there took
+  34.5% of the deadline against a p99 of 15.45%. `linearplus` transforms every
+  512 samples and its worst was 8.9%.
+- **The M2's 128-frame row was measured twice.** In the first run the two
+  same-code cells at 1024 taps disagreed by 13% in mean, which is this machine's
+  other work getting in, not the code; in the second they agreed to 0.3%, and
+  the second is what is shown. Nothing else moved by more than 0.06 points.
+
+`Auto`'s threshold is upstream's, and was checked rather than inherited: forced
+to FFT, `linearplus` has the lower mean from 513 taps, but at 16- and 32-frame
+callbacks its transform callback costs more than direct convolution until well
+past 1024 taps, on both machines.
+
+**Beyond the ladder.** It stops where the plugin's IR slot does, but Core's
+`Linear` also runs multi-second impulse responses. Measured separately with
+Core's own `bench_linear` on the Pi 500 (the `linearplus` branch's
+`tools/BENCHMARK_LINEAR.md` has the table), `linearplus` stays ahead on mean and
+p99 up to 48,000 taps. Beyond that its worst callback stays bounded where
+`linear`'s largest transforms overrun the deadline, but its mean grows with the
+number of partitions: 1.2x `linear`'s at 240,000 taps, 2.8x at 1,200,000.
+
+
+### The line-up
+
+`--variants` sets it, baseline first: every other subject is checked against the
+baseline's output before anything is timed, and compared with its time after.
+The default is `linear,linearplus`. Three variants are built in:
+
+| variant | built from |
+|---|---|
+| `linear` | `vendor/upstream`, Core's `Linear` |
+| `linearplus` | `vendor/linearplus`, the fork's `linearplus` branch, cut from the same commit |
+| `adt_upstream` | `vendor/adt-upstream`, AudioDSPTools' `ImpulseResponse`: the direct FIR the plugin's IR slot runs today |
+
+A suffix forces a convolution — `linearplus:fft`, `linear:direct` — which is how
+`Auto`'s threshold was chosen; left bare, a variant chooses for itself.
+`adt_upstream` has one convolution only and refuses a suffix rather than
+measuring direct convolution under an FFT label. Adding a variant is one more
+Core tree in `vendor/`, one `nb_add_linear_library` line in `CMakeLists.txt` and
+one entry in the driver's table.
+
+Two FFT paths are not bit-identical to each other or to a direct convolution —
+they are different orders of arithmetic. `linearplus` lands around 137 dB below
+the signal against `linear`, which is checked as an accuracy floor before
+anything is timed, and a point that fails it is not reported at all. Where both
+convolve directly they are identical.
+
+### Two measures
+
+`core_percent` alone would be misleading here in a way it is not for the
+WaveNet engines. Partitioned FFT convolution is bursty by construction: a whole
+partition's transform lands in one callback, so the work is spread unevenly
+across blocks in a way a direct convolution's never is. An implementation can
+lower the average and raise the worst case, and a plugin that misses one
+callback clicks however good its average was.
+
+So the IR benchmark also reports **`block_p99_percent`**: the 99th-percentile
+block, as a percentage of that block's own real-time budget. 100% is a callback
+that used its entire deadline. The shim reads the clock at every block boundary,
+so the per-block times and the total they are compared against come from the
+same reads and cannot disagree, and the pooled blocks are exactly the blocks of
+the passes the window accepted.
+
+A p99 rather than a maximum. A maximum over a million blocks is a measurement of
+the operating system — one preemption or one page fault and the number stops
+being about the code. The maximum is in the JSON for diagnosis; the p99 is what
+Bencher tracks.
+
+### The impulse response is generated
+
+There is no IR asset in this repository. What a convolution costs is set by how
+many taps it has and not by what is in them — every implementation here touches
+every tap of every block regardless of their values — so the shims generate one
+(`Sources/Shim/nb_ir_generate.h`) from an integer LCG and a multiplicative
+decay. No libm call, so every platform produces the same floats; no file, so
+nothing can differ between two runs being compared; and nobody's cabinet
+measurement is being redistributed. AudioDSPTools applies a fixed -18 dB to
+whatever it loads and Core applies nothing, so the AudioDSPTools shim divides
+that gain out first: all three convolve the same impulse response, and their
+outputs can be compared sample for sample.
+
+### Running one
+
+```bash
+Scripts/track-benchmark.sh --ir
+```
+
+or, without uploading:
+
+```bash
+cmake -S . -B build-benchmark -DCMAKE_BUILD_TYPE=Release -DNAMBENCH_BUILD_BENCHMARK=ON
+cmake --build build-benchmark --target nam_ir_benchmark --parallel 4
+Scripts/run-benchmark.sh --ir --build-dir build-benchmark \
+    --taps 512,1024,2048,4096,8192 --blocks 16,32,64,128,256
+```
+
+`--variants` passes a line-up through, e.g. `--variants linear,linearplus,adt_upstream`.
+`Scripts/ir-report.py` turns the reports into the page linked above, one table
+per machine, and keeps a small summary it can be rebuilt from.
+
+### A rejected point is a gap, not a number
+
+An IR run is one independent series per length and variant. If the protocol
+rejects one of them — the machine was too noisy to measure a pass to within
+3% — that point is omitted from the upload, named on stderr with its reason, and
+the others are uploaded. Its series gets a gap where a run that could not be
+trusted would otherwise have left something that could not be trusted either.
+
+This is deliberately *not* what the WaveNet run does. There the line-up is two
+variants and what is wanted from it is the ratio between them, so half of it is
+worth little and one rejection still refuses the whole upload.
+
+Both refuse everything if the residency check says the clock moved during the
+run. That is not one subject being hard to measure; it is every number in the
+run describing a machine that was not one machine.
+
+`--taps` sets the ladder (default `256,512,1024,2048,4096,8192`) and `--blocks`
+the block sizes. Each block size gets its own report, because block size is not
+part of a Bencher benchmark name and two of them in one upload would overwrite
+each other; `--bmf` with more than one is refused up front rather than after
+the measurement has been spent.
+
+### Earlier: the AudioDSPTools branch
+
+Until the move to Core, this benchmark measured AudioDSPTools `main` against
+the `partitioned-ir` branch, which is the same convolver `linearplus` now puts
+into Core. Those numbers are kept here because the decisions recorded in
+[IR-PATH.md](IR-PATH.md) rest on them.
 
 64-frame blocks, mono IR, all eighteen points accepted on every machine, with
 the branch at `b505422`. `core%` is the average cost of keeping up with real
@@ -314,7 +478,7 @@ plain FIR — which is why it comes out bit-identical to upstream there, and
 3-4% slower on every machine. (Until `b505422` the Tinker Board paid 27% here,
 for a 64-bit modulo per sample in the output ring, which 32-bit ARM does as a
 library call.) The driver says so on the
-line it prints, and `fftPartitions` in the report is 0. `Auto` never picks the
+line it prints, and the report said so. `Auto` never picks the
 FFT path at this length: it sends only IRs above 512 taps there, and those
 always have at least one partition. So this row is what forcing FFT on a short
 IR costs, kept so the ladder starts in the same place on every machine.
@@ -342,93 +506,6 @@ on the Tinker Board. No length got slower on any machine.
 
 [IR-PATH.md](IR-PATH.md) records the investigation around these numbers, and
 the decisions it led to.
-
-### Three subjects, not two
-
-| Bencher name | what it is |
-|---|---|
-| `ir_<taps>/adt_upstream` | what the plugin ships |
-| `ir_<taps>/adt_partitioned_direct` | the branch's direct path, forced |
-| `ir_<taps>/adt_partitioned_fft` | the branch's FFT path, forced |
-
-The middle one is there because the branch's direct path is a *rewrite* of
-upstream's, not the same code — it manages its own history buffer so that the
-FFT path can share the arrangement. `Auto` selects it for short IRs, so if it
-had regressed, every short IR would carry that regression and no amount of
-comparing the FFT path against upstream would reveal it. It is measured, and it
-comes out bit-identical to upstream at every length: `max|diff|` exactly zero,
-not a tolerance.
-
-The FFT path is not bit-identical and cannot be — it is a different order of
-arithmetic. It lands around 136 dB below the signal, which is checked as an
-accuracy floor before anything is timed, and a point that fails it is not
-reported at all.
-
-### Two measures
-
-`core_percent` alone would be misleading here in a way it is not for the
-WaveNet engines. Partitioned FFT convolution is bursty by construction: a whole
-partition's transform lands in one callback, so the work is spread unevenly
-across blocks in a way a direct convolution's never is. An implementation can
-lower the average and raise the worst case, and a plugin that misses one
-callback clicks however good its average was.
-
-So the IR benchmark also reports **`block_p99_percent`**: the 99th-percentile
-block, as a percentage of that block's own real-time budget. 100% is a callback
-that used its entire deadline. The shim reads the clock at every block boundary,
-so the per-block times and the total they are compared against come from the
-same reads and cannot disagree, and the pooled blocks are exactly the blocks of
-the passes the window accepted.
-
-A p99 rather than a maximum. A maximum over a million blocks is a measurement of
-the operating system — one preemption or one page fault and the number stops
-being about the code. The maximum is in the JSON for diagnosis; the p99 is what
-Bencher tracks.
-
-### The impulse response is generated
-
-There is no IR asset in this repository. What a convolution costs is set by how
-many taps it has and not by what is in them — both implementations touch every
-tap of every block regardless of their values — so the shim generates one from
-an integer LCG and a multiplicative decay. No libm call, so every platform
-produces the same floats; no file, so nothing can differ between two runs being
-compared; and nobody's cabinet measurement is being redistributed.
-
-### Running one
-
-```bash
-Scripts/track-benchmark.sh --ir
-```
-
-or, without uploading:
-
-```bash
-cmake -S . -B build-benchmark -DCMAKE_BUILD_TYPE=Release -DNAMBENCH_BUILD_BENCHMARK=ON
-cmake --build build-benchmark --target nam_ir_benchmark --parallel 4
-Scripts/run-benchmark.sh --ir --build-dir build-benchmark
-```
-
-### A rejected point is a gap, not a number
-
-An IR run is eighteen independent series. If the protocol rejects one of
-them — the machine was too noisy to measure a 10 ms pass to within 3% — that
-point is omitted from the upload, named on stderr with its reason, and the other
-seventeen are uploaded. Its series gets a gap where a run that could not be
-trusted would otherwise have left something that could not be trusted either.
-
-This is deliberately *not* what the WaveNet run does. There the line-up is two
-variants and what is wanted from it is the ratio between them, so half of it is
-worth little and one rejection still refuses the whole upload.
-
-Both refuse everything if the residency check says the clock moved during the
-run. That is not one subject being hard to measure; it is every number in the
-run describing a machine that was not one machine.
-
-`--taps` sets the ladder (default `256,512,1024,2048,4096,8192`) and `--blocks`
-the block sizes. Each block size gets its own report, because block size is not
-part of a Bencher benchmark name and two of them in one upload would overwrite
-each other; `--bmf` with more than one is refused up front rather than after
-the measurement has been spent.
 
 ## AUv3 wrapper overhead
 
@@ -568,7 +645,7 @@ are spelled the way the Core code path spells them, underscores and all, so a
 label on the dashboard and a symbol in the source are the same word.
 
 The IR benchmark keeps the same shape with the impulse-response length where
-the model goes — `ir_8192/adt_partitioned_fft`. Length belongs in the name for
+the model goes — `ir_8192/linearplus`. Length belongs in the name for
 the same reason a submodel does: it is the independent variable of that
 benchmark, and two lengths are no more comparable to each other than A2
 standard is to A2 nano.

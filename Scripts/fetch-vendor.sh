@@ -2,12 +2,12 @@
 #
 # Fetch the code variants under test into vendor/, at pinned commits.
 #
-# Both NAM checkouts are compiled against ONE shared Eigen tree (vendor/eigen).
-# a2_fast uses Eigen for its GEMM, so an Eigen version difference between the
-# two builds would land directly in the measured result. Sharing one tree
-# makes that impossible by construction; we still assert both repos pin the
-# same Eigen commit, so a future bump that diverges is caught here rather than
-# silently skewing a benchmark.
+# Every NAM checkout is compiled against ONE shared Eigen tree (vendor/eigen).
+# a2_fast uses Eigen for its GEMM, and Linear for its dot products and FFTs, so
+# an Eigen version difference between two builds would land directly in the
+# measured result. Sharing one tree makes that impossible by construction; we
+# still assert every repo pins the same Eigen commit, so a future bump that
+# diverges is caught here rather than silently skewing a benchmark.
 
 set -euo pipefail
 
@@ -17,7 +17,7 @@ VENDOR="${REPO_ROOT}/vendor"
 # --- Pinned commits ----------------------------------------------------------
 
 UPSTREAM_URL="https://github.com/sdatkinson/NeuralAmpModelerCore.git"
-UPSTREAM_SHA="2563c0fd4cb1f9ce457d89a761738ea15097e1f3"
+UPSTREAM_SHA="0b3d3c97b0859a3a8c92a8628c4dd89a25eb5842"
 
 # The planar NEON kernels, as proposed to Core in
 # https://github.com/sdatkinson/NeuralAmpModelerCore/pull/313 — the head of that
@@ -38,23 +38,27 @@ UPSTREAM_SHA="2563c0fd4cb1f9ce457d89a761738ea15097e1f3"
 PLANAR_URL="https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore.git"
 PLANAR_SHA="44412fad6ad135d51218785e15dc7418c29a2124"
 
-# AudioDSPTools, for the impulse-response benchmark.
+# linearplus: Core's Linear model with its FFT path replaced by uniform
+# partitions whose multiplies are spread across the callbacks between
+# transforms. The impulse-response benchmark measures it against upstream's
+# Linear, so it is cut from UPSTREAM_SHA exactly and its diff against that
+# commit is the whole of what is being measured.
 #
-# The same two-checkouts-one-dependency arrangement as the NAM engines above,
-# for the same reason: ImpulseResponse's convolution is written in Eigen, so an
-# Eigen difference between the two builds would land in the measured result.
-# These two share a tree with each other but NOT with the NAM checkouts, because
+# Fork branch linearplus. It was an AudioDSPTools branch (partitioned-ir) until
+# Core gained a zero-latency FFT convolver of its own; see IR-PATH.md.
+LINEARPLUS_URL="https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore.git"
+LINEARPLUS_SHA="79c8009adf1fca8a2dea6cf926dbe7c03cec878f"
+
+# AudioDSPTools, which is what the plugin convolves its IR slot with today: a
+# direct FIR. Measured alongside Core's Linear only when asked for, as the
+# reference for what the plugin ships. v0.2.0, which is also its main.
+#
+# It gets its own Eigen tree rather than sharing the NAM one, because
 # AudioDSPTools pins a different Eigen than NeuralAmpModelerCore does and
 # building either project against the other's pin would measure something
 # neither project ships.
 ADT_UPSTREAM_URL="https://github.com/sdatkinson/AudioDSPTools.git"
 ADT_UPSTREAM_SHA="844680d118f0317565132c3c5e3aca5f5c976e7a"
-
-# Partitioned-FFT convolution for long impulse responses: a direct FIR head for
-# the first block, so latency stays at zero, plus FFT partitions for the tail.
-# Branch partitioned-ir, cut from the upstream commit above.
-ADT_PARTITIONED_URL="https://github.com/rikkus/AudioDSPTools.git"
-ADT_PARTITIONED_SHA="b50542244c2a6c40602eac58a80823c13fb2678d"
 
 EIGEN_URL="https://gitlab.com/libeigen/eigen.git"
 
@@ -62,6 +66,8 @@ EIGEN_URL="https://gitlab.com/libeigen/eigen.git"
 # lets this work offline. Each is only used if it already contains the pinned
 # commit; otherwise we fall back to the canonical URL.
 LOCAL_HINTS=(
+	"/Users/rik/code.local/nam/NeuralAmpModelerCore-linearplus"
+	"/Users/rik/code.local/nam/NeuralAmpModelerCore-planar"
 	"/Users/rik/code.local/nam/NeuralAmpModelerPlugin/NeuralAmpModelerCore"
 	"/Users/rik/code.local/nam/OptimisationWorkOnNeuralAmpModelerPlugin/NeuralAmpModelerCore"
 	"/Users/rik/code.local/nam/older/OptimisationWorkOnNeuralAmpModelerCore"
@@ -135,22 +141,24 @@ pinned_eigen_sha() {
 	git -C "$1" ls-tree HEAD Dependencies/eigen | awk '{print $3}'
 }
 
-# --- Fetch the two NAM variants ---------------------------------------------
+# --- Fetch the NAM variants --------------------------------------------------
 
 mkdir -p "${VENDOR}"
 
 fetch_at "${VENDOR}/upstream" "${UPSTREAM_URL}" "${UPSTREAM_SHA}" "$(find_local_with_commit "${UPSTREAM_SHA}")"
 fetch_at "${VENDOR}/planar" "${PLANAR_URL}" "${PLANAR_SHA}" "$(find_local_with_commit "${PLANAR_SHA}")"
+fetch_at "${VENDOR}/linearplus" "${LINEARPLUS_URL}" "${LINEARPLUS_SHA}" "$(find_local_with_commit "${LINEARPLUS_SHA}")"
 fetch_at "${VENDOR}/adt-upstream" "${ADT_UPSTREAM_URL}" "${ADT_UPSTREAM_SHA}" "$(find_local_with_commit "${ADT_UPSTREAM_SHA}")"
-fetch_at "${VENDOR}/adt-partitioned" "${ADT_PARTITIONED_URL}" "${ADT_PARTITIONED_SHA}" "$(find_local_with_commit "${ADT_PARTITIONED_SHA}")"
 
 # --- Eigen: one shared tree, asserted identical across every checkout --------
 
 UPSTREAM_EIGEN="$(pinned_eigen_sha "${VENDOR}/upstream")"
 PLANAR_EIGEN="$(pinned_eigen_sha "${VENDOR}/planar")"
+LINEARPLUS_EIGEN="$(pinned_eigen_sha "${VENDOR}/linearplus")"
 
 [ -n "${UPSTREAM_EIGEN}" ] || die "could not read pinned Eigen commit from vendor/upstream"
 [ -n "${PLANAR_EIGEN}" ] || die "could not read pinned Eigen commit from vendor/planar"
+[ -n "${LINEARPLUS_EIGEN}" ] || die "could not read pinned Eigen commit from vendor/linearplus"
 
 if [ "${UPSTREAM_EIGEN}" != "${PLANAR_EIGEN}" ]; then
 	die "the checkouts pin different Eigen commits:
@@ -163,7 +171,17 @@ if [ "${UPSTREAM_EIGEN}" != "${PLANAR_EIGEN}" ]; then
   Eigen may not perform the same one. Reconcile the pins before benchmarking."
 fi
 
-log "both checkouts pin Eigen ${UPSTREAM_EIGEN:0:12} — building against one shared tree"
+if [ "${UPSTREAM_EIGEN}" != "${LINEARPLUS_EIGEN}" ]; then
+	die "the checkouts pin different Eigen commits:
+    upstream:   ${UPSTREAM_EIGEN}
+    linearplus: ${LINEARPLUS_EIGEN}
+  Both Linear implementations are Eigen code — dot products for the direct
+  head and Eigen::FFT for the partitions — so different Eigen versions would put
+  a dependency difference into the measured result. Reconcile the pins before
+  benchmarking."
+fi
+
+log "all three checkouts pin Eigen ${UPSTREAM_EIGEN:0:12} — building against one shared tree"
 
 fetch_at "${VENDOR}/eigen" "${EIGEN_URL}" "${UPSTREAM_EIGEN}" "$(
 	for hint in "${LOCAL_HINTS[@]}"; do
@@ -180,25 +198,11 @@ fetch_at "${VENDOR}/eigen" "${EIGEN_URL}" "${UPSTREAM_EIGEN}" "$(
 #
 # AudioDSPTools pins its own Eigen, and it is not the one NeuralAmpModelerCore
 # pins. Forcing either project onto the other's would measure a configuration
-# neither of them ships, so there are two trees. What still has to hold — and is
-# asserted here for the same reason it is asserted above — is that the two
-# AudioDSPTools checkouts agree with each other.
+# neither of them ships, so there are two trees.
 
 ADT_UPSTREAM_EIGEN="$(pinned_eigen_sha "${VENDOR}/adt-upstream")"
-ADT_PARTITIONED_EIGEN="$(pinned_eigen_sha "${VENDOR}/adt-partitioned")"
 
 [ -n "${ADT_UPSTREAM_EIGEN}" ] || die "could not read pinned Eigen commit from vendor/adt-upstream"
-[ -n "${ADT_PARTITIONED_EIGEN}" ] || die "could not read pinned Eigen commit from vendor/adt-partitioned"
-
-if [ "${ADT_UPSTREAM_EIGEN}" != "${ADT_PARTITIONED_EIGEN}" ]; then
-	die "the AudioDSPTools checkouts pin different Eigen commits:
-    adt-upstream:    ${ADT_UPSTREAM_EIGEN}
-    adt-partitioned: ${ADT_PARTITIONED_EIGEN}
-  ImpulseResponse's convolution is Eigen code — the direct path is a dot
-  product and the partitioned path an Eigen::FFT — so different Eigen versions
-  would put a dependency difference into the measured result, and into the
-  accuracy comparison between them. Reconcile the pins before benchmarking."
-fi
 
 if [ "${ADT_UPSTREAM_EIGEN}" = "${UPSTREAM_EIGEN}" ]; then
 	# Nothing wrong with this; it just means the two projects have converged and
@@ -228,18 +232,22 @@ fi
 [ -f "${VENDOR}/eigen/Eigen/Dense" ] || die "vendor/eigen missing Eigen/Dense"
 [ -f "${VENDOR}/upstream/Dependencies/nlohmann/json.hpp" ] || die "vendor/upstream missing nlohmann/json.hpp"
 [ -f "${VENDOR}/planar/Dependencies/nlohmann/json.hpp" ] || die "vendor/planar missing nlohmann/json.hpp"
+[ -f "${VENDOR}/linearplus/NAM/linear.cpp" ] || die "vendor/linearplus missing NAM/linear.cpp"
+[ -f "${VENDOR}/linearplus/Dependencies/nlohmann/json.hpp" ] || die "vendor/linearplus missing nlohmann/json.hpp"
 [ -f "${VENDOR}/adt-upstream/dsp/ImpulseResponse.cpp" ] || die "vendor/adt-upstream missing dsp/ImpulseResponse.cpp"
-[ -f "${VENDOR}/adt-partitioned/dsp/ImpulseResponse.cpp" ] || die "vendor/adt-partitioned missing dsp/ImpulseResponse.cpp"
-[ -f "${VENDOR}/adt-partitioned/dsp/PartitionedConvolution.cpp" ] || die "vendor/adt-partitioned missing dsp/PartitionedConvolution.cpp"
 [ -f "${ADT_EIGEN_DIR}/Eigen/Dense" ] || die "${ADT_EIGEN_DIR} missing Eigen/Dense"
 
-# The partitioned branch is cut from the upstream commit above, so its diff is
-# the change being measured and nothing else. Print it: an unexpectedly large
-# one means the comparison is no longer isolating the convolution.
-if git -C "${VENDOR}/adt-partitioned" cat-file -e "${ADT_UPSTREAM_SHA}^{commit}" 2>/dev/null; then
-	log "partitioned branch changes under dsp/:$(git -C "${VENDOR}/adt-partitioned" diff --shortstat "${ADT_UPSTREAM_SHA}" -- dsp/)"
+# linearplus is cut from UPSTREAM_SHA, so its diff is the change being measured
+# and nothing else. Print it: an unexpectedly large one, or one outside
+# NAM/linear.*, means the comparison is no longer isolating the convolution.
+# Both are single-commit checkouts, but a diff needs only the two trees, so the
+# upstream commit is borrowed from vendor/upstream rather than from the network.
+git -C "${VENDOR}/linearplus" fetch --quiet --depth 1 "${VENDOR}/upstream" "${UPSTREAM_SHA}" 2>/dev/null || true
+if git -C "${VENDOR}/linearplus" cat-file -e "${UPSTREAM_SHA}^{commit}" 2>/dev/null; then
+	log "linearplus changes under NAM/ vs upstream:$(git -C "${VENDOR}/linearplus" diff --shortstat "${UPSTREAM_SHA}" -- NAM/)"
+	log "  $(git -C "${VENDOR}/linearplus" diff --name-only "${UPSTREAM_SHA}" -- NAM/ | tr '\n' ' ')"
 else
-	log "adt-partitioned is a shallow checkout; skipping the diff against ${ADT_UPSTREAM_SHA:0:12}"
+	log "linearplus is a shallow checkout; skipping the diff against upstream ${UPSTREAM_SHA:0:12}"
 fi
 
 # The planar branch deliberately DOES touch a2_fast — that is where the two-line
@@ -279,14 +287,14 @@ cat > "${VENDOR}/pins.json" <<EOF
     "sha": "$(git -C "${VENDOR}/eigen" rev-parse HEAD)",
     "shared": true
   },
+  "linearplus": {
+    "url": "${LINEARPLUS_URL}",
+    "sha": "$(git -C "${VENDOR}/linearplus" rev-parse HEAD)",
+    "branch": "linearplus"
+  },
   "adt_upstream": {
     "url": "${ADT_UPSTREAM_URL}",
     "sha": "$(git -C "${VENDOR}/adt-upstream" rev-parse HEAD)"
-  },
-  "adt_partitioned": {
-    "url": "${ADT_PARTITIONED_URL}",
-    "sha": "$(git -C "${VENDOR}/adt-partitioned" rev-parse HEAD)",
-    "branch": "partitioned-ir"
   },
   "eigen_adt": {
     "url": "${EIGEN_URL}",

@@ -109,116 +109,48 @@ a difference in the measurement rather than in the code.
 ## Impulse responses
 
 A second subject, measured by the same protocol on the same machines:
-AudioDSPTools' impulse-response convolution, `main` against the
-[`partitioned-ir`](https://github.com/rikkus/AudioDSPTools/tree/partitioned-ir)
-branch, which keeps a direct FIR head for the first block — so latency stays at
-zero — and moves the tail into partitioned FFT.
+impulse-response convolution in NeuralAmpModelerCore's `Linear` model.
+Upstream's is measured against
+[`linearplus`](https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore/tree/linearplus),
+the same commit with the FFT path replaced. Both convolve the first taps
+directly, which keeps latency at zero, and the rest by FFT. Upstream's
+partitions double in size along the impulse response, so every so often one
+callback runs a large transform. `linearplus` keeps every partition the same
+size, and spreads their multiplies across the callbacks between transforms.
 
 ```bash
 cmake --build build-benchmark --target nam_ir_benchmark --parallel 4
-./Scripts/run-benchmark.sh --ir --build-dir build-benchmark
+./Scripts/run-benchmark.sh --ir --build-dir build-benchmark \
+    --taps 512,1024,2048,4096,8192 --blocks 16,32,64,128,256
 ```
 
-Direct convolution costs one multiply-add per tap per output sample, so it
-grows with the length of the IR; the FFT path barely does. At 48 kHz, 8192 taps
-is 170 ms of impulse response, and it is where AudioDSPTools truncates — the
-longest the plugin can load.
+The 99th-percentile callback at 8192 taps, which is 170 ms of impulse response
+at 48 kHz, as a share of that callback's deadline:
 
-64-frame blocks, mono IR, all eighteen points accepted on every machine, with
-the branch at `b505422`. `core%` is the average cost of keeping up with real
-time; `p99` is the 99th-percentile block against its own deadline.
+| | frames | `linear` | `linearplus` |
+|---|---:|---:|---:|
+| M2 MacBook Air | 32 | 6.79% | **1.69%** |
+| | 64 | 3.72% | **0.93%** |
+| Raspberry Pi 500 | 32 | 16.69% | **3.33%** |
+| | 64 | 8.70% | **1.86%** |
 
-**M2 MacBook Air** (spread 0.3-2.0%)
+The average falls by more than half as well. At 64 frames it goes from 0.68% of
+a core to 0.32% on the M2, and from 1.73% to 0.72% on the Pi 500.
+[`ir-study/linearplus.html`](ir-study/linearplus.html) has every combination of
+16 to 256 frames and 512 to 8192 taps on both machines. Up to 1024 taps both
+convolve directly, with the same code, and measure the same; from 2048 taps
+`linearplus` is lower at every callback size on both machines.
 
-| taps | ms of IR | shipping | | partitioned FFT | | |
-|---:|---:|---:|---:|---:|---:|---:|
-| | | core% | p99 | core% | p99 | |
-| 256 | 5.3 | **0.087%** | 0.12% | 0.090% | 0.12% | 0.96x |
-| 512 | 10.7 | 0.201% | 0.29% | **0.156%** | 0.36% | 1.29x |
-| 1024 | 21.3 | 0.439% | 0.60% | **0.167%** | 0.36% | 2.63x |
-| 2048 | 42.7 | 0.989% | 1.37% | **0.187%** | 0.35% | 5.30x |
-| 4096 | 85.3 | 2.079% | 2.67% | **0.331%** | 0.97% | 6.29x |
-| 8192 | 170.7 | 4.308% | 5.82% | **0.378%** | 0.99% | **11.39x** |
-
-**Raspberry Pi 500, Cortex-A76** (spread 0.01-0.28%)
-
-| taps | ms of IR | shipping | | partitioned FFT | | |
-|---:|---:|---:|---:|---:|---:|---:|
-| | | core% | p99 | core% | p99 | |
-| 256 | 5.3 | **0.189%** | 0.20% | 0.196% | 0.21% | 0.97x |
-| 512 | 10.7 | **0.355%** | 0.39% | 0.366% | 0.86% | 0.97x |
-| 1024 | 21.3 | 0.688% | 0.73% | **0.387%** | 0.86% | 1.78x |
-| 2048 | 42.7 | 1.359% | 1.50% | **0.432%** | 0.86% | 3.14x |
-| 4096 | 85.3 | 2.720% | 2.88% | **0.627%** | 1.86% | 4.34x |
-| 8192 | 170.7 | 6.645% | 6.91% | **0.712%** | 1.87% | **9.34x** |
-
-**Tinker Board, Cortex-A17 at 1.416 GHz** (spread 0.05-0.36%)
-
-| taps | ms of IR | shipping | | partitioned FFT | | |
-|---:|---:|---:|---:|---:|---:|---:|
-| | | core% | p99 | core% | p99 | |
-| 256 | 5.3 | **1.428%** | 2.03% | 1.472% | 2.08% | 0.97x |
-| 512 | 10.7 | 2.653% | 3.24% | **2.198%** | 4.88% | 1.21x |
-| 1024 | 21.3 | 5.122% | 5.71% | **2.320%** | 4.90% | 2.21x |
-| 2048 | 42.7 | 10.071% | 10.68% | **2.548%** | 4.94% | 3.95x |
-| 4096 | 85.3 | 21.059% | 22.14% | **3.908%** | 9.87% | 5.39x |
-| 8192 | 170.7 | 41.861% | 46.86% | **4.323%** | 9.89% | **9.68x** |
-
-The branch's own direct path, measured alongside and not shown above, is
-bit-identical to upstream at every length on every machine, and within about
-3% of it in time. The FFT path lands 136-138 dB below the signal.
-
-At 8192 taps the FFT path is both cheaper on average *and* calmer in its worst
-block everywhere. On the Tinker Board that is the difference that matters:
-shipping's slowest single block there reached 123% of its deadline, a missed
-callback, where the FFT path's never passed 16%. Below
-that, the burstiness that `block_p99_percent` exists to catch is real: a
-partition's transform lands in one callback, so on the ARM boards the FFT path's
-p99 is *worse* than shipping's at 512 taps on every machine, and at 1024 on the
-Pi 500, even where its average is far better. Spreading the partition
-multiplies across the quiet callbacks (`b505422`) roughly halved that spike on
-the boards; see [IR-PATH.md](IR-PATH.md#spreading-the-multiplies-b505422).
-
-**The 256-tap row is not measuring FFT.** At exactly 256 taps the whole impulse
-response fits inside the direct head, so no transform runs and the subject is a
-plain FIR — which is why it comes out bit-identical to upstream there, and
-3-4% slower on every machine. (Until `b505422` the Tinker Board paid 27% here,
-for a 64-bit modulo per sample in the output ring, which 32-bit ARM does as a
-library call.) The driver says so on the
-line it prints, and `fftPartitions` in the report is 0. `Auto` never picks the
-FFT path at this length: it sends only IRs above 512 taps there, and those
-always have at least one partition. So this row is what forcing FFT on a short
-IR costs, kept so the ladder starts in the same place on every machine.
-
-**The crossover depends on the machine, and `Auto` is set for the boards.** On
-the M2 FFT wins from just above 256 taps. On both ARM boards it wins from
-between 512 and 1024: at 512 taps it cost 10% more than direct on the Pi 500
-and 21% more on the Tinker Board, with a p99 about two and a half times
-shipping's. So since `e2dc6bc` the branch's `kAutoDirectMaxTaps` is 512, up from
-256: `Auto` runs direct up to 512 taps and FFT above, giving up the M2's 1.25x at
-that one length to stop the loss on both boards, where CPU is scarcest. The
-tables force each path, so that change does not move any number in them. Since
-`b505422` the picture at 512 has shifted: FFT now costs 3% more than direct on
-the Pi 500 but 17% *less* on the Tinker Board, though its p99 is still worse on
-both, and the threshold has not been revisited.
-
-**Only half of each spectrum is multiplied.** Audio and impulse responses are
-real, so every spectrum the FFT path forms is conjugate-symmetric: bin
-`N - k` is the conjugate of bin `k`, and the real-output inverse transform
-only reads bins `0..N/2`. Until `a09e360` the branch multiplied all `N` bins for
-every partition anyway. Stopping at `N/2` changes no output bit and makes the
-transform callback cheaper, which is why it shows most in the p99: at 8192
-taps, 2.26% to 1.61% on the M2, 4.48% to 3.22% on the Pi 500, 28.26% to 21.74%
-on the Tinker Board. No length got slower on any machine.
-
-It reports a worst-case block alongside the average, which `core_percent` cannot
-give: partitioned FFT convolution does a whole partition's transform in one
-callback, so an implementation can improve the average and worsen the worst
-case, and a plugin that misses one callback clicks. See
+The benchmark reports a worst-case block alongside the average, which
+`core_percent` cannot give: partitioned FFT convolution does a partition's
+transforms in one callback, so an implementation can improve the average and
+worsen the worst case, and a plugin that misses one callback clicks. See
 [BENCHMARKING.md](BENCHMARKING.md#impulse-responses) for the protocol, and
-[IR-PATH.md](IR-PATH.md) for the investigation around these numbers: the
-per-callback traces, the half-spectrum change, the threshold, what trimming an
-IR would cost, and what was left alone.
+[IR-PATH.md](IR-PATH.md) for the investigation that led here: the per-callback
+traces, the half-spectrum change, the threshold, what trimming an IR would cost,
+and what was left alone. Until September 2026 this benchmark compared
+AudioDSPTools `main` with its `partitioned-ir` branch, where this convolver
+started; BENCHMARKING.md keeps those results.
 
 ## What it measures, and why it is built this way
 

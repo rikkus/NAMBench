@@ -1,13 +1,25 @@
 // Impulse-response benchmark driver.
 //
-// AudioDSPTools convolves an impulse response the obvious way: one dot product
-// of every tap, per output sample. At the 8192 taps the plugin allows, that is
-// a lot of arithmetic to do sample by sample. The partitioned-ir branch keeps a
-// direct FIR head for the first block — which is what keeps latency at zero —
-// and moves the tail into uniformly partitioned FFT convolution.
+// Measures one impulse-response implementation against another. The variants
+// are NeuralAmpModelerCore trees, each built into a library of its own around
+// its nam::Linear:
 //
-// This measures both, in one process, from two hidden-visibility shared
-// libraries, using the same protocol as Tools/nam_benchmark.cpp: same warm-up,
+//   linear       upstream Core. Zero-latency FFT convolution in power-of-two
+//                tiers that grow along the impulse response.
+//   linearplus   the same commit with that FFT path replaced by uniform
+//                partitions, whose multiplies are spread across the callbacks
+//                between transforms.
+//
+// plus AudioDSPTools' dsp::ImpulseResponse, `adt_upstream`: the direct FIR the
+// plugin's IR slot runs today, for reference.
+//
+// --variants picks the line-up, and the first one named is the baseline every
+// other is checked and compared against. A variant may be asked for a
+// particular convolution with a suffix — `linearplus:fft` — which is how the
+// Auto threshold is examined; left bare, it chooses as it would in a plugin.
+//
+// All of them run in one process, from hidden-visibility shared libraries,
+// using the same protocol as Tools/nam_benchmark.cpp: same warm-up,
 // same timing window, same tightest-70% selection, same spread test, same
 // retry-and-reject. Everything that decides what the numbers mean is in
 // Tools/nb_protocol.h and is shared, so an IR number and a WaveNet number sit on
@@ -46,8 +58,9 @@
 #endif
 
 extern "C" {
-NB_IR_DECLARE_VARIANT(nb_ir_upstream)
-NB_IR_DECLARE_VARIANT(nb_ir_partitioned)
+NB_IR_DECLARE_VARIANT(nb_ir_linear)
+NB_IR_DECLARE_VARIANT(nb_ir_linearplus)
+NB_IR_DECLARE_VARIANT(nb_ir_adt_upstream)
 }
 
 namespace
@@ -72,9 +85,9 @@ struct IrApi
   NbIrImpl (*implementation)(const NbIr*) = nullptr;
   int32_t (*taps)(const NbIr*) = nullptr;
   int32_t (*channels)(const NbIr*) = nullptr;
-  int32_t (*partitions)(const NbIr*) = nullptr;
+  int32_t (*head_taps)(const NbIr*) = nullptr;
   int32_t (*fft_block)(const NbIr*) = nullptr;
-  void (*reset)(NbIr*, int32_t) = nullptr;
+  void (*reset)(NbIr*, int32_t, int32_t) = nullptr;
   uint64_t (*process)(NbIr*, const double*, size_t, double*, double*, uint64_t*) = nullptr;
 };
 
@@ -87,7 +100,7 @@ struct IrApi
     (api).implementation = &P##_ir_implementation;                                                \
     (api).taps = &P##_ir_taps;                                                                    \
     (api).channels = &P##_ir_channels;                                                            \
-    (api).partitions = &P##_ir_partitions;                                                        \
+    (api).head_taps = &P##_ir_head_taps;                                                          \
     (api).fft_block = &P##_ir_fft_block;                                                          \
     (api).reset = &P##_ir_reset;                                                                  \
     (api).process = &P##_ir_process;                                                              \
@@ -99,6 +112,9 @@ struct Subject
   std::string name;
   const IrApi* api = nullptr;
   NbIrImpl requested = NbIrImplAuto;
+  /// The largest block the subject is told to expect, from an `@N` suffix; 0
+  /// is the callback size itself.
+  int32_t declaredMax = 0;
 };
 
 const char* impl_name(NbIrImpl impl)
@@ -122,11 +138,14 @@ struct IrResult
   int32_t irChannels = 0;
   std::string requested;
   std::string active;
-  /// How the FFT path was configured. Zero partitions on an "fft" subject
-  /// means the IR fit inside the direct head and no transform ran — the
-  /// subject is a plain FIR, and saying "fft" without this would be reporting
-  /// one thing as another.
-  int32_t partitions = 0;
+  /// How the convolution was split: taps convolved directly per sample, and
+  /// the largest FFT partition. A head covering every tap on an "fft" subject
+  /// means the IR fit inside it and no transform ran — the subject is a plain
+  /// FIR, and saying "fft" without this would be reporting one thing as
+  /// another.
+  int32_t headTaps = 0;
+  /// The largest block the subject was told to expect.
+  int32_t maxBlockSize = 0;
   int32_t fftBlock = 0;
   /// Per-block cost as a percentage of that block's real-time budget, pooled
   /// over every pass the window accepted.
@@ -134,6 +153,10 @@ struct IrResult
   double blockP99Percent = 0.0;
   double blockMaxPercent = 0.0;
   size_t blockSampleCount = 0;
+  /// Pooled blocks that took longer than their own audio lasts: each one is a
+  /// callback that missed its deadline, however rare. The worst block says
+  /// whether that happened; this says how often.
+  size_t blockOverruns = 0;
 };
 
 /// The value at `quantile` of an already-sorted vector, by linear interpolation.
@@ -187,6 +210,82 @@ bool parse_int_list(const std::string& spec, std::vector<int32_t>& out, std::str
   return true;
 }
 
+/// Parse "linear,linearplus:fft" into subjects, against the variants built
+/// into this binary. Anything unknown, or a convolution a variant cannot be
+/// asked for, is an error rather than a silently different line-up.
+bool parse_subjects(const std::string& spec, const std::vector<const IrApi*>& variants,
+                    std::vector<Subject>& out, std::string& error)
+{
+  size_t start = 0;
+  while (start <= spec.size())
+  {
+    const size_t comma = spec.find(',', start);
+    const std::string piece =
+      spec.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+    // name[:auto|direct|fft][@max-block]
+    const size_t at = piece.find('@');
+    const std::string head = piece.substr(0, at);
+    int32_t declaredMax = 0;
+    if (at != std::string::npos)
+    {
+      declaredMax = std::atoi(piece.c_str() + at + 1);
+      if (declaredMax <= 0)
+      {
+        error = "\"" + piece + "\": the declared maximum block after @ must be a positive number";
+        return false;
+      }
+    }
+    const size_t colon = head.find(':');
+    const std::string variant = head.substr(0, colon);
+    const std::string impl = colon == std::string::npos ? "auto" : head.substr(colon + 1);
+
+    const IrApi* api = nullptr;
+    for (const IrApi* candidate : variants)
+      if (variant == candidate->name)
+        api = candidate;
+    if (api == nullptr)
+    {
+      error = "no variant \"" + variant + "\"; this build has";
+      for (const IrApi* candidate : variants)
+        error += std::string(" ") + candidate->name;
+      return false;
+    }
+
+    Subject subject;
+    subject.name = piece;
+    subject.api = api;
+    subject.declaredMax = declaredMax;
+    if (impl == "auto")
+      subject.requested = NbIrImplAuto;
+    else if (impl == "direct")
+      subject.requested = NbIrImplDirect;
+    else if (impl == "fft")
+      subject.requested = NbIrImplFFT;
+    else
+    {
+      error = "\"" + impl + "\" is not auto, direct or fft";
+      return false;
+    }
+    if (subject.requested != NbIrImplAuto && !api->can_select())
+    {
+      error = variant + " has one convolution only, so it cannot be asked for " + impl;
+      return false;
+    }
+    for (const Subject& other : out)
+      if (other.name == subject.name)
+      {
+        error = subject.name + " is named twice";
+        return false;
+      }
+    out.push_back(subject);
+
+    if (comma == std::string::npos)
+      break;
+    start = comma + 1;
+  }
+  return !out.empty();
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -211,6 +310,7 @@ int main(int argc, char** argv)
   bool checkParity = true;
   double parityWarnRelativeRMS = 1e-3;
   std::vector<std::string> counterEvents;
+  std::string variantSpec = "linear,linearplus";
 
   auto usage = []() {
     std::printf(
@@ -219,6 +319,11 @@ int main(int argc, char** argv)
       "  --audio, -a <path>       input .wav (required)\n"
       "  --output, -o <path>      JSON report to write (default: ir-benchmark.json)\n"
       "\n"
+      "  --variants <list>        what to measure, baseline first (default linear,linearplus).\n"
+      "                           Built in: linear, linearplus, adt_upstream. Add :direct or\n"
+      "                           :fft to force a convolution, e.g. linearplus:fft, and @N to\n"
+      "                           declare a larger maximum block than the callback, e.g.\n"
+      "                           linear@4096\n"
       "  --taps <list>            IR lengths to measure (default 256,512,1024,2048,4096,8192)\n"
       "  --blocks <list>          block sizes to measure (default 64)\n"
       "  --ir-channels <1|2>      mono or stereo IR (default 1)\n"
@@ -240,15 +345,22 @@ int main(int argc, char** argv)
 
   // --- Assemble the variant table -------------------------------------------
 
-  IrApi upstreamApi;
-  upstreamApi.name = "adt_upstream";
-  upstreamApi.repository = "sdatkinson/AudioDSPTools";
-  NB_IR_FILL(upstreamApi, nb_ir_upstream);
+  IrApi linearApi;
+  linearApi.name = "linear";
+  linearApi.repository = "sdatkinson/NeuralAmpModelerCore";
+  NB_IR_FILL(linearApi, nb_ir_linear);
 
-  IrApi partitionedApi;
-  partitionedApi.name = "adt_partitioned";
-  partitionedApi.repository = "rikkus/AudioDSPTools@partitioned-ir";
-  NB_IR_FILL(partitionedApi, nb_ir_partitioned);
+  IrApi linearplusApi;
+  linearplusApi.name = "linearplus";
+  linearplusApi.repository = "rikkus/OptimisationWorkOnNeuralAmpModelerCore@linearplus";
+  NB_IR_FILL(linearplusApi, nb_ir_linearplus);
+
+  IrApi adtApi;
+  adtApi.name = "adt_upstream";
+  adtApi.repository = "sdatkinson/AudioDSPTools";
+  NB_IR_FILL(adtApi, nb_ir_adt_upstream);
+
+  const std::vector<const IrApi*> variants = {&linearApi, &linearplusApi, &adtApi};
 
   // --- Parse ----------------------------------------------------------------
 
@@ -259,6 +371,8 @@ int main(int argc, char** argv)
     std::string error;
     if ((arg == "--audio" || arg == "-a") && has)
       audioPath = argv[++i];
+    else if (arg == "--variants" && has)
+      variantSpec = argv[++i];
     else if ((arg == "--output" || arg == "-o") && has)
       outputPath = argv[++i];
     else if (arg == "--taps" && has)
@@ -402,17 +516,18 @@ int main(int argc, char** argv)
 
   // --- The line-up -----------------------------------------------------------
   //
-  // Three subjects per point, because two different questions are being asked.
-  // Against upstream, the partitioned branch has to be faster without being
-  // worse in its worst block — that is the proposal. Its own direct path is
-  // measured as well because it is a rewrite of upstream's, not the same code:
-  // if it has regressed, the Auto threshold below which it is chosen is
-  // carrying that regression, and no comparison of the FFT path would show it.
-  std::vector<Subject> subjects = {
-    {"adt_upstream", &upstreamApi, NbIrImplAuto},
-    {"adt_partitioned:direct", &partitionedApi, NbIrImplDirect},
-    {"adt_partitioned:fft", &partitionedApi, NbIrImplFFT},
-  };
+  // The first subject is the baseline: every other is checked against its
+  // output before anything is timed, and compared with its time after.
+  std::vector<Subject> subjects;
+  {
+    std::string subjectError;
+    if (!parse_subjects(variantSpec, variants, subjects, subjectError))
+    {
+      std::fprintf(stderr, "error: --variants: %s\n", subjectError.c_str());
+      return 2;
+    }
+  }
+  const std::string baselineName = subjects.front().name;
 
   std::vector<IrResult> results;
   std::vector<Parity> parities;
@@ -425,11 +540,12 @@ int main(int argc, char** argv)
       if (!config.quiet)
         std::printf("\n---- %d taps, %d-frame blocks ----\n", taps, blockSize);
 
-      // Parity first, before anything is timed, and against the shipping
-      // implementation. The FFT path is not expected to be bit-identical —
-      // it is a different order of arithmetic — so this is an accuracy floor,
-      // not an equality check, and a failure here invalidates every timing at
-      // this point rather than being reported next to it.
+      // Parity first, before anything is timed, and against the baseline. Two
+      // FFT paths, or an FFT path and a direct one, are not expected to be
+      // bit-identical — they are different orders of arithmetic — so this is
+      // an accuracy floor, not an equality check, and a failure here
+      // invalidates every timing at this point rather than being reported next
+      // to it.
       std::vector<std::vector<double>> parityOutputs(subjects.size());
       bool parityOk = true;
       if (checkParity)
@@ -445,6 +561,7 @@ int main(int argc, char** argv)
                          subjects[s].name.c_str(), taps, err);
             return 1;
           }
+          subjects[s].api->reset(ir, blockSize, std::max(blockSize, subjects[s].declaredMax));
           parityOutputs[s].assign(audio.samples.size(), 0.0);
           double checksum = 0.0;
           subjects[s].api->process(ir, audio.samples.data(), audio.samples.size(),
@@ -503,7 +620,9 @@ int main(int argc, char** argv)
         std::vector<uint64_t> scratch(blocks, 0);
 
         PassHooks hooks;
-        hooks.reset = [&] { subject.api->reset(ir, blockSize); };
+        const int32_t maxBlock = std::max(blockSize, subject.declaredMax);
+        subject.api->reset(ir, blockSize, maxBlock);
+        hooks.reset = [&] { subject.api->reset(ir, blockSize, maxBlock); };
         hooks.run = [&] {
           return subject.api->process(ir, audio.samples.data(), audio.samples.size(), nullptr,
                                       nullptr, scratch.data());
@@ -518,8 +637,9 @@ int main(int argc, char** argv)
         record.irChannels = subject.api->channels(ir);
         record.requested = impl_name(subject.requested);
         record.active = impl_name(subject.api->implementation(ir));
-        record.partitions = subject.api->partitions(ir);
+        record.headTaps = subject.api->head_taps(ir);
         record.fftBlock = subject.api->fft_block(ir);
+        record.maxBlockSize = maxBlock;
 
         // Pool the accepted passes' blocks. The budget a block has is exactly
         // how long its own audio lasts, so a percentage here is directly
@@ -550,6 +670,8 @@ int main(int argc, char** argv)
           record.blockMedianPercent = quantile_of_sorted(percents, 0.50);
           record.blockP99Percent = quantile_of_sorted(percents, 0.99);
           record.blockMaxPercent = percents.empty() ? 0.0 : percents.back();
+          record.blockOverruns = static_cast<size_t>(
+            percents.end() - std::upper_bound(percents.begin(), percents.end(), 100.0));
         }
 
         if (!config.quiet)
@@ -562,9 +684,8 @@ int main(int argc, char** argv)
           {
             char shape[96] = {0};
             if (record.fftBlock > 0)
-              std::snprintf(shape, sizeof(shape), " (%d-point blocks, %d partition%s)",
-                            record.fftBlock, record.partitions,
-                            record.partitions == 1 ? "" : "s");
+              std::snprintf(shape, sizeof(shape), " (%d-tap head, partitions up to %d)",
+                            record.headTaps, record.fftBlock);
             std::printf("    %s%s, %d taps: blocks median %.2f%% / p99 %.2f%% / max %.2f%% of "
                         "deadline\n",
                         record.active.c_str(), shape, record.taps, record.blockMedianPercent,
@@ -573,7 +694,7 @@ int main(int argc, char** argv)
             // transform at all, because the whole impulse response fit in the
             // direct head. Its number is real, but it is the direct head's
             // number and comparing it with upstream says nothing about FFT.
-            if (record.active == "fft" && record.partitions == 0)
+            if (record.active == "fft" && record.headTaps >= record.taps)
               std::printf("      note: the IR fits in the direct head, so no transform runs "
                           "here — this row measures a plain FIR\n");
           }
@@ -601,13 +722,12 @@ int main(int argc, char** argv)
                   r.timing.variant.c_str(), r.timing.failureReason.c_str());
       continue;
     }
-    // The baseline for a point is upstream at that same point, which is the
-    // first subject measured there.
+    // The baseline for a point is the first subject at that same point.
     double baselineMs = 0.0;
     for (const IrResult& other : results)
     {
       if (other.taps == r.taps && other.blockSize == r.blockSize
-          && other.timing.variant == "adt_upstream" && other.timing.succeeded)
+          && other.timing.variant == baselineName && other.timing.succeeded)
       {
         baselineMs = other.timing.meanMs;
         break;
@@ -615,7 +735,7 @@ int main(int argc, char** argv)
     }
     std::printf("  %-8d %-6d %-24s %9.3f%% %9.2f%%", r.taps, r.blockSize, r.timing.variant.c_str(),
                 r.timing.corePercent, r.blockP99Percent);
-    if (baselineMs > 0.0 && r.timing.meanMs > 0.0 && r.timing.variant != "adt_upstream")
+    if (baselineMs > 0.0 && r.timing.meanMs > 0.0 && r.timing.variant != baselineName)
       std::printf("   %6.2fx", baselineMs / r.timing.meanMs);
     std::printf("\n");
   }
@@ -658,6 +778,13 @@ int main(int argc, char** argv)
          environment.architecture.c_str(), environment.fpu.c_str(), environment.osVersion.c_str(),
          environment.totalCores, governor.c_str());
   append("  \"note\": \"%s\",\n", testbedNote.c_str());
+  append("  \"baseline\": \"%s\",\n", baselineName.c_str());
+  json += "  \"subjects\": [";
+  for (size_t i = 0; i < subjects.size(); i++)
+    append("%s{\"name\": \"%s\", \"variant\": \"%s\", \"repository\": \"%s\", \"requested\": \"%s\"}",
+           i ? ", " : "", subjects[i].name.c_str(), subjects[i].api->name, subjects[i].api->repository,
+           impl_name(subjects[i].requested));
+  json += "],\n";
   append("  \"socTemperatureStartC\": %.1f,\n  \"socTemperatureEndC\": %.1f,\n", temperatureStart,
          temperatureEnd);
   append("  \"config\": {\"irChannels\": %d, \"warmupSeconds\": %.1f, "
@@ -689,9 +816,9 @@ int main(int argc, char** argv)
     const IrResult& r = results[i];
     append("    {\"variant\": \"%s\", \"taps\": %d, \"requestedTaps\": %d, \"blockSize\": %d, "
            "\"irChannels\": %d, \"requested\": \"%s\", \"implementation\": \"%s\", "
-           "\"fftPartitions\": %d, \"fftBlockSize\": %d, \"succeeded\": %s, ",
+           "\"headTaps\": %d, \"fftBlockSize\": %d, \"maxBlockSize\": %d, \"succeeded\": %s, ",
            r.timing.variant.c_str(), r.taps, r.requestedTaps, r.blockSize, r.irChannels,
-           r.requested.c_str(), r.active.c_str(), r.partitions, r.fftBlock,
+           r.requested.c_str(), r.active.c_str(), r.headTaps, r.fftBlock, r.maxBlockSize,
            r.timing.succeeded ? "true" : "false");
     append("\"meanMs\": %.6f, \"medianMs\": %.6f, \"minMs\": %.6f, \"maxMs\": %.6f, "
            "\"spread\": %.6f, \"standardDeviationMs\": %.6f, \"realTimeFactor\": %.6f, "
@@ -699,8 +826,9 @@ int main(int argc, char** argv)
            r.timing.meanMs, r.timing.medianMs, r.timing.minMs, r.timing.maxMs, r.timing.spread,
            r.timing.standardDeviationMs, r.timing.realTimeFactor, r.timing.corePercent);
     append("\"blockMedianPercent\": %.6f, \"blockP99Percent\": %.6f, \"blockMaxPercent\": %.6f, "
-           "\"blockSampleCount\": %zu, ",
-           r.blockMedianPercent, r.blockP99Percent, r.blockMaxPercent, r.blockSampleCount);
+           "\"blockSampleCount\": %zu, \"blockOverruns\": %zu, ",
+           r.blockMedianPercent, r.blockP99Percent, r.blockMaxPercent, r.blockSampleCount,
+           r.blockOverruns);
     if (!r.timing.failureReason.empty())
       append("\"failureReason\": \"%s\", ", r.timing.failureReason.c_str());
     {

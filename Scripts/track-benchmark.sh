@@ -52,8 +52,8 @@
 #                       different Bencher branch from the laptop's.
 #   --submodels LIST    which to measure (default: widest,narrowest — A2
 #                       standard and A2 nano, uploaded as separate series)
-#   --ir                measure impulse-response convolution instead:
-#                       AudioDSPTools main against the partitioned-ir branch.
+#   --ir                measure impulse-response convolution instead: Core's
+#                       Linear against linearplus.
 #                       Always the portable driver, on every platform — the
 #                       Xcode CLI has no IR mode — so the Mac's IR numbers come
 #                       from the same binary the Pi's and the board's do.
@@ -594,10 +594,10 @@ case "${DRIVER}" in
 		fi
 		[ -n "${CPU_SET}" ] && RUN=("${RUN[@]}" --cpu-set "${CPU_SET}")
 		RUN=("${RUN[@]}" -- --timing-seconds "${TIMING}" ${EXTRA[@]+"${EXTRA[@]}"})
-		# An IR run exits non-zero when any of its eighteen subjects was
-		# rejected, but still writes the BMF for the ones that were not. Let it
-		# through here and let the BMF check below decide: with `set -e` the
-		# script would otherwise stop with sixteen good measurements in hand and
+		# An IR run exits non-zero when any one of its subjects was rejected,
+		# but still writes the BMF for the ones that were not. Let it through
+		# here and let the BMF check below decide: with `set -e` the script
+		# would otherwise stop with every other good measurement in hand and
 		# upload none of them. A run the clock moved under writes no BMF at all,
 		# so it still stops — one line further down.
 		if [ "${IR}" -eq 1 ]; then

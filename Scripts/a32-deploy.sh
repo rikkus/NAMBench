@@ -147,7 +147,8 @@ done
 [ "${#BINARIES[@]}" -gt 0 ] || die "nothing executable in ${BUILD_DIR}; build first"
 
 # The variant libraries the benchmarks link against live beside them: the NAM
-# engines for nam_benchmark, the AudioDSPTools pair for nam_ir_benchmark.
+# engines for nam_benchmark, the Linear and AudioDSPTools ones for
+# nam_ir_benchmark.
 LIBS=()
 while IFS= read -r l; do LIBS=("${LIBS[@]+${LIBS[@]}}" "$l"); done < <(
 	find "${BUILD_DIR}" -maxdepth 1 \( -name 'libnam_engine_*' -o -name 'libnam_ir_*' \) \

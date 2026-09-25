@@ -1,16 +1,23 @@
 // Shared C API exposed by each impulse-response variant.
 //
-// The same arrangement as nam_bench_shim.h, for the same reason: both
-// AudioDSPTools checkouts define dsp::ImpulseResponse, so they can only be
+// The same arrangement as nam_bench_shim.h, for the same reason: two
+// NeuralAmpModelerCore checkouts both define nam::Linear, so they can only be
 // measured in one process if each is compiled into its own shared library with
 // -fvisibility=hidden, exporting nothing but the prefixed functions below.
+// AudioDSPTools' dsp::ImpulseResponse — what the plugin's IR slot uses today —
+// is built the same way, so it can be measured alongside them when asked for.
 //
-// What is being compared is the convolution, so the shim keeps everything
+// Two implementations of this API exist, one per project:
+//
+//   nam_ir_linear_shim.cpp   nam::Linear, from any NeuralAmpModelerCore tree
+//   nam_ir_adt_shim.cpp      dsp::ImpulseResponse, from AudioDSPTools
+//
+// What is being compared is the convolution, so the shims keep everything
 // around it identical between the variants. The impulse response is generated
-// here rather than loaded from a file: the cost of convolving is set by the tap
-// count alone and not by what the taps contain, so a synthetic IR measures the
-// same thing as a real cabinet while staying byte-identical on every machine
-// and carrying nobody's licence.
+// rather than loaded from a file (nb_ir_generate.h): the cost of convolving is
+// set by the tap count alone and not by what the taps contain, so a synthetic IR
+// measures the same thing as a real cabinet while staying byte-identical on
+// every machine and carrying nobody's licence.
 
 #ifndef NAM_IR_SHIM_H
 #define NAM_IR_SHIM_H
@@ -30,13 +37,12 @@ extern "C" {
 
 /// Which convolution a variant was asked for, and which it actually chose.
 typedef enum NbIrImpl {
-  /// Let the variant decide from the tap count. Upstream has only one
-  /// implementation, so it always answers Direct.
+  /// Let the variant decide from the tap count, as it would in a plugin.
   NbIrImplAuto = 0,
   /// Time-domain FIR: one dot product of `taps` values per output sample.
   NbIrImplDirect = 1,
-  /// Zero-latency partitioned FFT: a direct head covering the first block,
-  /// plus uniformly partitioned FFT convolution for the tail.
+  /// Zero-latency partitioned FFT: a direct head covering the first taps, plus
+  /// FFT convolution for the rest.
   NbIrImplFFT = 2,
 } NbIrImpl;
 
@@ -44,25 +50,25 @@ typedef struct NbIr NbIr;
 
 /// Declare the exported API for one variant prefix.
 #define NB_IR_DECLARE_VARIANT(P)                                                                  \
-  /** Human-readable variant name, e.g. "adt_upstream". */                                        \
+  /** Human-readable variant name, e.g. "linearplus". */                                          \
   NB_IR_EXPORT const char* P##_ir_variant_name(void);                                             \
                                                                                                   \
   /**                                                                                             \
    * Whether this build can be asked for a particular implementation.                             \
    *                                                                                              \
-   * 0 for upstream, which has exactly one. The driver asks rather than infers                    \
-   * so that requesting FFT from a build that has none is a refusal instead of a                  \
-   * direct-convolution measurement wearing an FFT label.                                         \
+   * 0 for AudioDSPTools, which has exactly one. The driver asks rather than                      \
+   * infers so that requesting FFT from a build that has none is a refusal                        \
+   * instead of a direct-convolution measurement wearing an FFT label.                            \
    */                                                                                             \
   NB_IR_EXPORT int P##_ir_can_select(void);                                                       \
                                                                                                   \
   /**                                                                                             \
    * Build an impulse response of `taps` taps, at `sampleRate`, for blocks of up                  \
-   * to `blockSize` frames. `irChannels` is 1 (mono) or 2 (stereo).                                \
+   * to `blockSize` frames. `irChannels` is 1 (mono) or 2 (stereo): a mono input                  \
+   * convolved into one or two outputs.                                                           \
    *                                                                                              \
    * The taps are generated, identically in every variant and on every machine —                  \
-   * see the note at the top of this header. NULL on failure, with a message in                   \
-   * err.                                                                                          \
+   * see nb_ir_generate.h. NULL on failure, with a message in err.                                \
    */                                                                                             \
   NB_IR_EXPORT NbIr* P##_ir_create(int32_t taps, int32_t irChannels, double sampleRate,           \
                                    NbIrImpl requested, int32_t blockSize, char* err,              \
@@ -74,29 +80,35 @@ typedef struct NbIr NbIr;
   NB_IR_EXPORT NbIrImpl P##_ir_implementation(const NbIr* ir);                                    \
                                                                                                   \
   /**                                                                                             \
-   * Taps after resampling and the 8192-tap truncation, which is what the cost                    \
-   * is a function of — not the number asked for.                                                 \
+   * Taps actually convolved, which is what the cost is a function of — not the                   \
+   * number asked for. AudioDSPTools truncates at 8192; Core does not.                            \
    */                                                                                             \
   NB_IR_EXPORT int32_t P##_ir_taps(const NbIr* ir);                                               \
   NB_IR_EXPORT int32_t P##_ir_channels(const NbIr* ir);                                           \
                                                                                                   \
   /**                                                                                             \
-   * How the FFT path was configured: the transform block size, and how many                      \
-   * partitions cover the tail behind the direct head. Both 0 on the direct                        \
-   * path, and both 0 for a variant that has no FFT path at all.                                   \
+   * How the convolution is split: how many taps are convolved directly, per                      \
+   * sample, and the largest FFT partition behind them. On the direct path the                    \
+   * head is every tap and the partition is 0.                                                    \
    *                                                                                              \
-   * Zero partitions with an FFT implementation is the case worth being able to                    \
-   * see: the impulse response fit entirely inside the direct head, so no                          \
-   * transform runs and the subject is a plain FIR wearing an FFT label. Auto                       \
-   * never chooses that (above 512 taps there is always a partition), but                           \
-   * forcing FFT on a short IR does, and reporting `fft` there without saying                       \
-   * so would be a measurement of one thing presented as another.                                   \
+   * A head covering every tap on the FFT path is the case worth being able to                    \
+   * see: the impulse response fit entirely inside the direct head, so no                         \
+   * transform runs and the subject is a plain FIR wearing an FFT label. Auto                     \
+   * never chooses that, but forcing FFT on a short IR does, and reporting `fft`                  \
+   * there without saying so would be a measurement of one thing presented as                    \
+   * another.                                                                                     \
    */                                                                                             \
-  NB_IR_EXPORT int32_t P##_ir_partitions(const NbIr* ir);                                         \
+  NB_IR_EXPORT int32_t P##_ir_head_taps(const NbIr* ir);                                          \
   NB_IR_EXPORT int32_t P##_ir_fft_block(const NbIr* ir);                                          \
                                                                                                   \
-  /** Clear history so every pass starts identically, off the audio thread. */                    \
-  NB_IR_EXPORT void P##_ir_reset(NbIr* ir, int32_t blockSize);                                    \
+  /**                                                                                             \
+   * Clear history so every pass starts identically, off the audio thread.                        \
+   * Blocks of blockSize frames follow; maxBlockSize is the largest the host                      \
+   * declares it may send, which is what a plugin is told and sizes buffers by.                   \
+   * Hosts often declare more than they send, and Core's Linear does more or less                  \
+   * often a copy that depends on it, so it is a parameter rather than assumed.                   \
+   */                                                                                             \
+  NB_IR_EXPORT void P##_ir_reset(NbIr* ir, int32_t blockSize, int32_t maxBlockSize);              \
                                                                                                   \
   /**                                                                                             \
    * Run `frames` samples through in fixed blockSize chunks.                                      \
@@ -109,10 +121,10 @@ typedef struct NbIr NbIr;
    *                                                                                              \
    * `blockNanos`, if non-NULL, receives one duration per block and must have                     \
    * room for (frames + blockSize - 1) / blockSize entries. It is what makes the                  \
-   * worst-case block visible: partitioned FFT convolution does a whole                           \
-   * partition's work in one callback, so a mean that looks good can hide a                       \
-   * block that misses its deadline. The total returned is the span across the                    \
-   * same clock reads the per-block times come from, so the two always agree.                     \
+   * worst-case block visible: partitioned FFT convolution does a partition's                     \
+   * transforms in one callback, so a mean that looks good can hide a block that                  \
+   * misses its deadline. The total returned is the span across the same clock                    \
+   * reads the per-block times come from, so the two always agree.                                \
    */                                                                                             \
   NB_IR_EXPORT uint64_t P##_ir_process(NbIr* ir, const double* in, size_t frames, double* out,    \
                                        double* outChecksum, uint64_t* blockNanos);

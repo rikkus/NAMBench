@@ -173,4 +173,5 @@ home the same way the app already exposes reports via the Files app.
 2. **Arm F now or later.** It's the part that reflects what users actually
    hear, but it roughly doubles the work.
 3. **Which iOS devices for arm E**, and whether the older one is worth including
-   to see how the hop cost scales with a slower core.
+   to see how the hop cost scales with a slower core. Settled: mu17 only.
+   mu14 has been retired, so the older-core comparison won't be run.

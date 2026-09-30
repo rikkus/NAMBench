@@ -235,7 +235,7 @@ td.cell.none { background: transparent; color: var(--muted); }
     <h2>How this was measured</h2>
     <ul>
       <li><strong>linear</strong> is upstream NeuralAmpModelerCore at <code>0b3d3c9</code>. Its FFT path uses power-of-two tiers that grow along the impulse response, from a 128-tap direct head up to 2048-tap partitions at 8192 taps.</li>
-      <li><strong>linearplus</strong> is the same commit plus one change, <code>2ae5137</code>. Its FFT path uses uniform partitions, 256 taps long up to 2048 taps and 512 up to 8192, with the partition multiplies spread across the callbacks between transforms.</li>
+      <li><strong>linearplus</strong> is the same commit plus one change, <code>010a0e5</code>. Its FFT path uses uniform partitions, 256 taps long up to 2048 taps and 512 up to 8192, with the partition multiplies spread across the callbacks between transforms.</li>
       <li>Both convolve directly up to 1024 taps, with the same code, so those columns measure the same thing twice. A difference of 0.1 there is measurement noise.</li>
       <li>Both run as each would in a plugin, choosing direct or FFT convolution by themselves. They were measured in one process by <code>nam_ir_benchmark</code>, taking turns at each point on the same generated mono IR and the same 10.9 s guitar DI.</li>
       <li>Every callback is timed. The p99 is taken over all callbacks from the passes the protocol accepted, which are the tightest 70% of passes. The mean is the mean of those passes, per callback.</li>

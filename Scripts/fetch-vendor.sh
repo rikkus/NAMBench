@@ -44,10 +44,10 @@ PLANAR_SHA="44412fad6ad135d51218785e15dc7418c29a2124"
 # Linear, so it is cut from UPSTREAM_SHA exactly and its diff against that
 # commit is the whole of what is being measured.
 #
-# Fork branch linearplus. It was an AudioDSPTools branch (partitioned-ir) until
+# Fork branch ir-optimisation, the change as proposed. It was an AudioDSPTools branch (partitioned-ir) until
 # Core gained a zero-latency FFT convolver of its own; see IR-PATH.md.
 LINEARPLUS_URL="https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore.git"
-LINEARPLUS_SHA="79c8009adf1fca8a2dea6cf926dbe7c03cec878f"
+LINEARPLUS_SHA="010a0e53bee7ea8867d8c65917e5bdea3babf60f"
 
 # AudioDSPTools, which is what the plugin convolves its IR slot with today: a
 # direct FIR. Measured alongside Core's Linear only when asked for, as the
@@ -290,7 +290,7 @@ cat > "${VENDOR}/pins.json" <<EOF
   "linearplus": {
     "url": "${LINEARPLUS_URL}",
     "sha": "$(git -C "${VENDOR}/linearplus" rev-parse HEAD)",
-    "branch": "linearplus"
+    "branch": "ir-optimisation"
   },
   "adt_upstream": {
     "url": "${ADT_UPSTREAM_URL}",

@@ -17,9 +17,8 @@
     },
     "linearplus": {
       "url": "https://github.com/rikkus/OptimisationWorkOnNeuralAmpModelerCore.git",
-      "sha": "2ae51373a3d3faad5bdb0df93ccbc68d2a8af75d",
-      "branch": "ir-optimisation",
-      "note": "measured code is 2ae5137's linear.cpp/linear.h; ir-optimisation carries the same code as one commit"
+      "sha": "010a0e53bee7ea8867d8c65917e5bdea3babf60f",
+      "branch": "ir-optimisation"
     }
   },
   "machines": [

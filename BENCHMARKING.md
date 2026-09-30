@@ -264,37 +264,37 @@ load today. Core itself does not truncate.
 ### Results
 
 September 2026: `linear` at upstream `0b3d3c9` against `linearplus` at
-`79c8009`, 5 s of warm-up and 30 s timed per cell and implementation, every
-point accepted on both machines. The Pi 500 was pinned to CPU 3, and its clock
-held at 2.4 GHz throughout. [`ir-study/linearplus.html`](ir-study/linearplus.html)
-shows every cell as `linearplus`'s p99 minus `linear`'s, in points of the
-deadline, drawn from
-[`ir-study/data/linearplus-summary.json`](ir-study/data/linearplus-summary.json).
+`010a0e5`, 5 s of warm-up and 30 s timed per cell and implementation, every
+point accepted on all three machines; a point rejected at first was rerun until
+it passed. The Pi 500 and the i7 were pinned to CPU 3 with the `performance`
+governor. [`ir-study/linearplus.html`](ir-study/linearplus.html) shows every
+cell as `linearplus`'s p99 minus `linear`'s, in points of the deadline, drawn
+from [`ir-study/data/linearplus-summary.json`](ir-study/data/linearplus-summary.json).
 
-At 8192 taps, the 99th-percentile callback as a share of its deadline:
+At 8192 taps, the 99th-percentile callback as a share of its deadline,
+`linear` / `linearplus`:
 
-| frames | deadline | M2 `linear` | M2 `linearplus` | Pi 500 `linear` | Pi 500 `linearplus` |
-|---:|---:|---:|---:|---:|---:|
-| 16 | 333 µs | 5.74% | **3.11%** | 15.45% | **6.24%** |
-| 32 | 667 µs | 6.79% | **1.69%** | 16.69% | **3.33%** |
-| 64 | 1333 µs | 3.72% | **0.93%** | 8.70% | **1.86%** |
-| 128 | 2667 µs | 2.04% | **0.63%** | 4.70% | **1.13%** |
-| 256 | 5333 µs | 1.26% | **0.40%** | 2.98% | **0.76%** |
+| frames | deadline | M2 | Pi 500 | i7-4770HQ |
+|---:|---:|---:|---:|---:|
+| 16 | 333 µs | 5.75% / **3.23%** | 15.44% / **6.72%** | 19.14% / **6.20%** |
+| 32 | 667 µs | 6.86% / **1.71%** | 16.70% / **3.56%** | 20.05% / **3.70%** |
+| 64 | 1333 µs | 3.83% / **0.93%** | 8.70% / **1.97%** | 10.49% / **1.77%** |
+| 128 | 2667 µs | 2.03% / **0.63%** | 4.69% / **1.19%** | 5.75% / **1.18%** |
+| 256 | 5333 µs | 1.26% / **0.42%** | 2.98% / **0.79%** | 3.75% / **0.75%** |
 
 - **Up to 1024 taps the two are the same.** Both convolve directly there, with
-  the same code, and their p99s agree to within 0.07 points.
-- **From 2048 taps `linearplus` is lower at every callback size on both
-  machines**: by 0.3 to 5.1 points of p99 on the M2 and 0.8 to 13.4 on the Pi
-  500, with a mean 46-57% lower on the M2 and 54-59% lower on the Pi 500.
+  the same code, and their p99s agree to within 0.05 points.
+- **From 2048 taps `linearplus` is lower at every callback size on every
+  machine**: by 0.3 to 5.2 points of p99 on the M2, 0.8 to 13.1 on the Pi 500
+  and 1.3 to 16.3 on the i7, with a mean 46-58%, 52-57% and 68-73% lower.
 - **At 16 frames the p99 flatters `linear`.** Its largest transform runs once
   every 2048 samples, which at 16-frame callbacks is fewer than 1% of them, so
   the 99th percentile misses it: on the Pi 500 its worst callback there took
-  34.5% of the deadline against a p99 of 15.45%. `linearplus` transforms every
-  512 samples and its worst was 8.9%.
-- **The M2's 128-frame row was measured twice.** In the first run the two
-  same-code cells at 1024 taps disagreed by 13% in mean, which is this machine's
-  other work getting in, not the code; in the second they agreed to 0.3%, and
-  the second is what is shown. Nothing else moved by more than 0.06 points.
+  34.2% of the deadline against a p99 of 15.44%. `linearplus` transforms every
+  512 samples and its worst was 7.7%.
+- **Past 8192 taps** (1 to 60 s, in the same page and in
+  [`ir-study/PR-LINEAR.md`](ir-study/PR-LINEAR.md)) `linear` misses deadlines on
+  every machine and `linearplus` on none.
 
 `Auto`'s threshold is upstream's, and was checked rather than inherited: forced
 to FFT, `linearplus` has the lower mean from 513 taps, but at 16- and 32-frame

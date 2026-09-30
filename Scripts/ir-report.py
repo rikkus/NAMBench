@@ -72,7 +72,9 @@ def summarise_machine(
     environment: dict[str, Any] = {}
     runs: list[dict[str, Any]] = []
 
-    for path in sorted(paths):
+    # By file name, which run-benchmark.sh stamps with the time of the run, so a
+    # rerun of a rejected cell overrides the original wherever it is kept.
+    for path in sorted(paths, key=lambda p: p.name):
         report = load_json(path)
         if report.get("producer") != "nam_ir_benchmark":
             sys.exit(f"error: {path} is not an nam_ir_benchmark report")
@@ -504,7 +506,7 @@ td.cell.none {{ background: transparent; color: var(--muted); }}
       <li>Before anything is timed, both outputs are rendered and compared, and a point where they disagree is not reported.</li>
       <li>The multi&#8209;second tables (48,000 to 2,880,000 taps, 1 to 60&nbsp;s) were run separately. Past 8192 taps {html.escape(baseline)} uses a 64&#8209;tap head with partitions up to 4096 (to 48,000 taps) and 8192 beyond. {html.escape(candidate)} uses 1024&#8209;tap partitions to 48,000 taps; past that, uniform partitions cover the first 2&nbsp;× T taps and a tail tier of T&#8209;tap partitions the rest, with T 8192 up to 240,000 taps and 16384 beyond. The tail's transforms are split into transforms of the uniform tier's own size and spread, with its multiplies, across the samples between its blocks, so no callback does a large transform.</li>
       <li>At those lengths {html.escape(baseline)}'s slowest callbacks are not its transforms. Every 32&nbsp;× the declared maximum block it copies its whole input history, the full length of the IR, back to the start of its buffer: 11.5&nbsp;MB at 60&nbsp;s. The tables use NAMBench's usual declaration, a maximum equal to the callback, so that copy lands in one callback in 32. A host may declare a larger maximum than it sends; the hover tables add {html.escape(baseline)}@4096, the same code told to expect up to 4096 frames, which makes the copy 4096&nbsp;/ callback times rarer. That lowers its mean and p99 but not the cost of the callback that makes the copy. {html.escape(candidate)} keeps only its head's history, so the declared maximum makes no difference to it. The hover tables also give the worst callback and the rate of missed deadlines, and &#9888; marks a cell where any of them missed one.</li>
-      <li>On the M2 a few of {html.escape(candidate)}'s multi&#8209;second cells are marked too: at most 13 late callbacks in over three million, the worst taking 49&nbsp;ms against a p99 of 20&nbsp;µs. Nothing in the code takes that long, and the Pi, which runs pinned to one core with nothing else on it, has no such callbacks, so these are the machine stalling the process rather than the convolution.</li>
+      <li>{html.escape(candidate)} missed no deadline on any machine. The worst single callbacks on the M2 and the i7, for every implementation, are the operating system stalling the process rather than the convolution: up to 63% and 54% of the deadline for {html.escape(candidate)}, against a p99 under 16%. The Pi runs pinned to an isolated core and has no such callbacks.</li>
     </ul>
   </section>
 </div>

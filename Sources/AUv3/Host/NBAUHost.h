@@ -18,6 +18,10 @@ struct HostOptions
   // and minSamples still guarantees at least fifteen passes in each window.
   double warmupSeconds = 2.0;
   double windowSeconds = 10.0;
+  /// Cache contention (NBContention.h): scenarios to run, empty for none.
+  std::vector<std::string> contention;
+  std::vector<int> contentionInstances = {1, 2, 4, 8, 16};
+  std::vector<int> thrashKiB = {256, 4096, 16384, 65536};
   /// Arm F: seconds measured per subject, after warmupSeconds.
   double rtSeconds = 20.0;
   std::string modelPath;

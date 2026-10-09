@@ -37,6 +37,7 @@ std::vector<std::string> split(const std::string& s)
 /// printing why, for anything it does not understand.
 bool parse_args(const std::vector<std::string>& args, HostOptions& options)
 {
+  bool armsGiven = false;
   for (size_t i = 0; i < args.size(); i++)
   {
     const std::string& a = args[i];
@@ -58,6 +59,20 @@ bool parse_args(const std::vector<std::string>& args, HostOptions& options)
       options.warmupSeconds = std::atof(next().c_str());
     else if (a == "--window")
       options.windowSeconds = std::atof(next().c_str());
+    else if (a == "--contention")
+      options.contention = split(next());
+    else if (a == "--instances")
+    {
+      options.contentionInstances.clear();
+      for (const std::string& s : split(next()))
+        options.contentionInstances.push_back(std::atoi(s.c_str()));
+    }
+    else if (a == "--thrash-kib")
+    {
+      options.thrashKiB.clear();
+      for (const std::string& s : split(next()))
+        options.thrashKiB.push_back(std::atoi(s.c_str()));
+    }
     else if (a == "--rt-seconds")
       options.rtSeconds = std::atof(next().c_str());
     else if (a == "--blocks")
@@ -74,6 +89,7 @@ bool parse_args(const std::vector<std::string>& args, HostOptions& options)
     }
     else if (a == "--arms")
     {
+      armsGiven = true;
       options.arms.clear();
       for (const std::string& s : split(next()))
       {
@@ -93,10 +109,15 @@ bool parse_args(const std::vector<std::string>& args, HostOptions& options)
       std::fprintf(stderr,
                    "usage: NAMBenchAUHost --model file.nam [--input in.wav] [--json out.json]\n"
                    "       [--arms A,A1,B,C,D,F,Fi] [--submodels nano,standard] [--blocks 16,32,64,128,256]\n"
-                   "       [--warmup s] [--window s] [--rt-seconds s]\n");
+                   "       [--warmup s] [--window s] [--rt-seconds s]\n"
+                   "       [--contention serial,parallel,thrash] [--instances 1,2,4,8,16]\n"
+                   "       [--thrash-kib 256,4096,16384,65536]\n");
       return false;
     }
   }
+  // --contention on its own runs only the contention scenarios.
+  if (!options.contention.empty() && !armsGiven)
+    options.arms.clear();
   return true;
 }
 

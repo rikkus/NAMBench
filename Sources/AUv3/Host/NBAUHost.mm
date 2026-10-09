@@ -36,6 +36,7 @@
 
 #include "NBAUHost.h"
 #include "NBAURealtime.h"
+#include "NBContention.h"
 
 namespace
 {
@@ -610,7 +611,7 @@ void write_dist(std::string& j, const char* name, const Dist& d)
 }
 
 std::string to_json(const std::vector<SubjectResult>& results, const std::string& realtime,
-                    const nbp::Environment& env, const HostOptions& options)
+                    const std::string& contention, const nbp::Environment& env, const HostOptions& options)
 {
   std::string j = "{\n";
   j += "\"environment\":{\"deviceModel\":\"" + json_escape(env.deviceModel) + "\",\"cpu\":\"" + json_escape(env.cpu) +
@@ -653,6 +654,8 @@ std::string to_json(const std::vector<SubjectResult>& results, const std::string
   j += "]";
   if (!realtime.empty())
     j += ",\n\"realtime\":" + realtime;
+  if (!contention.empty())
+    j += ",\n\"contention\":" + contention;
   j += "}\n";
   return j;
 }
@@ -792,8 +795,24 @@ int nb_au_host_run(const HostOptions& options)
     rtResults = nb_au_realtime_run(rt, model, inputF, g_log);
   }
 
-  const std::string json = to_json(results, rtResults.empty() ? std::string() : nb_au_realtime_json(rtResults), env,
-                                   options);
+  std::vector<ContentionResult> contention;
+  if (!options.contention.empty())
+  {
+    ContentionOptions c;
+    c.submodels = options.submodels;
+    c.blockSizes = options.blockSizes;
+    c.scenarios = options.contention;
+    c.instances = options.contentionInstances;
+    c.thrashKiB = options.thrashKiB;
+    c.warmupSeconds = options.warmupSeconds;
+    c.windowSeconds = options.windowSeconds;
+    std::vector<float> inputF(audio.samples.begin(), audio.samples.end());
+    contention = nb_contention_run(c, model, inputF, audio.sampleRate, g_log);
+  }
+
+  const std::string json =
+    to_json(results, rtResults.empty() ? std::string() : nb_au_realtime_json(rtResults),
+            contention.empty() ? std::string() : nb_contention_json(contention), env, options);
   if (!options.jsonPath.empty())
   {
     if (FILE* f = std::fopen(options.jsonPath.c_str(), "w"))
@@ -809,7 +828,9 @@ int nb_au_host_run(const HostOptions& options)
     failures += r.ok ? 0 : 1;
   for (const RtResult& r : rtResults)
     failures += r.ok ? 0 : 1;
-  logf("done: %zu subjects, %d failed\n", results.size() + rtResults.size(), failures);
+  for (const ContentionResult& r : contention)
+    failures += (r.ok && (!r.parity || r.mismatchedSamples == 0)) ? 0 : 1;
+  logf("done: %zu subjects, %d failed\n", results.size() + rtResults.size() + contention.size(), failures);
   if (g_log != stdout)
     std::fclose(g_log);
   return failures == 0 ? 0 : 2;

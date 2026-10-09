@@ -502,7 +502,7 @@ def sync_plots(
 
 # The impulse-response plots: titled as the WaveNet project's are, by
 # architecture, and in that order.
-IR_PLOT_TITLES = {"m2-air": "Apple M2", "pi500": "Cortex-A76", "mp": "x86-64 (Haswell)", "tinker": "ARMv7"}
+IR_PLOT_TITLES = {"m2-air": "Apple M2", "pi500": "Cortex-A76", "mp": "x86-64 (Haswell)"}
 IR_PLOT_BENCHMARKS = ("ir_8192/linear", "ir_8192/linearplus")
 
 

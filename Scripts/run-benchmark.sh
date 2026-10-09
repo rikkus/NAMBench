@@ -48,7 +48,7 @@
 #   --cpu-set LIST     taskset list, e.g. 0-3 (default: no pinning)
 #   --max-freq KHZ     cap scaling_max_freq for the run and restore it after.
 #                      Use the frequency a thermal soak showed this board holds
-#                      indefinitely (Scripts/a32-thermal-soak.sh). "none" (the
+#                      indefinitely. "none" (the
 #                      default) measures the machine as configured.
 #   --no-governor      leave the CPU governor alone
 #   --keep-governor    set performance and do NOT restore it on exit
@@ -296,12 +296,12 @@ fi
 #   cooling_device      which thermal governor engaged, when one did. Names the
 #                       cause that time_in_state only shows the effect of.
 #
-# The RK3288 board has no vcgencmd and no throttled-bits register, so before
-# this it reported nothing at all and the "treat these numbers as void" warning
-# below could never fire. That matters more there than on a Pi: the Tinker Board
-# is passively cooled, trips passive at 70 C, and drives ALL FOUR cores from one
-# cpufreq policy — so --cpu-set is no defence, and a run that quietly dropped a
-# frequency step looks like a slightly slow engine rather than a void result.
+# A board with no vcgencmd and no throttled-bits register reports nothing at all
+# here, and the "treat these numbers as void" warning below could never fire. The
+# frequency-residency diff is what covers that case, and it matters more on such
+# a board: a passively cooled part that drives every core from one cpufreq policy
+# is not defended by --cpu-set, so a run that quietly dropped a frequency step
+# looks like a slightly slow engine rather than a void result.
 
 throttle_state() {
 	command -v vcgencmd >/dev/null 2>&1 && vcgencmd get_throttled 2>/dev/null || true

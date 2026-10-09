@@ -172,8 +172,8 @@ jobs:
           # binaries without binfmt registration. It is a filter, not a verdict:
           # AArch32 Advanced SIMD is unconditionally flush-to-zero for single
           # precision while VFP scalar honours FPSCR.FZ, and no bit-identity
-          # claim should rest on qemu's modelling of that. The pinned Cortex-A17
-          # board decides those — see A32-PATH.md. What CI is good for here is
+          # claim should rest on qemu's modelling of that. A pinned Cortex-A17
+          # part decides those. What CI is good for here is
           # the far more likely failure: a build or an arithmetic change nobody
           # meant to make.
           #

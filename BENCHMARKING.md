@@ -82,13 +82,12 @@ optional on Linux:
   `time_in_state` across the run catches every excursion regardless of how brief
   it was. **Cooling state** names which thermal governor engaged, and
   **temperature** is logged for context. `vcgencmd get_throttled` is used in
-  addition where it exists — it does not on the RK3288 board, which is why the
-  residency diff replaced it as the primary check.
+  addition where it exists; the residency diff is the primary check.
 
   Sampling `scaling_cur_freq` on a timer is *not* good enough, and this is
-  measured rather than assumed: in a 25-minute soak on the Tinker Board a
-  15-second sampler reported a floor of 1416 MHz while residency recorded 302
-  jiffies at 1200 MHz — two frequency steps the sampler never once observed.
+  measured rather than assumed: a 15-second sampler can report a steady floor
+  while residency records jiffies at a lower step — excursions the sampler never
+  once observed.
 - **Frequency cap.** `--max-freq KHZ` caps `scaling_max_freq` for the run and
   restores it afterwards. `performance` asks for the top frequency; it does not
   stop the *thermal* governor taking it away again, and on a passively cooled
@@ -96,8 +95,8 @@ optional on Linux:
   cpufreq spends the run hunting between steps. The residency check then
   correctly voids the run, after the whole measurement has been spent. Capping
   to a frequency a soak has shown the board sustains turns that into a run that
-  simply does not throttle. Use `Scripts/a32-thermal-soak.sh` to find the
-  frequency, and record it in the report note so the history stays
+  simply does not throttle. Find that frequency with a soak of your own, and
+  record it in the report note so the history stays
   interpretable. A stable clock matters far more than a high one here: the
   benchmark reports a *ratio* between engines, so absolute frequency barely
   affects the result while a clock that moves mid-run biases it.
@@ -113,72 +112,21 @@ Add `--bmf out.json` to also write Bencher Metric Format.
 | `m2-air` | M2 MacBook Air 15" | xcode | on macOS 27 beta |
 | `m1-air` | M1 MacBook Air | xcode | |
 | `pi500` | Raspberry Pi 500, Cortex-A76 | portable | Ubuntu 24.04 aarch64 |
-| `tinker` | ASUS Tinker Board, RK3288, Cortex-A17 | cross | 32-bit ARMv7-A, built on the Pi |
 
-**The Tinker Board is the odd one out, in three ways that all matter.** It is
-the only 32-bit testbed, and until the planar gate was widened to ARMv7 its
-line-up was `a2_fast` against the `a32` lab alone, because `a2_planar` compiled
-to nothing there; it now measures all three. Its arithmetic depends on build
-flags in a way no other testbed's does — at
-`-mfpu=neon` Eigen silently computes `a2_fast`'s 8-channel path with non-fused
-`vmlaq_f32`, so the reported `fpu` field must read `neon+fma` for a run to mean
-anything. And it is cross-built on the Pi rather than compiled in place, because
-an RK3288 with 2 GB of RAM building Eigen at `-O3` is not a sensible use of an
-afternoon. Its numbers are not comparable with any other testbed's, only with
-its own history.
-
-### How the Tinker Board reaches Bencher
-
-The `cross` driver, which is the `portable` one split across two machines.
-`Scripts/a32-deploy.sh` cross-builds on the Pi, rsyncs the static binaries to
-the board over ssh, and runs the same `Scripts/run-benchmark.sh` there — so the
-governor, the frequency cap and the residency check are the ones every Linux
-testbed uses, not a second description of them. The reports come back, and the
-conversion and the upload happen on the build host.
-
-That split is deliberate. The board cannot build the thing that measures it, and
-it should not hold a Bencher API key or be asked what commit it is on; the build
-host owns the compiler, the git history and the credential, and the board owns
-nothing but the timing. `--bmf` on `a32-deploy.sh` is that seam — it converts
-exactly the reports rsync says it transferred, so an earlier run's results
-cannot be uploaded twice as a new one.
-
-By hand:
-
-```bash
-./Scripts/track-benchmark.sh --board tib
-```
-
-which cross-builds, deploys, measures, converts, uploads as testbed `tinker`,
-and syncs the thresholds and plots — the same steps the workflow takes, in the
-same order, so runs made either way form one history. `--check` first verifies
-the board answers ssh without a prompt as well as that Bencher is reachable.
-
-**Every tinker run is clock-capped to 1416 MHz**, and `track-benchmark.sh`
-defaults to it rather than leaving it to the caller. All four A17 cores share
-one cpufreq policy, so `--cpu-set` pins the work but not the clock: a thermal
-excursion charges whichever engine was running for it, which biases the ratio
-the benchmark reports rather than adding noise the tightest-70% analysis can
-reject. `run-benchmark.sh` correctly refuses to write BMF for such a run — after
-the whole measurement has been spent. `--max-freq none` measures the board as
-configured, deliberately. The number itself is soak-measured; see
-[A32-PATH.md](A32-PATH.md).
-
-**The tracked series is at 64-frame blocks**, like every other testbed's, so the
-four `tinker` series line up structurally with the four on `m2-air`.
-[A32-PATH.md](A32-PATH.md)'s headline for this board is at 32 frames instead,
-because that is what a pedal runs and because this part gains most there —
-which is exactly why the two must not share a series. Block size is not part of
-a benchmark name, so a run made with `-- --block-size 32` would land on top of
-the 64-frame history as though it were comparable. `bencher-report.py` says so
-and names the fix; take it, and convert that run by hand with
-`--prefix 'block32/'`.
+**The Pi's numbers are not comparable with the laptops', only with their own
+history**: different ISA, different compiler, different clock behaviour.
 
 **The Pi is a Pi 500, not a Pi 5.** Same BCM2712 and the same Cortex-A76, so as
 a *core* it is the Pi 5 datapoint — but the 500 is passively cooled inside a
 keyboard, and a Pi 5 with a fan will hold a boost clock for longer under
 sustained load. The testbed is named `pi500` rather than `pi5` so that nobody
 later reads a thermal difference as a code change.
+
+**The tracked series is at 64-frame blocks.** Block size is not part of
+a benchmark name, so a run made with `-- --block-size 32` would land on top of
+the 64-frame history as though it were comparable. `bencher-report.py` says so
+and names the fix; take it, and convert that run by hand with
+`--prefix 'block32/'`.
 
 ## What is measured
 
@@ -445,28 +393,14 @@ time; `p99` is the 99th-percentile block against its own deadline.
 | 4096 | 85.3 | 2.720% | 2.88% | **0.627%** | 1.86% | 4.34x |
 | 8192 | 170.7 | 6.645% | 6.91% | **0.712%** | 1.87% | **9.34x** |
 
-**Tinker Board, Cortex-A17 at 1.416 GHz** (spread 0.05-0.36%)
-
-| taps | ms of IR | shipping | | partitioned FFT | | |
-|---:|---:|---:|---:|---:|---:|---:|
-| | | core% | p99 | core% | p99 | |
-| 256 | 5.3 | **1.428%** | 2.03% | 1.472% | 2.08% | 0.97x |
-| 512 | 10.7 | 2.653% | 3.24% | **2.198%** | 4.88% | 1.21x |
-| 1024 | 21.3 | 5.122% | 5.71% | **2.320%** | 4.90% | 2.21x |
-| 2048 | 42.7 | 10.071% | 10.68% | **2.548%** | 4.94% | 3.95x |
-| 4096 | 85.3 | 21.059% | 22.14% | **3.908%** | 9.87% | 5.39x |
-| 8192 | 170.7 | 41.861% | 46.86% | **4.323%** | 9.89% | **9.68x** |
-
 The branch's own direct path, measured alongside and not shown above, is
 bit-identical to upstream at every length on every machine, and within about
 3% of it in time. The FFT path lands 136-138 dB below the signal.
 
 At 8192 taps the FFT path is both cheaper on average *and* calmer in its worst
-block everywhere. On the Tinker Board that is the difference that matters:
-shipping's slowest single block there reached 123% of its deadline, a missed
-callback, where the FFT path's never passed 16%. Below
+block everywhere. Below
 that, the burstiness that `block_p99_percent` exists to catch is real: a
-partition's transform lands in one callback, so on the ARM boards the FFT path's
+partition's transform lands in one callback, so the FFT path's
 p99 is *worse* than shipping's at 512 taps on every machine, and at 1024 on the
 Pi 500, even where its average is far better. Spreading the partition
 multiplies across the quiet callbacks (`b505422`) roughly halved that spike on
@@ -475,25 +409,23 @@ the boards; see [IR-PATH.md](IR-PATH.md#spreading-the-multiplies-b505422).
 **The 256-tap row is not measuring FFT.** At exactly 256 taps the whole impulse
 response fits inside the direct head, so no transform runs and the subject is a
 plain FIR — which is why it comes out bit-identical to upstream there, and
-3-4% slower on every machine. (Until `b505422` the Tinker Board paid 27% here,
-for a 64-bit modulo per sample in the output ring, which 32-bit ARM does as a
-library call.) The driver says so on the
+3-4% slower on every machine. The driver says so on the
 line it prints, and the report said so. `Auto` never picks the
 FFT path at this length: it sends only IRs above 512 taps there, and those
 always have at least one partition. So this row is what forcing FFT on a short
 IR costs, kept so the ladder starts in the same place on every machine.
 
 **The crossover depends on the machine, and `Auto` is set for the boards.** On
-the M2 FFT wins from just above 256 taps. On both ARM boards it wins from
-between 512 and 1024: at 512 taps it cost 10% more than direct on the Pi 500
-and 21% more on the Tinker Board, with a p99 about two and a half times
-shipping's. So since `e2dc6bc` the branch's `kAutoDirectMaxTaps` is 512, up from
+the M2 FFT wins from just above 256 taps. On the Pi 500 it wins from
+between 512 and 1024: at 512 taps it cost 10% more than direct, with a p99 about
+two and a half times shipping's. So since `e2dc6bc` the branch's
+`kAutoDirectMaxTaps` is 512, up from
 256: `Auto` runs direct up to 512 taps and FFT above, giving up the M2's 1.25x at
-that one length to stop the loss on both boards, where CPU is scarcest. The
+that one length to stop the loss on the board where CPU is scarcest. The
 tables force each path, so that change does not move any number in them. Since
 `b505422` the picture at 512 has shifted: FFT now costs 3% more than direct on
-the Pi 500 but 17% *less* on the Tinker Board, though its p99 is still worse on
-both, and the threshold has not been revisited.
+the Pi 500, though its p99 is still worse, and the threshold has not been
+revisited.
 
 **Only half of each spectrum is multiplied.** Audio and impulse responses are
 real, so every spectrum the FFT path forms is conjugate-symmetric: bin
@@ -501,8 +433,8 @@ real, so every spectrum the FFT path forms is conjugate-symmetric: bin
 only reads bins `0..N/2`. Until `a09e360` the branch multiplied all `N` bins for
 every partition anyway. Stopping at `N/2` changes no output bit and makes the
 transform callback cheaper, which is why it shows most in the p99: at 8192
-taps, 2.26% to 1.61% on the M2, 4.48% to 3.22% on the Pi 500, 28.26% to 21.74%
-on the Tinker Board. No length got slower on any machine.
+taps, 2.26% to 1.61% on the M2 and 4.48% to 3.22% on the Pi 500. No length got
+slower on either machine.
 
 [IR-PATH.md](IR-PATH.md) records the investigation around these numbers, and
 the decisions it led to.
@@ -728,9 +660,7 @@ branch, so a run on one is still checked.
 `Scripts/track-benchmark.sh` does everything the workflow does except the
 runner: it picks the same driver and the same testbed name, so runs made this
 way and runs made later by a self-hosted runner form **one continuous history**
-rather than two forked ones. It measures this machine, unless `--board HOST`
-tells it to cross-build for an ARMv7 board and measure that one instead — see
-[How the Tinker Board reaches Bencher](#how-the-tinker-board-reaches-bencher).
+rather than two forked ones. It measures this machine.
 
 ```bash
 export BENCHER_API_KEY="$(op read 'op://Developer/f2x4p5ymikp25e4hlocah2zexe/credential')"
@@ -928,11 +858,6 @@ in the repository, following GitHub's generated commands. When it asks for
 labels, add the one this workflow expects — `nambench-m2air`, `nambench-m1air`
 or `nambench-pi500` — alongside the defaults it fills in for you.
 
-**There is no runner on the Tinker Board**, and there is not going to be: the
-`tinker` job runs on `nambench-pi500` and reaches the board over ssh. So the Pi
-carries both testbeds, and the workflow's `max-parallel: 1` is what keeps a
-cross-build from landing in the middle of the Pi measuring itself.
-
 The Pi wants two more things:
 
 ```bash
@@ -942,19 +867,12 @@ sudo apt-get install -y cmake util-linux
 and passwordless sudo for the governor, which it already has. Without it,
 `run-benchmark.sh` refuses to run rather than producing a biased number.
 
-For the `tinker` job it wants two more again — the armhf cross toolchain, and
-key-based ssh to the board under the runner's own user:
+The armhf cross toolchain is only needed to build the ARMv7 conformance arm,
+which runs under qemu in CI:
 
 ```bash
-sudo apt-get install -y g++-arm-linux-gnueabihf rsync
-ssh-copy-id tib
+sudo apt-get install -y g++-arm-linux-gnueabihf
 ```
-
-`tib` is the host name the matrix passes as `board`; give it a `Host` entry in
-the runner user's `~/.ssh/config` if it needs a user, a port or an address. The
-measurement is driven over one non-interactive session, so a board that prompts
-for a password fails the run — `track-benchmark.sh --board tib --check` says so
-in ten seconds rather than after a cross build.
 
 Install the runner as a service so it survives a reboot:
 

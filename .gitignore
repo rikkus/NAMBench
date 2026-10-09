@@ -28,5 +28,5 @@ __pycache__/
 
 benchmark-results/
 
-# 84 MB of per-run conformance renders, written by Scripts/a32-deploy.sh
+# 84 MB of per-run conformance renders
 conformance-out/

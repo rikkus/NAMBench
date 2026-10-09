@@ -3,7 +3,7 @@
 # The target this exists for is the Rockchip RK3288 — quad Cortex-A17, ARMv7-A,
 # 32-bit only — which is the SoC in the HeadRush Core and Prime. Building on the
 # device is possible but slow (4 slow cores, 2 GB RAM, Eigen at -O3), so the
-# supported route is: cross-build here, rsync the tree to the board, measure
+# supported route is: cross-build here, copy the tree to the board, measure
 # there.
 #
 #   cmake -S . -B build-a32-conformance \

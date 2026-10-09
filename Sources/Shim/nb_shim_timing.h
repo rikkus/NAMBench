@@ -98,8 +98,8 @@ inline void denormals_restore(uint64_t)
 // monotonic, unadjusted, and does not tick while the machine is asleep, which
 // is what every published number was measured against.
 //
-// Elsewhere — the Raspberry Pi and the Tinker Board, whose numbers are
-// published alongside the Mac's — steady_clock is the portable equivalent:
+// Elsewhere — the Raspberry Pi, whose numbers are published alongside the
+// Mac's — steady_clock is the portable equivalent:
 // monotonic everywhere, and on Linux backed by the same CLOCK_MONOTONIC the
 // driver's own wall clock uses, so the two agree about how long a pass took.
 #if defined(__APPLE__)

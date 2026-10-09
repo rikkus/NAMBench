@@ -11,12 +11,6 @@
 #               number came from it.
 #   Linux   ->  nam_benchmark, via Scripts/run-benchmark.sh, which also handles
 #               the CPU governor and the thermal check.
-#   --board ->  the same nam_benchmark, cross-built here and measured over ssh
-#               on a 32-bit ARMv7 board, via Scripts/a32-deploy.sh. The Tinker
-#               Board has no toolchain and 2 GB of RAM, so it cannot build what
-#               measures it, and no business holding a Bencher key either; this
-#               end owns the compiler, the git history and the credential, and
-#               the board owns nothing but the timing.
 #
 # Everything Bencher needs is settled *before* the benchmark runs, not after it.
 # A measurement takes minutes of a machine held quiet on purpose, and finding out
@@ -40,11 +34,6 @@
 #   --project SLUG      Bencher project (default: $BENCHER_PROJECT, or with
 #                       --ir $BENCHER_IR_PROJECT, else nam-ir)
 #   --testbed NAME      this machine's testbed (default: detected, see below)
-#   --board HOST        measure on an ARMv7 board reachable at HOST over ssh,
-#                       cross-built here, instead of measuring this machine.
-#                       Implies --testbed tinker; see detect_testbed below.
-#   --max-freq KHZ      cap the board's clock for the run (default: 1416000
-#                       with --board, `none` to leave it alone)
 #   --branch NAME       branch to record against (default: the current one)
 #   --hash SHA          commit to attribute the result to (default: HEAD).
 #                       Both are needed on a machine with no git checkout — an
@@ -56,11 +45,11 @@
 #                       Linear against linearplus.
 #                       Always the portable driver, on every platform — the
 #                       Xcode CLI has no IR mode — so the Mac's IR numbers come
-#                       from the same binary the Pi's and the board's do.
+#                       from the same binary the Pi's do.
 #   --taps LIST         --ir only: IR lengths (default
 #                       256,512,1024,2048,4096,8192)
 #   --timing-seconds N  timing window per variant (default: 30)
-#   --cpu-set LIST      taskset list, e.g. 0-3. Linux and --board only.
+#   --cpu-set LIST      taskset list, e.g. 0-3. Linux only.
 #   --check             check this machine can reach Bencher, then stop.
 #                       Measures nothing and uploads nothing.
 #   --dry-run           measure and convert, but do not upload
@@ -85,10 +74,6 @@ IR=0
 TAPS="256,512,1024,2048,4096,8192"
 TIMING="30"
 CPU_SET=""
-BOARD=""
-# Empty means "whatever --board implies"; see the driver resolution below. A
-# literal `none` means measure the board as it is configured.
-MAX_FREQ=""
 DRIVER=""
 DRY_RUN=0
 FAIL_ON_ALERT=0
@@ -189,8 +174,6 @@ while [ $# -gt 0 ]; do
 		--taps) TAPS="$2"; shift 2 ;;
 		--timing-seconds) TIMING="$2"; shift 2 ;;
 		--cpu-set) CPU_SET="$2"; shift 2 ;;
-		--board) BOARD="$2"; shift 2 ;;
-		--max-freq) MAX_FREQ="$2"; shift 2 ;;
 		--check) CHECK=1; shift ;;
 		--dry-run) DRY_RUN=1; shift ;;
 		--fail-on-alert) FAIL_ON_ALERT=1; shift ;;
@@ -221,12 +204,8 @@ fi
 # --- Which driver, and which machine? ---------------------------------------
 #
 # The driver is resolved once, here, rather than re-derived from `uname` at each
-# place that needs it. With --board there are two machines in play — the one
-# running this script and the one being measured — and `uname` answers for the
-# wrong one.
-if [ -n "${BOARD}" ]; then
-	DRIVER="a32"
-elif [ "${IR}" -eq 1 ]; then
+# place that needs it.
+if [ "${IR}" -eq 1 ]; then
 	# The Xcode CLI measures WaveNet engines and nothing else, so an IR run uses
 	# the portable driver everywhere. That is not a compromise on the Mac: every
 	# testbed's IR numbers then come from one binary built from one source, which
@@ -238,23 +217,6 @@ else
 		Linux) DRIVER="portable" ;;
 		*) die "unsupported platform $(uname -s)" ;;
 	esac
-fi
-
-# 1416 MHz, and that number is a measurement rather than a round one: 25-minute
-# soaks put the RK3288's equilibrium at 58.7 °C there against 67.6 °C at 1704,
-# which is the difference between 8.8 °C of margin under the 70 °C passive trip
-# and 1.2 °C of it. See "Measuring on this board" in A32-PATH.md.
-#
-# Defaulted rather than left to the caller because the alternative default is a
-# void run: all four A17 cores share one cpufreq policy, so a thermal excursion
-# biases the ratio between engines rather than adding rejectable noise, and
-# run-benchmark.sh correctly refuses to write BMF for it — after the whole
-# measurement has been spent.
-if [ "${DRIVER}" = "a32" ] && [ -z "${MAX_FREQ}" ]; then
-	MAX_FREQ="1416000"
-fi
-if [ -n "${MAX_FREQ}" ] && [ "${DRIVER}" != "a32" ]; then
-	die "--max-freq caps the clock on a board measured over ssh; it needs --board."
 fi
 
 # The names have to match .github/workflows/benchmark.yml exactly. A typo here
@@ -276,11 +238,6 @@ detect_testbed() {
 				*"Raspberry Pi 500"*) echo "pi500" ;;
 				*"Raspberry Pi 5"*) echo "pi5" ;;
 				*"Raspberry Pi 4"*) echo "pi4" ;;
-				# RK3288: quad Cortex-A17, 32-bit ARMv7-A. The SoC in the
-				# HeadRush Core and Prime, and the only testbed here whose
-				# builds are 32-bit, so its history is not comparable with
-				# any of the others' even on the same submodel.
-				*"Tinker"*|*"tinker"*|*"RK3288"*|*"rk3288"*) echo "tinker" ;;
 				*) echo "" ;;
 			esac
 			;;
@@ -289,25 +246,14 @@ detect_testbed() {
 }
 
 if [ -z "${TESTBED}" ]; then
-	if [ "${DRIVER}" = "a32" ]; then
-		# Not detect_testbed: that reads *this* machine, and with --board this
-		# machine is the cross-compiler, not the subject. The armhf toolchain
-		# a32-deploy.sh uses targets ARMv7, and `tinker` is the only ARMv7
-		# testbed, so it is the only answer this can give — but it is still a
-		# guess about somebody else's hardware, so say so, and --testbed
-		# overrides it the moment a second board exists.
-		TESTBED="tinker"
-		log "measuring ${BOARD} as testbed ${TESTBED} (pass --testbed to override)"
-	else
-		TESTBED="$(detect_testbed)"
-		[ -n "${TESTBED}" ] || die "could not work out which machine this is.
+	TESTBED="$(detect_testbed)"
+	[ -n "${TESTBED}" ] || die "could not work out which machine this is.
 
   Pass --testbed explicitly, using the same name the workflow uses for it:
-      m2-air, m1-air, pi500, tinker
+      m2-air, m1-air, pi500
   A new name is not an error — Bencher will create it — which is exactly why
   getting it wrong quietly starts a second history for one machine."
-		log "detected testbed: ${TESTBED}"
-	fi
+	log "detected testbed: ${TESTBED}"
 fi
 
 # --- Provenance -------------------------------------------------------------
@@ -467,30 +413,6 @@ $(printf '%s\n' "${output}" \
 	log "bencher: ${PROJECT} readable${visibility:+ (${visibility})}"
 }
 
-# The board, checked separately from Bencher and before it, because it is
-# checked even under --dry-run: a dry run still measures, and with --board that
-# means half an hour of cross-compiling followed by an ssh that was never going
-# to connect. The cross toolchain itself is a32-deploy.sh's check to make, and it
-# makes it before the build rather than after.
-board_preflight() {
-	command -v ssh >/dev/null || die "--board needs ssh"
-	command -v rsync >/dev/null || die "--board needs rsync, to put the binaries on the board"
-	[ -x "${REPO_ROOT}/Scripts/a32-deploy.sh" ] || die "no Scripts/a32-deploy.sh to drive the board with"
-
-	# BatchMode, so a board that wants a password fails here in ten seconds
-	# rather than sitting at a prompt nobody is watching in the middle of CI.
-	ssh -o BatchMode=yes -o ConnectTimeout=10 "${BOARD}" true >/dev/null 2>&1 || die \
-		"cannot ssh to '${BOARD}' without a prompt.
-
-  The measurement is driven over one non-interactive ssh session, so key-based
-  auth has to already work:
-      ssh-copy-id ${BOARD}
-  and give it a Host entry in ~/.ssh/config if it needs a user or a port."
-	log "board: ${BOARD} reachable"
-}
-
-[ "${DRIVER}" = "a32" ] && board_preflight
-
 if [ "${DRY_RUN}" -eq 1 ]; then
 	[ "${CHECK}" -eq 0 ] || die "--check and --dry-run ask for opposite things:
   one talks to Bencher and measures nothing, the other measures and talks to
@@ -511,10 +433,6 @@ if [ "${CHECK}" -eq 1 ]; then
 		xcode) printf '  driver   %s\n' "nambench (Xcode)" ;;
 		portable) printf '  driver   %s\n' \
 			"$([ "${IR}" -eq 1 ] && echo nam_ir_benchmark || echo nam_benchmark) (portable)" ;;
-		a32) printf '  driver   %s\n' \
-		       "$([ "${IR}" -eq 1 ] && echo nam_ir_benchmark || echo nam_benchmark) (cross-built here, measured on ${BOARD})"
-		     printf '  clock    %s\n' \
-		       "$([ "${MAX_FREQ}" = "none" ] && echo 'as configured' || echo "capped to ${MAX_FREQ} kHz")" ;;
 	esac
 	log "nothing was measured and nothing was uploaded"
 	exit 0
@@ -612,38 +530,14 @@ case "${DRIVER}" in
 		fi
 		;;
 
-	a32)
-		log "driver: nam_benchmark (cross-built here, measured on ${BOARD})"
-		# a32-deploy.sh owns the cross build, the rsync and the ssh; the copy of
-		# run-benchmark.sh it puts on the board owns the governor, the frequency
-		# cap and the residency check. Neither of those is repeated here, so
-		# there is one description of how a measurement is set up rather than
-		# two that can drift — the same reason a32-deploy.sh does not measure.
-		#
-		# Two `--` in one command line, and they are not a typo: the first hands
-		# the rest to run-benchmark.sh on the board, and the second hands the
-		# rest of *that* to nam_benchmark.
-		DEPLOY=("${REPO_ROOT}/Scripts/a32-deploy.sh" --host "${BOARD}" --step bench --bmf "${BMF}")
-		[ -n "${CPU_SET}" ] && DEPLOY=("${DEPLOY[@]}" --cpu-set "${CPU_SET}")
-		if [ "${IR}" -eq 1 ]; then
-			DEPLOY=("${DEPLOY[@]}" -- --ir --taps "${TAPS}")
-		else
-			DEPLOY=("${DEPLOY[@]}" -- --submodels "${SUBMODELS}")
-		fi
-		[ "${MAX_FREQ}" != "none" ] && DEPLOY=("${DEPLOY[@]}" --max-freq "${MAX_FREQ}")
-		DEPLOY=("${DEPLOY[@]}" -- --timing-seconds "${TIMING}" ${EXTRA[@]+"${EXTRA[@]}"})
-		"${DEPLOY[@]}"
-		;;
-
 	*) die "unknown driver '${DRIVER}'" ;;
 esac
 
 [ -s "${BMF}" ] || die "no Bencher Metric Format was produced; nothing to upload"
 
-# The xcode driver copies its reports to ${REPORT%.json}-<submodel>.json, the
-# portable one has run-benchmark.sh name them after the host, and the a32 one
-# brings back whatever the board wrote. ${REPORT} itself is a stem, not a file,
-# so print what actually exists.
+# The xcode driver copies its reports to ${REPORT%.json}-<submodel>.json and the
+# portable one has run-benchmark.sh name them after the host. ${REPORT} itself is
+# a stem, not a file, so print what actually exists.
 for one in ${REPORTS[@]+"${REPORTS[@]}"}; do
 	log "report ${one}"
 done

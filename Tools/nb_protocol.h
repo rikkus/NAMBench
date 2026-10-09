@@ -459,10 +459,9 @@ inline Environment capture_environment()
 
   // 32-bit ARM Linux DOES put a "model name" in /proc/cpuinfo, but it is useless
   // — "ARMv7 Processor rev 1 (v7l)", the same string for every ARMv7 part ever
-  // made. Taking it would hide the MIDR lookup below and label every RK3288
-  // result with something that says nothing about which core produced it, which
-  // on a testbed that exists to characterise one specific core is worse than no
-  // answer at all.
+  // made. Taking it would hide the MIDR lookup below and label an RK3288 result
+  // with something that says nothing about which core produced it, which is
+  // worse than no answer at all.
   //
   // Matched on the shape rather than one spelling: an AArch64 kernel running a
   // 32-bit process reports "ARMv8 Processor rev 0 (v8l)" by the same convention,
@@ -494,7 +493,7 @@ inline Environment capture_environment()
       // 32-bit ARMv7 parts. 0xc0d is the one that matters here: ARM shipped the
       // core as Cortex-A12 and later rebranded it Cortex-A17, and the RK3288 in
       // the HeadRush Core and Prime reports 0xc0d. Naming only one of the two
-      // would make every result from that board look like it came from the wrong
+      // would make a result from that SoC look like it came from the wrong
       // chip.
       {"0xc05", "Cortex-A5"},   {"0xc07", "Cortex-A7"},  {"0xc08", "Cortex-A8"},
       {"0xc09", "Cortex-A9"},   {"0xc0d", "Cortex-A12/A17"}, {"0xc0e", "Cortex-A17"},

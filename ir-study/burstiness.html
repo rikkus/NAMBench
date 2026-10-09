@@ -126,22 +126,20 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--ru
 </section>
 
 <section>
-<h2>The same shape on the ARM boards</h2>
-<p>These traces are from the M2. The boards' published results show the same pattern, just higher: at 8192 taps the FFT path's p99 is 4.6–5.1× its average on all three machines, because in every case the p99 is measuring the transform callback.</p>
+<h2>The same shape on the ARM board</h2>
+<p>These traces are from the M2. The Pi's published results show the same pattern, just higher: at 8192 taps the FFT path's p99 is 4.9–5.1× its average on both machines, because in every case the p99 is measuring the transform callback.</p>
 <div class="tbl"><table>
 <thead><tr><th>8192 taps, 64 frames</th><th>shipping avg</th><th>shipping p99</th><th>FFT avg</th><th>FFT p99</th><th>FFT p99 ÷ avg</th></tr></thead>
 <tbody>
 <tr><td>M2 MacBook Air</td><td>4.27%</td><td>5.18%</td><td>0.46%</td><td>2.26%</td><td>4.9×</td></tr>
 <tr><td>Raspberry Pi 500</td><td>6.62%</td><td>6.91%</td><td>0.88%</td><td>4.48%</td><td>5.1×</td></tr>
-<tr><td>Tinker Board</td><td>42.04%</td><td>47.33%</td><td>6.10%</td><td>28.26%</td><td>4.6×</td></tr>
 </tbody></table></div>
-<p>On the Tinker Board, 28% of a deadline every 8th callback is comfortable, and still about half of what shipping spends on <em>every</em> callback there.</p>
 </section>
 
 <section>
 <h2>What a transform callback actually does</h2>
 <p>At 8192 taps the branch uses 512-sample blocks and a 1024-point FFT. The first 512 taps run directly, which keeps latency at zero. The remaining 7680 are split into 15 partitions. When these traces were taken, each transform callback ran one forward FFT, 15 × 1024 complex multiply-adds, one inverse FFT, and added 1023 samples into the output ring. Two things could lower or flatten the spike:</p>
-<p><strong>Only half the spectrum is needed.</strong> The input is real, so bins 513–1023 mirror bins 1–511, and the multiply-add loop was doing roughly twice the work it needed. <em>Since done:</em> <code>partitioned-ir</code> commit <code>a09e360</code> multiplies and stores only bins 0–512. Output is bit-identical, and at 8192 taps the transform callback dropped from 29.3 to 20.4 µs on the M2. The p99 fell 28–29% on the M2 and the Pi 500, and 23% on the Tinker Board.</p>
+<p><strong>Only half the spectrum is needed.</strong> The input is real, so bins 513–1023 mirror bins 1–511, and the multiply-add loop was doing roughly twice the work it needed. <em>Since done:</em> <code>partitioned-ir</code> commit <code>a09e360</code> multiplies and stores only bins 0–512. Output is bit-identical, and at 8192 taps the transform callback dropped from 29.3 to 20.4 µs on the M2. The p99 fell 28–29% on the M2 and the Pi 500.</p>
 <p><strong>The work could be spread out.</strong> Fourteen of the 15 partition multiplies use input blocks that arrived earlier. They could run during the seven quiet callbacks, leaving only the two FFTs and one multiply for the eighth. Some convolution engines do this, at the cost of extra code. <em>Not done.</em></p>
 </section>
 </div>

@@ -34,7 +34,7 @@
 #
 # So: this toolchain is for measuring *speed* under a second compiler. Every
 # bit-identity claim this campaign makes at C=8 is a claim about the gcc build,
-# and the promotion argument in A32-PATH.md has to say so. It is not a defect in
+# and any promotion argument has to say so. It is not a defect in
 # the kernels — it is the reference moving.
 #
 # No --sysroot. Debian's multiarch layout puts the armhf runtime where clang

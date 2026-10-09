@@ -151,8 +151,8 @@ endif()
 #      reference the whole lab is measured against.
 #   3. -mcpu=cortex-a17 implies armv7ve, so these binaries carry hardware
 #      integer divide and will not run on a plain armv7-a part. That is correct
-#      for this target; it is recorded in A32-PATH.md so nobody mistakes the
-#      result for a general armhf build.
+#      for the target the ARMv7 lab is built for; it is stated here so nobody
+#      mistakes the result for a general armhf build.
 #
 # -ffp-contract=fast is GCC's default and is stated explicitly because a2_fast's
 # C=3 branch depends on it: its bit-identity premise is that the compiler

@@ -8,7 +8,7 @@ Investigation found the fork side is already done — nothing to push there. The
 
 Per the user's decisions: one combined PR (not two), done via rebase (not merge) onto Core's current `main`, and no update to PR #313 until the post-rebase numbers are recorded in Bencher.
 
-**Execution note:** this plan was written from a session on `piv` (AArch64, no Mac access, no SSH to `tib` configured here). The user will resume execution from a Claude session on their MacBook, which can reach the Apple Silicon testbed directly and SSH to both `piv` and `tib` to run the AArch64 and ARMv7 re-verification and Bencher uploads.
+**Execution note:** this plan was written from a session on `piv` (AArch64, no Mac access). The user will resume execution from a Claude session on their MacBook, which can reach the Apple Silicon testbed directly and SSH to `piv` to run the AArch64 re-verification and Bencher uploads. The ARMv7 side has no machine to measure on, so it is re-verified by the codegen check and the qemu conformance arm only.
 
 ## Verified current state (no action needed)
 
@@ -35,12 +35,12 @@ The PR's whole argument is bit-identity + measured speedup. A 179-commit rebase 
 
 - Cross-build for AArch64, ARMv7, and x86_64 from the rebased branch; confirm non-target platforms still compile the kernel files to no symbols (the existing gate-verification approach, e.g. `Scripts/a32-codegen-check.sh`, and the parity/bench tools already in the PR: `tools/test/test_a2_planar.cpp`, `tools/bench_a2_planar.cpp`).
 - This machine (`piv`) is itself AArch64 (Cortex-A76) — run the parity test and bench tool natively here to re-check the AArch64 bit-identity and speedup claims after rebase, the same way the PR's own commits were verified on this class of hardware.
-- Cross-build and deploy to the ARMv7 board (`tib`) via `Scripts/a32-deploy.sh` the same way `A32-PATH.md`'s "Reproducing" section describes, to re-check the ARMv7 claims. Note [[tib-freeze-2026-09]] and [[tinker-board-measurement-constraints]] — use the 1416 MHz cap and expect the board's other constraints.
+- Cross-build for ARMv7 and run `Scripts/a32-codegen-check.sh` over the build, plus the ARMv7 arm of the conformance workflow under qemu. There is no ARMv7 board here to measure on, so the ARMv7 *speed* claims cannot be re-verified — say that plainly rather than leaving them implied to hold.
 - Apple Silicon (M2) numbers in the PR description can't be re-verified on this machine — flag this explicitly to the user as something they'd need to spot-check on a Mac, rather than silently leaving stale numbers in the PR.
 
 ### 4. Land the post-rebase results on Bencher before touching the PR
 
-The project already tracks every published number in Bencher via `Scripts/track-benchmark.sh` (which calls `Scripts/bencher-report.py` / `bencher-sync.py`). Before PR #313 is updated, run this on every testbed that re-verifies a claim in step 3 — the Mac (Apple Silicon, `nambench`), `piv` (AArch64, `nam_benchmark`), and `tib` (ARMv7, `nam_benchmark`) — so the rebased commit has real recorded history, not just a local console readout, and any regression Bencher's threshold sync would flag is caught before it goes to Core. Use `--hash` for the rebased commit's SHA so results attribute correctly even from machines without a full git checkout (e.g. an rsync'd copy on a board). This is a hard prerequisite for step 5, not a parallel nice-to-have.
+The project already tracks every published number in Bencher via `Scripts/track-benchmark.sh` (which calls `Scripts/bencher-report.py` / `bencher-sync.py`). Before PR #313 is updated, run this on every testbed that re-verifies a claim in step 3 — the Mac (Apple Silicon, `nambench`) and `piv` (AArch64, `nam_benchmark`) — so the rebased commit has real recorded history, not just a local console readout, and any regression Bencher's threshold sync would flag is caught before it goes to Core. Use `--hash` for the rebased commit's SHA so results attribute correctly even from machines without a full git checkout (e.g. an rsync'd copy on a board). This is a hard prerequisite for step 5, not a parallel nice-to-have.
 
 ### 5. Push and update PR #313
 
@@ -56,5 +56,5 @@ The project already tracks every published number in Bencher via `Scripts/track-
 
 - `tools/test/test_a2_planar.cpp` and `ctest` pass on the rebased branch, cross-built for AArch64/ARMv7/x86_64.
 - `tools/bench_a2_planar.cpp` re-run natively on this AArch64 machine, confirming bit-for-bit parity and the ~2x-class speedup still holds post-rebase.
-- ARMv7 parity/bench re-run on `tib` via `Scripts/a32-deploy.sh`, confirming the A32-PATH.md figures still hold post-rebase.
+- ARMv7 parity re-checked by the codegen check and the qemu conformance arm; ARMv7 speed not re-verified (no board).
 - `gh pr view 313` shows `mergeable: MERGEABLE` (not `CONFLICTING`) against Core's current `main`, and the title/body reflect both platforms.

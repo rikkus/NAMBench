@@ -11,15 +11,13 @@ published p99 measures (branch at `a09e360`):
 |---|---:|---:|
 | M2 | 1.61% of deadline | ~0.20% |
 | Pi 500 | 3.22% | ~0.37% |
-| Tinker Board, 1.416 GHz | 21.74% | ~2.95% |
 
 IR-PATH.md recorded spreading the multiplies as "Not done: more code than it is
 currently worth". It is worth another look because a callback meets or misses
 its deadline on its own cost, not on the average. The case with the least
-headroom is a pedal's 32-frame blocks on the Tinker Board. There the same
+headroom is a pedal's 32-frame blocks, where the same
 transform work falls in a deadline half as long, which is about 40% of it
-(extrapolated from the 64-frame p99; Step 4 measures it). The model already
-averages about 55% of a core on that board.
+(extrapolated from the 64-frame p99; Step 4 measures it).
 
 What this should deliver:
 
@@ -27,7 +25,7 @@ What this should deliver:
 - zero latency kept;
 - no extra arithmetic;
 - output that does not depend on callback size;
-- measurements on all three machines before anything is pinned or published.
+- measurements on every machine before anything is pinned or published.
 
 ## Is it worth doing? Yes, down to a known floor
 
@@ -46,10 +44,9 @@ that completes the block:
     sites, one in `_ProcessFft` and one in `_RunFftBlock`. GCC names it
     `__aeabi_ldivmod`.
   - Evidence of its cost: the forced-FFT 256-tap row runs no transform but
-    still reads the ring on every sample. It costs 27% more than direct on the
-    Tinker Board and 3% more on the M2. On the board that is about 80 ns a
-    sample. At that rate the overlap-add alone would be about 80 µs of the
-    ~290 µs transform callback.
+    still reads the ring on every sample. It costs 3% more than direct on the
+    M2. On 32-bit ARM each `%` is a library call instead of an instruction, so
+    the overlap-add is a much larger share of the transform callback there.
 
 **What cannot move.** Three parts stay in the callback that completes the block:
 
@@ -67,10 +64,9 @@ measurements.
 
 - The half-spectrum change halved the multiplies and cut the transform callback
   by 28-29% on the M2 and Pi 500. So the multiplies are still about 40% of it
-  there, and about 31% on the Tinker Board.
+  there.
 - Spreading 14/15 of them, plus the overlap-add, should cut the transform
-  callback by about 40% on the M2 and Pi 500, and by about half or more on the
-  Tinker Board.
+  callback by about 40% on the M2 and Pi 500.
 - Each of the seven quiet callbacks takes on about two partitions' multiplies.
   So the median goes up, p99 goes down, and core% stays flat or falls a little.
 - A falsifiable side prediction: the forced-FFT 256-tap row should close most of
@@ -136,8 +132,6 @@ The two tools follow `make_storage_variants.py` and `spectrum_storage_ab.cpp`.
 
 - M2.
 - Pi 500, built natively.
-- Tinker Board, cross-built the same way `storage_ab` was, and run at the
-  1.416 GHz cap.
 
 **Checkpoint.** Share the attribution table. If the multiplies and the
 overlap-add together are less than a quarter of the transform callback on every
@@ -234,7 +228,7 @@ P ≤ 2, nothing changes.
 - `ab_render`: report the difference from `e2dc6bc` for the four IRs, in the
   same form as IR-PATH's Listening table.
 
-## Step 4: Full protocol on all three machines, nothing uploaded
+## Step 4: Full protocol on both machines, nothing uploaded
 
 - **Point NAMBench at the branch, temporarily.** Add the dev clone to
   `LOCAL_HINTS`, set `ADT_PARTITIONED_SHA` to C (or to B if C was rejected), and
@@ -242,14 +236,9 @@ P ≤ 2, nothing changes.
 - **M2 and Pi 500.** Configure and build as in BENCHMARKING.md, then run
   `Scripts/run-benchmark.sh --ir --blocks 64 --build-dir build-benchmark`. The
   Pi runs from its usual rsync'd copy.
-- **Tinker Board.** Run `Scripts/a32-deploy.sh -- --ir --blocks 32,64 --max-freq
-  1416000`. Run it from the machine that has the ARMv7 cross toolchain; this Mac
-  has none.
 - **Baselines.**
   - At 64 frames, compare with the published `a09e360` reports in
     `benchmark-results/`. `e2dc6bc` changed no FFT-path number.
-  - At 32 frames there is no published baseline, so also run the board at
-    `e2dc6bc`.
 - **Accuracy.** The parity check must still put the FFT path 136-138 dB below
   upstream.
 
@@ -261,14 +250,14 @@ P ≤ 2, nothing changes.
 - Adopt C only if all of these hold:
   - callback-size independence is exact;
   - accuracy is unchanged;
-  - the 8192-tap p99 is clearly lower on all three machines;
+  - the 8192-tap p99 is clearly lower on both machines;
   - no tap count's p99 or core% is worse than the run's spread.
 
 **If adopted:**
 
 - Fast-forward `partitioned-ir` to the adopted commit and push it (after asking).
 - Pin it in `fetch-vendor.sh` and `pins.json`.
-- Measure and upload all three machines at the pin, as before.
+- Measure and upload both machines at the pin, as before.
 - Regenerate the README and BENCHMARKING.md tables with
   `ir-study/docs_tables.py`.
 
@@ -314,5 +303,4 @@ c++ -std=c++17 -O3 -I<out> -isystem vendor/eigen-adt ir-study/spread_ab.cpp <out
 
 # Full protocol, no upload
 Scripts/run-benchmark.sh --ir --blocks 64 --build-dir build-benchmark
-Scripts/a32-deploy.sh -- --ir --blocks 32,64 --max-freq 1416000
 ```

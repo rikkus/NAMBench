@@ -98,13 +98,9 @@ The default line-up is `a2_fast` against `a2_planar`, on both A2 submodels:
 Bit-identical to `a2_fast` in every case. Results are tracked over time with
 Bencher, one testbed per machine. See [BENCHMARKING.md](BENCHMARKING.md).
 
-The same line-up now runs on 32-bit ARMv7 as well, on the RK3288 in the HeadRush
-Core: **1.416x** at A2 standard and **1.470x** at A2 nano, bit-identical, at a
-pedal's 32-frame blocks and a clock capped to 1416 MHz. Those are not a third
-column of the table above, because that table is at 64-frame blocks and this
-part gains most at 32 — putting them side by side would flatter the ARMv7 one by
-a difference in the measurement rather than in the code.
-[A32-PATH.md](A32-PATH.md) has the campaign behind them.
+The same line-up is ported to 32-bit ARMv7 — the RK3288 in the HeadRush Core and
+Prime — where the planar gate selects on NEON and FMA on 32-bit ARM too; see
+[the ARMv7 kernel lab](#the-armv7-kernel-lab) below.
 
 ## Impulse responses
 
@@ -300,26 +296,17 @@ kernels now vendored as `vendor/planar` — so the full lab is scoped to the
 ## The ARMv7 kernel lab
 
 `Sources/A32Engines/` asks the same question on a part none of the above can
-reach: the **Rockchip RK3288** — four Cortex-A17 cores, ARMv7-A, 32-bit only —
-which is the SoC in the HeadRush Core and Prime.
-[A32-PATH.md](A32-PATH.md) has the analysis.
+reach: a 32-bit **ARMv7-A** core with NEON and VFPv4 — the RK3288, quad
+Cortex-A17, which is the SoC in the HeadRush Core and Prime.
 
 It is not a port of the other two labs' answers, because those answers do not
 survive the trip. ARMv7 has 16 Q registers against AArch64's 32, no by-element
 FMA, and a NEON datapath narrower than its own register width — so the tile
 width that won on an M2 is roughly four times too wide here, and the switch that
-mattered most there matters least. Both winners are nonetheless **bit-identical**
-to `a2_fast` over a full render, which takes A2 standard from 78.5% to 57.8% of
-one core at a pedal's 32-frame block size.
+mattered most there matters least.
 
-Two structural differences from the other labs, both forced by the target:
+One structural difference from the other labs, forced by the target:
 
-- **Measurement happens on real hardware over ssh.** There is no ARMv7 machine
-  in the hosted CI fleet and no toolchain on the board, so `Scripts/a32-deploy.sh`
-  cross-builds here and rsyncs the binaries, and `Scripts/run-benchmark.sh` runs
-  on the board where it can own the governor and the thermal guard. Every
-  measured run is clock-pinned to 1416 MHz, which is a soak-measured number, not
-  a round one — see A32-PATH.md.
 - **Compiler flags are a correctness setting.** On this target `-mfpu` decides
   the *arithmetic*: without `neon-vfpv4`, Eigen silently picks non-fused
   `vmlaq_f32` and `a2_fast`'s own C=8 output changes. The armhf CI entry exists

@@ -21,16 +21,15 @@ README and [BENCHMARKING.md](BENCHMARKING.md#impulse-responses) carry the
 current tables. This file records what was investigated around them, what was
 changed on the branch as a result, and what was considered and left alone.
 
-Three machines throughout: an M2 MacBook Air, a Raspberry Pi 500 (Cortex-A76,
-2.4 GHz) and a Tinker Board (Cortex-A17, held at 1.416 GHz for benchmark runs).
-64-frame callbacks at 48 kHz, mono IR, unless stated otherwise.
+Two machines throughout: an M2 MacBook Air and a Raspberry Pi 500 (Cortex-A76,
+2.4 GHz). 64-frame callbacks at 48 kHz, mono IR, unless stated otherwise.
 
 ## Decisions
 
 | | Outcome | Where |
 |---|---|---|
 | Multiply and store only the half of each spectrum the inverse reads | **Adopted.** Bit-identical output; FFT path's p99 at 8192 taps down 23-29% | `partitioned-ir` [`a09e360`](https://github.com/rikkus/AudioDSPTools/commit/a09e360c374e2774e2906ac8f1a4e90113528390) |
-| Raise `kAutoDirectMaxTaps` from 256 to 512 | **Adopted.** FFT lost at 512 taps on both ARM boards | `partitioned-ir` [`e2dc6bc`](https://github.com/rikkus/AudioDSPTools/commit/e2dc6bcaa1cffe6708f93935218829b61eefbf92) |
+| Raise `kAutoDirectMaxTaps` from 256 to 512 | **Adopted.** FFT lost at 512 taps on the ARM board | `partitioned-ir` [`e2dc6bc`](https://github.com/rikkus/AudioDSPTools/commit/e2dc6bcaa1cffe6708f93935218829b61eefbf92) |
 | Trim IR tails below some threshold to save CPU | **Rejected.** A per-sample -60 dB cut is audible room sound, not silence, and the FFT path already makes full length cheap | [below](#is-a-shorter-ir-good-enough) |
 | Spread the partition multiplies across the quiet callbacks | **Adopted.** FFT path's p99 at 8192 taps down 39-55%; output independent of callback size, 145 dB from before | `partitioned-ir` [`b505422`](https://github.com/rikkus/AudioDSPTools/commit/b50542244c2a6c40602eac58a80823c13fb2678d), [below](#spreading-the-multiplies-b505422) |
 | Free the three 32 KiB buffers the FFT path never uses (96 KiB) | **Declined for now.** Not worth the effort | [below](#memory) |
@@ -149,8 +148,7 @@ callback that completes the 512. With 64-frame callbacks that is every 8th:
   shorter deadline; at 512 frames or more every callback runs a transform and
   the p99 sits on the average.
 - **The boards show the same shape.** Before the half-spectrum change the FFT
-  path's p99 at 8192 taps was 4.9x its average on the M2, 5.1x on the Pi 500
-  and 4.6x on the Tinker Board.
+  path's p99 at 8192 taps was 4.9x its average on the M2 and 5.1x on the Pi 500.
 
 Two ways to lower the spike were identified: multiply only half the spectrum,
 which was done (next section), and spread 14 of the 15 partition multiplies
@@ -203,27 +201,27 @@ Bins 0-512 get exactly the arithmetic they got before, so the output is
 the guitar DI, `test_ir_convolution` passes, and the benchmark's accuracy check
 still puts the FFT path 136-138 dB below upstream.
 
-The benchmark on all three machines, FFT path, before -> after (`ba646f4` ->
+The benchmark on both machines, FFT path, before -> after (`ba646f4` ->
 `a09e360`):
 
-| taps | M2 core% | M2 p99 | Pi 500 core% | Pi 500 p99 | Tinker core% | Tinker p99 |
-|---:|---:|---:|---:|---:|---:|---:|
-| 256 | 0.091 -> 0.090 | 0.12 -> 0.11 | 0.201 -> 0.201 | 0.22 -> 0.22 | 1.810 -> 1.808 | 2.43 -> 2.43 |
-| 512 | 0.168 -> 0.159 | 0.40 -> 0.37 | 0.407 -> 0.391 | 1.02 -> 0.96 | 3.276 -> 3.207 | 8.29 -> 8.01 |
-| 1024 | 0.188 -> 0.169 | 0.48 -> 0.41 | 0.448 -> 0.413 | 1.18 -> 1.04 | 3.495 -> 3.312 | 9.19 -> 8.44 |
-| 2048 | 0.229 -> 0.191 | 0.65 -> 0.49 | 0.535 -> 0.455 | 1.52 -> 1.21 | 3.920 -> 3.557 | 10.89 -> 9.41 |
-| 4096 | 0.378 -> 0.338 | 1.75 -> 1.28 | 0.718 -> 0.645 | 3.16 -> 2.56 | 5.211 -> 4.851 | 21.11 -> 18.18 |
-| 8192 | 0.459 -> 0.380 | 2.26 -> 1.61 | 0.883 -> 0.727 | 4.48 -> 3.22 | 6.102 -> 5.295 | 28.26 -> 21.74 |
+| taps | M2 core% | M2 p99 | Pi 500 core% | Pi 500 p99 |
+|---:|---:|---:|---:|---:|
+| 256 | 0.091 -> 0.090 | 0.12 -> 0.11 | 0.201 -> 0.201 | 0.22 -> 0.22 |
+| 512 | 0.168 -> 0.159 | 0.40 -> 0.37 | 0.407 -> 0.391 | 1.02 -> 0.96 |
+| 1024 | 0.188 -> 0.169 | 0.48 -> 0.41 | 0.448 -> 0.413 | 1.18 -> 1.04 |
+| 2048 | 0.229 -> 0.191 | 0.65 -> 0.49 | 0.535 -> 0.455 | 1.52 -> 1.21 |
+| 4096 | 0.378 -> 0.338 | 1.75 -> 1.28 | 0.718 -> 0.645 | 3.16 -> 2.56 |
+| 8192 | 0.459 -> 0.380 | 2.26 -> 1.61 | 0.883 -> 0.727 | 4.48 -> 3.22 |
 
-No length got slower on any machine. 256 taps does not move, as it should not:
+No length got slower on either machine. 256 taps does not move, as it should not:
 the whole IR fits in the direct head there and no transform runs. The p99 falls
 further than the average because the saving lands entirely on the transform
 callback. Against shipping at 8192 taps, the FFT path went from 9.30x to 11.29x
-on the M2, 7.50x to 9.13x on the Pi 500 and 6.89x to 7.91x on the Tinker Board.
+on the M2 and 7.50x to 9.13x on the Pi 500.
 
-The branch was not kept on the M2's word. Both ARM boards were re-measured
+The branch was not kept on the M2's word. The Pi was re-measured
 first, with nothing uploaded, on the grounds that the change was not worth
-keeping if it made either of them worse. It did not, and all three machines
+keeping if it made it worse. It did not, and both machines
 were then measured again at the pinned commit for upload.
 
 ### Storage or arithmetic?
@@ -243,16 +241,15 @@ Median transform callback at 8192 taps:
 |---|---:|---:|---:|---:|
 | M2 | 29.75 µs | 21.21 µs | 21.25 µs | +0.2% |
 | Pi 500 | 59.35 µs | 42.54 µs | 42.48 µs | -0.1% |
-| Tinker Board, 1.8 GHz | 272 µs | 207 µs | 205 µs | -1.0%, in two runs |
 
 At 1024-4096 taps V2 was within 1% of V1 everywhere. **Almost all of the gain
 is the arithmetic.** Once the loop stops at bin 512 it never touches the upper
 half of each buffer, so shrinking the buffers frees memory that was already
-unread; the Tinker Board, with the smallest caches, is the only one to show
-anything. The smaller buffers stay: they cost nothing.
+unread, and the difference between V1 and V2 is inside the noise. The smaller
+buffers stay: they cost nothing.
 
-That comparison ran at the Tinker Board's default 1.8 GHz, not the benchmark's
-1.416 GHz cap, so its microseconds do not line up with the published tables;
+That comparison ran at each machine's default clock rather than the benchmark's
+cap, so its microseconds do not line up with the published tables;
 the comparison between versions is unaffected. Short interleaved runs are
 enough for a same-machine A/B like this, because drift lands on all three
 builds alike. The full protocol is for numbers that have to stay comparable
@@ -261,8 +258,8 @@ across days and uploads.
 ## `Auto` threshold to 512 (`e2dc6bc`)
 
 At 512 taps, after the half-spectrum change, the FFT path still costs 10% more
-than direct on the Pi 500 and 21% more on the Tinker Board, with a p99 about
-2.5x direct's on both. From 1024 taps it wins everywhere. The M2 favours FFT
+than direct on the Pi 500, with a p99 about
+2.5x direct's. From 1024 taps it wins everywhere. The M2 favours FFT
 from just above 256, but only by 1.25x at 512, and its p99 is worse there too.
 
 So `kAutoDirectMaxTaps` went from 256 to 512: `Auto` runs direct up to 512 taps
@@ -288,9 +285,8 @@ instrumented copy of `e2dc6bc` with a clock read between the phases; 8192 taps,
 |---|---:|---:|---:|---:|---:|---:|
 | M2 | 20.9 µs | 22% | 40% | 21% | 3% | 13% |
 | Pi 500 | 42.6 µs | 22% | 39% | 21% | 6% | 12% |
-| Tinker Board | 265 µs | 16% | 32% | 16% | 22% | 15% |
 
-The overlap-add costs the Tinker Board a fifth of the spike: its output ring
+The overlap-add is expensive on 32-bit ARM: its output ring
 was indexed with a 64-bit `%`, which 32-bit ARM does as a library call, once
 per output sample. Three commits followed:
 
@@ -301,8 +297,8 @@ per output sample. Three commits followed:
 2. [`40e2329`](https://github.com/rikkus/AudioDSPTools/commit/40e2329) adds the
    overlap-add one output sample at a time from the current and previous
    inverse transforms, with no ring. Byte-identical output on every machine and
-   on four real cabinet IRs; the transform callback 3% cheaper on the M2, 6% on
-   the Pi 500 and 23% on the Tinker Board.
+   on four real cabinet IRs; the transform callback 3% cheaper on the M2 and 6%
+   on the Pi 500.
 3. [`b505422`](https://github.com/rikkus/AudioDSPTools/commit/b505422) spreads
    the multiplies for partitions 1 to P-1 evenly across the callbacks between
    transforms, since their input spectra are already known. The transform
@@ -320,8 +316,6 @@ Median cost at each position in the 8-callback cycle, 8192 taps, 64 frames, µs:
 | M2, `b505422` | 3.75 | 12.88 | 4.92 |
 | Pi 500, `e2dc6bc` | 4.85 | 42.43 | 9.53 |
 | Pi 500, `b505422` | 7.11 | 24.65 | 9.30 |
-| Tinker Board, `e2dc6bc` | 39.1 | 258.1 | 65.8 |
-| Tinker Board, `b505422` | 47.0 | 123.4 | 56.6 |
 
 In the benchmark, at 8192 taps (64-frame blocks, the published runs at `b505422`
 against those at `a09e360`; see [Records](#records)):
@@ -330,17 +324,13 @@ against those at `a09e360`; see [Records](#records)):
 |---|---:|---:|---:|
 | M2 | 1.61% | 0.99% | -0.4% to -2.4% across the ladder |
 | Pi 500 | 3.22% | 1.87% | -2% to -6% |
-| Tinker Board | 21.74% | 9.89% | -18% to -31% |
 
-At 32-frame blocks, the pedal case, the Tinker Board's p99 at 8192 taps went
-from 40.0% of the deadline to 16.0%. Accuracy against upstream is unchanged at
-136-138 dB. The Tinker Board's forced-FFT 256-tap row, which runs no transform
-and so only paid the ring's `%`, went from 26% above direct to 2%; the M2's 7%
-gap there did not move, so it is not the modulo.
+Accuracy against upstream is unchanged at
+136-138 dB.
 
 What is left in the spike is the forward FFT, partition 0 and the inverse, all
 of which need the block that has just completed: about 60% of the old
-transform callback on the M2 and Pi 500, under half on the Tinker Board. Only
+transform callback on both machines. Only
 a smaller first FFT partition (non-uniform partitioning) would lower it
 further.
 
@@ -360,7 +350,7 @@ same synthetic 8192-tap IR at 48 kHz and the same noise input, with the FFT
 path forced on both. They alternate over 10 rounds of 10 s each, after a
 one-second warm-up, and every callback is timed. The Pi 500 was pinned to
 core 3 and built with `-mcpu=cortex-a76`. The outputs agree to −130 dB once
-ADT's gain normalisation is scaled out. The Tinker Board was unavailable.
+ADT's gain normalisation is scaled out.
 
 Per callback, in µs, with the share of the 48 kHz deadline in brackets:
 
@@ -417,8 +407,8 @@ would be larger than all of its memory. The FFT path also needs about 16 bytes
 per tap by construction (8 for the IR's spectra, 8 for the input history)
 against about 8 for direct convolution: it is the choice that saves CPU where
 memory is plentiful, not the one that saves memory. And the arithmetic does not
-fit either: a transform callback at 8192 taps takes about 205 µs on the Tinker
-Board at 1.8 GHz, and software floating point on a 133 MHz M0+ would take far
+fit either: a transform callback at 8192 taps takes hundreds of microseconds on
+an ARMv7 board, and software floating point on a 133 MHz M0+ would take far
 longer than the whole 1.33 ms callback. A board that small wants a much shorter
 IR through a direct path.
 
@@ -426,14 +416,14 @@ IR through a direct path.
 
 Bencher reports behind the published tables, all 64-frame blocks:
 
-| | Branch at | M2 | Pi 500 | Tinker Board |
-|---|---|---|---|---|
-| Before | `ba646f4` | `M2-20260921T014503Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cb33-f63a-75f1-b387-a56758166161), `piv-20260922T220743Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cb4e-8e3b-7f90-9c49-dd841b336c34), `tinkerboard-20260922T223553Z` |
-| Half spectrum | `a09e360` | [report](https://bencher.dev/perf/nambench/reports/01a0cd74-9fea-76a1-b422-89b40229b09b), `M2-20260923T083527Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cd72-8369-7280-97d0-e5bd48fb1f68), `piv-20260923T083526Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cd7e-b03a-70f1-9fea-85e73875d876), `tinkerboard-20260923T084743Z` |
-| Spread multiplies | `b505422` | [report](https://bencher.dev/perf/nam-ir/reports/01a0d4fd-09d6-7920-aa49-1041bb162e71), `M2-20260924T194343Z` | [report](https://bencher.dev/perf/nam-ir/reports/01a0d511-f686-7480-aff7-5dd93d00068a), `piv-20260924T200645Z` | [report](https://bencher.dev/perf/nam-ir/reports/01a0d53f-d194-7810-9cd3-a08c8ef97a66), `tinkerboard-20260924T205600Z` |
+| | Branch at | M2 | Pi 500 |
+|---|---|---|---|
+| Before | `ba646f4` | `M2-20260921T014503Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cb33-f63a-75f1-b387-a56758166161), `piv-20260922T220743Z` |
+| Half spectrum | `a09e360` | [report](https://bencher.dev/perf/nambench/reports/01a0cd74-9fea-76a1-b422-89b40229b09b), `M2-20260923T083527Z` | [report](https://bencher.dev/perf/nambench/reports/01a0cd72-8369-7280-97d0-e5bd48fb1f68), `piv-20260923T083526Z` |
+| Spread multiplies | `b505422` | [report](https://bencher.dev/perf/nam-ir/reports/01a0d4fd-09d6-7920-aa49-1041bb162e71), `M2-20260924T194343Z` | [report](https://bencher.dev/perf/nam-ir/reports/01a0d511-f686-7480-aff7-5dd93d00068a), `piv-20260924T200645Z` |
 
-The first six runs are in the `nambench` Bencher project, the last three in
-`nam-ir`, which has one plot per machine of p99 and core% at 8192 taps. The nine
+The first four runs are in the `nambench` Bencher project, the last two in
+`nam-ir`, which has one plot per machine of p99 and core% at 8192 taps. The six
 JSON reports are in `benchmark-results/`, each named as above with
 `-ir-block64.json` appended. `ir-study/docs_tables.py` prints the README's
 tables from them; the README shows the last row.

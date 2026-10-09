@@ -21,7 +21,7 @@
 //     ir-study/spread_ab.cpp OUT/PC*.cpp -o spread_ab
 //   ./spread_ab [cpu to pin to, Linux] [rounds] [frames: 32, 48, 64 or 128]
 //
-// ARMv7 (Tinker Board), cross-built on the Pi with the benchmark's
+// ARMv7, cross-built on the Pi with the benchmark's
 // nb_conformance_flags:
 //   arm-linux-gnueabihf-g++ -std=c++17 -O3 -DNDEBUG -Wall -Wextra \
 //     -Wno-unused-parameter -Wno-psabi -mcpu=cortex-a17 -mfpu=neon-vfpv4 -mfloat-abi=hard \
